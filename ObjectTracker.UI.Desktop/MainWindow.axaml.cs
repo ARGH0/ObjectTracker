@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.IO;
@@ -17,6 +16,7 @@ public partial class MainWindow : Window
 {
     private readonly IPipelineController _pipeline;
     private readonly AvaloniaOutputPort _output;
+    private readonly OverlaySettingsStore _overlaySettingsStore;
     private bool _isBinding;
 
     public MainWindow()
@@ -33,6 +33,16 @@ public partial class MainWindow : Window
     {
         _pipeline = pipeline;
         _output = output;
+        _overlaySettingsStore = new OverlaySettingsStore();
+
+        try
+        {
+            _overlaySettingsStore.LoadIntoPipeline(_pipeline);
+        }
+        catch
+        {
+            // Ignore persisted-settings load errors and continue with defaults.
+        }
 
         InitializeComponent();
         BindData();
@@ -53,6 +63,15 @@ public partial class MainWindow : Window
 
     protected override async void OnClosing(WindowClosingEventArgs e)
     {
+        try
+        {
+            _overlaySettingsStore.SaveFromPipeline(_pipeline);
+        }
+        catch
+        {
+            // Ignore persisted-settings save errors during shutdown.
+        }
+
         await _pipeline.StopAsync(CancellationToken.None);
         base.OnClosing(e);
     }
@@ -94,6 +113,7 @@ public partial class MainWindow : Window
         StopButton.Click += StopButtonOnClick;
         DetectorComboBox.SelectionChanged += DetectorComboBoxOnSelectionChanged;
         SourceComboBox.SelectionChanged += SourceComboBoxOnSelectionChanged;
+        OpenOverlaySettingsButton.Click += OpenOverlaySettingsButtonOnClick;
 
         _output.SnapshotPublished += snapshot => Dispatcher.UIThread.Post(() => RenderSnapshot(snapshot));
         _output.StatusPublished += status => Dispatcher.UIThread.Post(() => StatusText.Text = status);
@@ -141,6 +161,13 @@ public partial class MainWindow : Window
     private void ColorFilterCheckBoxOnChanged(object? sender, RoutedEventArgs e)
     {
         ApplyColorFiltersFromUi();
+    }
+
+    private async void OpenOverlaySettingsButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        var settingsWindow = new OverlaySettingsWindow(_pipeline, _overlaySettingsStore);
+        await settingsWindow.ShowDialog(this);
+        StatusText.Text = "Status: overlay instellingen bijgewerkt";
     }
 
     private void ApplyColorFiltersFromUi()

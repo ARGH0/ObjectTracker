@@ -71,6 +71,11 @@
                        TextWrapping="Wrap"
                        MinHeight="40" />
 
+            <Button x:Name="OpenOverlaySettingsButton"
+                    Content="Overlay instellingen"
+                    Height="36"
+                    Margin="0,8,0,0" />
+
             <TextBlock Text="Tracks" FontWeight="SemiBold" Margin="0,8,0,0" />
             <Border BorderThickness="1" BorderBrush="#505050" CornerRadius="4">
                 <ListBox x:Name="TracksListBox"

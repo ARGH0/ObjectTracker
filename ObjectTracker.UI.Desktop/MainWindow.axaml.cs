@@ -7,10 +7,9 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Microsoft.Extensions.DependencyInjection;
 using ObjectTracker.Core.Domain;
 using ObjectTracker.Core.Ports;
-using ObjectTracker.Vision;
-using ObjectTracker.Vision.Source;
 
 namespace ObjectTracker.UI.Desktop;
 
@@ -21,7 +20,7 @@ public partial class MainWindow : Window
     private bool _isBinding;
 
     public MainWindow()
-        : this(CreateDefaultDependencies())
+        : this(ResolveDependencies())
     {
     }
 
@@ -40,22 +39,16 @@ public partial class MainWindow : Window
         HookEvents();
     }
 
-    private static (IPipelineController Pipeline, AvaloniaOutputPort Output) CreateDefaultDependencies()
+    private static (IPipelineController Pipeline, AvaloniaOutputPort Output) ResolveDependencies()
     {
-        var output = new AvaloniaOutputPort();
-        var frameSourceFactory = new OpenCvFrameSourceFactory();
-        var algorithms = new List<IDetectionAlgorithm>
+        if (App.Services is not null)
         {
-            new OpenCvArucoDetector(),
-            new OpenCvColorDetector(),
-            new AlternativeNoOpDetector()
-        };
-        var detectorManager = new DetectorManager(algorithms, DetectorMode.Hybrid);
-        var tracker = new SimpleTracker();
-        var clock = new SystemClock();
-        var pipeline = new PipelineController(frameSourceFactory, detectorManager, tracker, [output], clock);
+            return (
+                App.Services.GetRequiredService<IPipelineController>(),
+                App.Services.GetRequiredService<AvaloniaOutputPort>());
+        }
 
-        return (pipeline, output);
+        return DesktopCompositionRoot.CreateDependencies();
     }
 
     protected override async void OnClosing(WindowClosingEventArgs e)

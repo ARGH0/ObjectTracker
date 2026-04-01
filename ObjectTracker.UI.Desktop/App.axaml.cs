@@ -1,16 +1,15 @@
-using System.Collections.Generic;
+using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using ObjectTracker.Core.Domain;
-using ObjectTracker.Core.Ports;
-using ObjectTracker.Vision;
-using ObjectTracker.Vision.Source;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ObjectTracker.UI.Desktop;
 
 public partial class App : Application
 {
+    internal static IServiceProvider? Services { get; private set; }
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -20,27 +19,8 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var output = new AvaloniaOutputPort();
-            var frameSourceFactory = new OpenCvFrameSourceFactory();
-
-            var algorithms = new List<IDetectionAlgorithm>
-            {
-                new OpenCvArucoDetector(),
-                new OpenCvColorDetector(),
-                new AlternativeNoOpDetector()
-            };
-
-            var detectorManager = new DetectorManager(algorithms, DetectorMode.Hybrid);
-            var tracker = new SimpleTracker();
-            var clock = new SystemClock();
-            var pipeline = new PipelineController(
-                frameSourceFactory,
-                detectorManager,
-                tracker,
-                [output],
-                clock);
-
-            desktop.MainWindow = new MainWindow(pipeline, output);
+            Services = DesktopCompositionRoot.BuildServiceProvider();
+            desktop.MainWindow = Services.GetRequiredService<MainWindow>();
         }
 
         base.OnFrameworkInitializationCompleted();

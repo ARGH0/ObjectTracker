@@ -1,5 +1,6 @@
 ﻿namespace ObjectTracker.Vision.Source;
 using ObjectTracker.Core.Domain;
+using ObjectTracker.Core.Ports;
 using OpenCvSharp;
 
 public sealed class MockFrameSource : IFrameSource
@@ -31,7 +32,17 @@ public sealed class MockFrameSource : IFrameSource
             return null;
         }
 
-        await Task.Delay(33, cancellationToken);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
+        await Task.Delay(33);
+
+        if (!_running || cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
 
         using var image = new Mat(new Size(640, 480), MatType.CV_8UC3, new Scalar(30, 30, 30));
         var x = 50 + (_tick % 540);

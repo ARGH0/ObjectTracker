@@ -1,6 +1,6 @@
 using ObjectTracker.Core.Domain;
 
-namespace ObjectTracker.Vision.Source;
+namespace ObjectTracker.Core.Ports;
 
 public interface IFrameSource : IAsyncDisposable
 {

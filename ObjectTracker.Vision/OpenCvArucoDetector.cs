@@ -17,14 +17,20 @@ public sealed class OpenCvArucoDetector : IDetectionAlgorithm
             return Task.FromResult<IReadOnlyList<Detection>>([]);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         using var threshold = new Mat();
         Cv2.AdaptiveThreshold(image, threshold, 255, AdaptiveThresholdTypes.GaussianC, ThresholdTypes.BinaryInv, 15, 5);
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         Cv2.FindContours(threshold, out var contours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
         var detections = new List<Detection>();
 
         foreach (var contour in contours)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var perimeter = Cv2.ArcLength(contour, true);
             if (perimeter < 100)
             {

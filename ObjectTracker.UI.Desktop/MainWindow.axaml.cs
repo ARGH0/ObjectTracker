@@ -72,7 +72,19 @@ public partial class MainWindow : Window
             // Ignore persisted-settings save errors during shutdown.
         }
 
-        await _pipeline.StopAsync(CancellationToken.None);
+        try
+        {
+            await _pipeline.StopAsync(CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            // Ignore pipeline stop errors during shutdown to avoid crashing the app.
+            // Optionally surface a generic status message; avoid throwing.
+            if (StatusText is not null)
+            {
+                StatusText.Text = "Error while stopping pipeline during shutdown.";
+            }
+        }
         base.OnClosing(e);
     }
 

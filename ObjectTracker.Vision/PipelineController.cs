@@ -341,12 +341,13 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
         if (elapsed >= 1000)
         {
-            var fps = _framesInWindow;
+            var fps = (int)(_framesInWindow * 1000 / elapsed);
             _framesInWindow = 0;
             _windowStartMs = nowMs;
             return fps;
         }
 
-        return _framesInWindow;
+        return (int)(_framesInWindow * 1000 / elapsed);
+    }
     }
 }

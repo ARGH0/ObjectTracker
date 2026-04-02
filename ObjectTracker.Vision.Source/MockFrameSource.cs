@@ -38,7 +38,7 @@ public sealed class MockFrameSource : IFrameSource
             return null;
         }
 
-        await Task.Delay(33);
+        await Task.Delay(33, cancellationToken);
 
         if (!_running || cancellationToken.IsCancellationRequested)
         {

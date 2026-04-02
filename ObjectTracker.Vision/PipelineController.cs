@@ -349,5 +349,4 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
         return (int)(_framesInWindow * 1000 / elapsed);
     }
-    }
 }

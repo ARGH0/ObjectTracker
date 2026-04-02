@@ -55,7 +55,11 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
 
     public Task<IReadOnlyList<Detection>> DetectAsync(FramePacket frame, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         using var image = Cv2.ImDecode(frame.EncodedJpeg, ImreadModes.Color);
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (image.Empty())
         {
             return Task.FromResult<IReadOnlyList<Detection>>([]);
@@ -63,6 +67,7 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
 
         using var hsv = new Mat();
         Cv2.CvtColor(image, hsv, ColorConversionCodes.BGR2HSV);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var detections = new List<Detection>();
 
@@ -74,17 +79,23 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
 
         foreach (var range in Ranges)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (!enabled.Contains(range.Name))
             {
                 continue;
             }
 
             using var mask = BuildMask(hsv, range);
+            cancellationToken.ThrowIfCancellationRequested();
+
             Cv2.FindContours(mask, out var contours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
 
             var index = 0;
             foreach (var contour in contours)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 var area = Cv2.ContourArea(contour);
                 var minArea = range.Name is "black" or "white" ? 240 : 120;
                 if (area < minArea)

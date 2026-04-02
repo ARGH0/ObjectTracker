@@ -1,7 +1,8 @@
-﻿namespace ObjectTracker.Vision.Source;
-using ObjectTracker.Core.Domain;
+﻿using ObjectTracker.Core.Domain;
 using ObjectTracker.Core.Ports;
 using OpenCvSharp;
+
+namespace ObjectTracker.Vision.Source;
 
 public sealed class MockFrameSource : IFrameSource
 {

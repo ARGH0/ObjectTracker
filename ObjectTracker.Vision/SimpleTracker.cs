@@ -13,9 +13,10 @@ public sealed class SimpleTracker : ITracker
 
         foreach (var detection in detections)
         {
-            var id = string.IsNullOrWhiteSpace(detection.Id)
-                ? $"{detection.Kind}-{detection.SourceId}"
-                : detection.Id;
+            if (string.IsNullOrWhiteSpace(detection.Id))
+                throw new ArgumentException($"Detection must have a unique Id. Detection: Kind={detection.Kind}, SourceId={detection.SourceId}");
+            
+            var id = detection.Id;
 
             var speed = 0f;
             var direction = 0f;

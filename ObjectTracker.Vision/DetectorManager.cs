@@ -15,9 +15,12 @@ public sealed class DetectorManager : IDetectorManager
         var algorithmList = algorithms.ToList();
         _algorithms = algorithmList.ToDictionary(algorithm => algorithm.Mode);
         _colorFilterControls = algorithmList.OfType<IColorFilterControl>().ToList();
-        _activeMode = _algorithms.ContainsKey(defaultMode)
-            ? defaultMode
-            : _algorithms.Keys.First();
+        if (!_algorithms.ContainsKey(defaultMode))
+        {
+            throw new InvalidOperationException($"Default detector mode '{defaultMode}' is not registered.");
+        }
+
+        _activeMode = defaultMode;
     }
 
     public DetectorMode ActiveMode

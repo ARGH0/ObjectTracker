@@ -32,7 +32,7 @@ internal static class DesktopCompositionRoot
         services.AddSingleton<IDetectionAlgorithm, AlternativeNoOpDetector>();
         services.AddSingleton<IDetectorManager>(provider =>
             new DetectorManager(provider.GetServices<IDetectionAlgorithm>(), DetectorMode.Hybrid));
-        services.AddSingleton<ITracker, SimpleTracker>();
+        services.AddSingleton<ITracker, ProximityTracker>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<AvaloniaOutputPort>();
         services.AddSingleton<IOutputPort>(provider => provider.GetRequiredService<AvaloniaOutputPort>());

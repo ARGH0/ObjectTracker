@@ -4,82 +4,98 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         x:Class="ObjectTracker.UI.Desktop.MainWindow"
-        Title="CameraTrack"
-        Width="1920"
-        Height="1080"
-        MinWidth="1280"
-        MinHeight="720"
-        d:DesignWidth="1920"
-        d:DesignHeight="1080">
-    <Grid ColumnDefinitions="1440,20,420" RowDefinitions="Auto,*" Margin="12">
-        <Border Grid.RowSpan="2"
-                Background="#111111"
-                BorderBrush="#505050"
+        Title="ObjectTracker"
+        Width="960"
+        Height="640"
+        MinWidth="720"
+        MinHeight="480"
+        d:DesignWidth="960"
+        d:DesignHeight="640">
+    <Grid Background="#F3F1EC" ColumnDefinitions="2*,24,*" Margin="24">
+        <Border Background="#FFFCF6"
+                BorderBrush="#D9D3C6"
                 BorderThickness="1"
-                CornerRadius="6"
-                Width="1440"
-                Height="810"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Top">
-            <Grid>
-                <TextBlock Text="Live Preview"
-                           Foreground="#BFBFBF"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           FontSize="24"
+                CornerRadius="18"
+                Padding="18">
+            <Grid RowDefinitions="Auto,12,*">
+                <TextBlock Text="Output Viewer"
+                           FontSize="26"
                            FontWeight="SemiBold" />
-                <Image x:Name="PreviewImage"
-                       Stretch="Uniform" />
+
+                <Border Grid.Row="2"
+                        Background="#ECE7DC"
+                        BorderBrush="#D1C8B6"
+                        BorderThickness="1"
+                        CornerRadius="14"
+                        ClipToBounds="True">
+                    <Grid>
+                        <Image x:Name="PreviewImage"
+                               Stretch="Uniform" />
+                        <TextBlock x:Name="EmptyStateText"
+                                   Text="Open an image or start the camera to run imported OpenCvSharp samples."
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="16"
+                                   Foreground="#6C6559" />
+                    </Grid>
+                </Border>
             </Grid>
         </Border>
 
-        <StackPanel Grid.Column="2" Grid.Row="0" Spacing="12" Margin="0,20,0,0">
-            <TextBlock Text="Bron" FontWeight="SemiBold" />
-            <ComboBox x:Name="SourceComboBox"
-                      HorizontalAlignment="Stretch"
-                      SelectedIndex="0" />
-
-            <TextBlock Text="Detector" FontWeight="SemiBold" Margin="0,8,0,0" />
-            <ComboBox x:Name="DetectorComboBox"
-                      HorizontalAlignment="Stretch"
-                      SelectedIndex="0" />
-
-            <Grid ColumnDefinitions="*,20,*" Margin="0,8,0,0">
-                <Button x:Name="StartButton"
-                        Grid.Column="0"
-                        Content="Start"
-                        Height="40" />
-                <Button x:Name="StopButton"
-                        Grid.Column="2"
-                        Content="Stop"
-                        Height="40" />
-            </Grid>
-
-            <TextBlock Text="Kleurfilter selector" FontWeight="SemiBold" Margin="0,8,0,0" />
-            <Border BorderThickness="1" BorderBrush="#505050" CornerRadius="4" Padding="8">
-                <ScrollViewer MaxHeight="120">
-                    <StackPanel x:Name="ColorFilterPanel" Spacing="4" />
-                </ScrollViewer>
+        <StackPanel Grid.Column="2" Spacing="14">
+            <Border Background="#FFFDF8"
+                    BorderBrush="#D9D3C6"
+                    BorderThickness="1"
+                    CornerRadius="18"
+                    Padding="20">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="ObjectTracker"
+                               FontSize="28"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="Avalonia ports of OpenCvSharp samples"
+                               FontSize="16"
+                               Foreground="#6C6559" />
+                    <ComboBox x:Name="ProcessingModeComboBox" />
+                    <TextBlock x:Name="SampleDescriptionText"
+                               Text="Select a sample to see what it does."
+                               TextWrapping="Wrap"
+                               Foreground="#6C6559" />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button x:Name="OpenImageButton"
+                                Content="Open image"
+                                Height="40" />
+                        <Button x:Name="OpenVideoButton"
+                            Content="Open video"
+                            Height="40" />
+                        <Button x:Name="StartCameraButton"
+                                Content="Start camera"
+                                Height="40" />
+                        <Button x:Name="StopCameraButton"
+                            Content="Stop playback"
+                                Height="40"
+                                IsEnabled="False" />
+                    </StackPanel>
+                    <TextBlock Text="This is now a growing sample catalog. Use the camera for live-compatible samples or open a still image for one-off processing."
+                               TextWrapping="Wrap"
+                               Foreground="#6C6559" />
+                    <TextBlock x:Name="StatusText"
+                               Text="Load an image to begin."
+                               TextWrapping="Wrap" />
+                </StackPanel>
             </Border>
 
-            <TextBlock x:Name="MetricsText"
-                       Text="FPS: 0 | Proc: 0ms"
-                       Margin="0,6,0,0" />
-
-            <TextBlock x:Name="StatusText"
-                       Text="Status: idle"
-                       TextWrapping="Wrap"
-                       MinHeight="40" />
-
-            <Button x:Name="OpenOverlaySettingsButton"
-                    Content="Overlay instellingen"
-                    Height="36"
-                    Margin="0,8,0,0" />
-
-            <TextBlock Text="Tracks" FontWeight="SemiBold" Margin="0,8,0,0" />
-            <Border BorderThickness="1" BorderBrush="#505050" CornerRadius="4">
-                <ListBox x:Name="TracksListBox"
-                         Height="150" />
+            <Border Background="#FFFDF8"
+                    BorderBrush="#D9D3C6"
+                    BorderThickness="1"
+                    CornerRadius="18"
+                    Padding="20">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Sample output"
+                               FontSize="18"
+                               FontWeight="SemiBold" />
+                    <ListBox x:Name="ResultsListBox"
+                             Height="260" />
+                </StackPanel>
             </Border>
         </StackPanel>
     </Grid>

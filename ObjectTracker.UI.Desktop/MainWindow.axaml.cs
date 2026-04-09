@@ -1,216 +1,390 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading;
-using System.IO;
+using System.Threading.Tasks;
 using Avalonia.Controls;
-using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
-using Microsoft.Extensions.DependencyInjection;
-using ObjectTracker.Core.Domain;
-using ObjectTracker.Core.Ports;
+using CvCapture = OpenCvSharp.VideoCapture;
+using CvCaptureApi = OpenCvSharp.VideoCaptureAPIs;
+using CvMat = OpenCvSharp.Mat;
 
 namespace ObjectTracker.UI.Desktop;
 
 public partial class MainWindow : Window
 {
-    private readonly IPipelineController _pipeline;
-    private readonly AvaloniaOutputPort _output;
-    private readonly OverlaySettingsStore _overlaySettingsStore;
-    private bool _isBinding;
+    private enum ActiveSourceKind
+    {
+        None,
+        Image,
+        Camera,
+        VideoFile
+    }
+
+    private static readonly SampleModeOption[] SampleModes = Enum
+        .GetValues<OpenCvSampleMode>()
+        .Select(mode => new SampleModeOption(mode, mode.ToDisplayName()))
+        .ToArray();
+
+    private Bitmap? _currentBitmap;
+    private string? _currentImagePath;
+    private string? _currentVideoPath;
+    private ActiveSourceKind _activeSourceKind;
+    private CancellationTokenSource? _playbackCancellation;
+    private Task? _playbackTask;
+    private OpenCvSampleMode _selectedMode = OpenCvSampleMode.Contours;
+    private CvCapture? _videoCapture;
 
     public MainWindow()
-        : this(ResolveDependencies())
     {
-    }
-
-    private MainWindow((IPipelineController Pipeline, AvaloniaOutputPort Output) dependencies)
-        : this(dependencies.Pipeline, dependencies.Output)
-    {
-    }
-
-    public MainWindow(IPipelineController pipeline, AvaloniaOutputPort output)
-    {
-        _pipeline = pipeline;
-        _output = output;
-        _overlaySettingsStore = new OverlaySettingsStore();
-
-        try
-        {
-            _overlaySettingsStore.LoadIntoPipeline(_pipeline);
-        }
-        catch
-        {
-            // Ignore persisted-settings load errors and continue with defaults.
-        }
-
         InitializeComponent();
-        BindData();
-        HookEvents();
+
+        ProcessingModeComboBox.ItemsSource = SampleModes;
+        ProcessingModeComboBox.SelectedIndex = 0;
+        ProcessingModeComboBox.SelectionChanged += ProcessingModeComboBoxOnSelectionChanged;
+        SampleDescriptionText.Text = _selectedMode.GetDescription();
+
+        OpenImageButton.Click += OpenImageButtonOnClick;
+        OpenVideoButton.Click += OpenVideoButtonOnClick;
+        StartCameraButton.Click += StartCameraButtonOnClick;
+        StopCameraButton.Click += StopCameraButtonOnClick;
     }
 
-    private static (IPipelineController Pipeline, AvaloniaOutputPort Output) ResolveDependencies()
+    private async void ProcessingModeComboBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (App.Services is not null)
+        if (ProcessingModeComboBox.SelectedItem is SampleModeOption option)
         {
-            return (
-                App.Services.GetRequiredService<IPipelineController>(),
-                App.Services.GetRequiredService<AvaloniaOutputPort>());
-        }
+            _selectedMode = option.Mode;
+            SampleDescriptionText.Text = option.Mode.GetDescription();
+            await RefreshCurrentSourceAsync(option.Label);
 
-        return DesktopCompositionRoot.CreateDependencies();
-    }
-
-    protected override async void OnClosing(WindowClosingEventArgs e)
-    {
-        try
-        {
-            _overlaySettingsStore.SaveFromPipeline(_pipeline);
-        }
-        catch
-        {
-            // Ignore persisted-settings save errors during shutdown.
-        }
-
-        try
-        {
-            await _pipeline.StopAsync(CancellationToken.None);
-        }
-        catch (Exception)
-        {
-            // Ignore pipeline stop errors during shutdown to avoid crashing the app.
-            // Optionally surface a generic status message; avoid throwing.
-            if (StatusText is not null)
+            if (_activeSourceKind == ActiveSourceKind.None)
             {
-                StatusText.Text = "Error while stopping pipeline during shutdown.";
+                StatusText.Text = $"Selected sample mode: {option.Label}. Open an image or start the camera.";
             }
         }
-        base.OnClosing(e);
     }
 
-    private void BindData()
+    private async void StartCameraButtonOnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        _isBinding = true;
+        await StartCameraAsync();
+    }
 
-        SourceComboBox.ItemsSource = _pipeline.AvailableSources.ToList();
-        SourceComboBox.SelectedItem = _pipeline.AvailableSources.FirstOrDefault();
-
-        DetectorComboBox.ItemsSource = _pipeline.AvailableDetectors.ToList();
-        DetectorComboBox.SelectedItem = _pipeline.ActiveDetector;
-
-        ColorFilterPanel.Children.Clear();
-        var enabled = _pipeline.EnabledColorFilters.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var color in _pipeline.AvailableColorFilters)
+    private async void OpenVideoButtonOnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        try
         {
-            var checkBox = new CheckBox
+            var file = await PickVideoAsync();
+            if (file is null)
             {
-                Content = color,
-                IsChecked = enabled.Contains(color)
-            };
+                return;
+            }
 
-            checkBox.IsCheckedChanged += ColorFilterCheckBoxOnChanged;
-            ColorFilterPanel.Children.Add(checkBox);
+            await StartVideoFileAsync(file.Path.LocalPath, false);
         }
-
-        MetricsText.Text = "FPS: 0 | Proc: 0ms";
-        StatusText.Text = "Status: idle";
-        TracksListBox.ItemsSource = Array.Empty<string>();
-
-        _isBinding = false;
-    }
-
-    private void HookEvents()
-    {
-        StartButton.Click += StartButtonOnClick;
-        StopButton.Click += StopButtonOnClick;
-        DetectorComboBox.SelectionChanged += DetectorComboBoxOnSelectionChanged;
-        SourceComboBox.SelectionChanged += SourceComboBoxOnSelectionChanged;
-        OpenOverlaySettingsButton.Click += OpenOverlaySettingsButtonOnClick;
-
-        _output.SnapshotPublished += snapshot => Dispatcher.UIThread.Post(() => RenderSnapshot(snapshot));
-        _output.StatusPublished += status => Dispatcher.UIThread.Post(() => StatusText.Text = status);
-    }
-
-    private async void StartButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        if (SourceComboBox.SelectedItem is FrameSourceInfo selectedSource)
+        catch (Exception ex)
         {
-            await _pipeline.StartAsync(selectedSource.Id, CancellationToken.None);
+            StatusText.Text = $"Unable to play video: {ex.Message}";
+            ResultsListBox.ItemsSource = Array.Empty<string>();
         }
     }
 
-    private async void StopButtonOnClick(object? sender, RoutedEventArgs e)
+    private async void StopCameraButtonOnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        await _pipeline.StopAsync(CancellationToken.None);
+        await StopPlaybackAsync("Playback stopped.");
     }
 
-    private void DetectorComboBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    private async Task StartCameraAsync()
     {
-        if (_isBinding)
+        await StopPlaybackAsync(null);
+
+        var capture = new CvCapture();
+        capture.Open(0, CvCaptureApi.ANY);
+        if (!capture.IsOpened())
         {
+            capture.Dispose();
+            StatusText.Text = "Unable to open the default camera. Check device permissions and whether another app is using it.";
+            ResultsListBox.ItemsSource = new[] { "Camera open failed." };
             return;
         }
 
-        if (DetectorComboBox.SelectedItem is DetectorMode mode)
-        {
-            _pipeline.SwitchDetector(mode);
-        }
+        _videoCapture = capture;
+        _playbackCancellation = new CancellationTokenSource();
+        _playbackTask = RunPlaybackLoopAsync(capture, "camera", ActiveSourceKind.Camera, _playbackCancellation.Token);
+        _activeSourceKind = ActiveSourceKind.Camera;
+        _currentImagePath = null;
+        _currentVideoPath = null;
+
+        UpdateCameraButtons(isRunning: true);
+        EmptyStateText.IsVisible = false;
+        StatusText.Text = $"Camera preview running with the {_selectedMode.ToDisplayName()} sample.";
+        ResultsListBox.ItemsSource = new[] { "Waiting for frames..." };
     }
 
-    private async void SourceComboBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    private async Task StartVideoFileAsync(string videoPath, bool restartedForModeChange)
     {
-        if (_isBinding || !_pipeline.IsRunning)
+        await StopPlaybackAsync(null);
+
+        var capture = new CvCapture();
+        capture.Open(videoPath, CvCaptureApi.ANY);
+        if (!capture.IsOpened())
         {
+            capture.Dispose();
+            StatusText.Text = "Unable to open the selected video file.";
+            ResultsListBox.ItemsSource = new[] { "Video open failed." };
             return;
         }
 
-        if (SourceComboBox.SelectedItem is FrameSourceInfo source)
+        _videoCapture = capture;
+        _playbackCancellation = new CancellationTokenSource();
+        _playbackTask = RunPlaybackLoopAsync(capture, Path.GetFileName(videoPath), ActiveSourceKind.VideoFile, _playbackCancellation.Token);
+        _activeSourceKind = ActiveSourceKind.VideoFile;
+        _currentImagePath = null;
+        _currentVideoPath = videoPath;
+
+        UpdateCameraButtons(isRunning: true);
+        EmptyStateText.IsVisible = false;
+        StatusText.Text = restartedForModeChange
+            ? $"Video restarted with the {_selectedMode.ToDisplayName()} sample."
+            : $"Video {Path.GetFileName(videoPath)} playing with the {_selectedMode.ToDisplayName()} sample.";
+        ResultsListBox.ItemsSource = new[] { "Starting video playback..." };
+    }
+
+    private async Task RunPlaybackLoopAsync(CvCapture capture, string sourceName, ActiveSourceKind sourceKind, CancellationToken cancellationToken)
+    {
+        try
         {
-            await _pipeline.SwitchSourceAsync(source.Id, CancellationToken.None);
+            using var frame = new CvMat();
+            var delay = GetFrameDelay(capture);
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                if (!capture.Read(frame) || frame.Empty())
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        StatusText.Text = sourceKind == ActiveSourceKind.VideoFile
+                            ? $"Video {sourceName} finished."
+                            : "Camera preview ended because no frames were returned.";
+                        ResultsListBox.ItemsSource = new[]
+                        {
+                            sourceKind == ActiveSourceKind.VideoFile
+                                ? "End of video reached."
+                                : "No camera frame available."
+                        };
+                    });
+                    break;
+                }
+
+                var recognition = OpenCvObjectRecognizer.RecognizeFrame(frame, _selectedMode, sourceName);
+                await Dispatcher.UIThread.InvokeAsync(() => ShowRecognition(recognition));
+
+                if (delay > TimeSpan.Zero)
+                {
+                    await Task.Delay(delay, cancellationToken);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                StatusText.Text = $"Playback failed: {ex.Message}";
+                ResultsListBox.ItemsSource = new[] { "Playback failed." };
+            });
+        }
+        finally
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => UpdateCameraButtons(isRunning: false));
         }
     }
 
-    private void ColorFilterCheckBoxOnChanged(object? sender, RoutedEventArgs e)
+    private async void OpenImageButtonOnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        ApplyColorFiltersFromUi();
+        try
+        {
+            await StopPlaybackAsync(null);
+
+            var file = await PickImageAsync();
+            if (file is null)
+            {
+                return;
+            }
+
+            var recognition = await ProcessImageAsync(file.Path.LocalPath);
+            _currentImagePath = file.Path.LocalPath;
+            _currentVideoPath = null;
+            _activeSourceKind = ActiveSourceKind.Image;
+            ShowRecognition(recognition);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Unable to process image: {ex.Message}";
+            ResultsListBox.ItemsSource = Array.Empty<string>();
+        }
     }
 
-    private async void OpenOverlaySettingsButtonOnClick(object? sender, RoutedEventArgs e)
+    private async Task<IStorageFile?> PickImageAsync()
     {
-        var settingsWindow = new OverlaySettingsWindow(_pipeline, _overlaySettingsStore);
-        await settingsWindow.ShowDialog(this);
-        StatusText.Text = "Status: overlay instellingen bijgewerkt";
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel?.StorageProvider is null)
+        {
+            return null;
+        }
+
+        var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open image",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Image files")
+                {
+                    Patterns = ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.webp"]
+                }
+            ]
+        });
+
+        return files.FirstOrDefault();
     }
 
-    private void ApplyColorFiltersFromUi()
+    private async Task<IStorageFile?> PickVideoAsync()
     {
-        var selectedColors = ColorFilterPanel.Children
-            .OfType<CheckBox>()
-            .Where(checkBox => checkBox.IsChecked == true)
-            .Select(checkBox => checkBox.Content?.ToString())
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => name!)
-            .ToList();
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel?.StorageProvider is null)
+        {
+            return null;
+        }
 
-        _pipeline.SetEnabledColorFilters(selectedColors);
+        var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open video",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Video files")
+                {
+                    Patterns = ["*.mp4", "*.avi", "*.mov", "*.mkv", "*.webm"]
+                }
+            ]
+        });
+
+        return files.FirstOrDefault();
     }
 
-    private void RenderSnapshot(PipelineSnapshot snapshot)
+    private Task<RecognitionResult> ProcessImageAsync(string imagePath)
     {
-        RenderFrame(snapshot.Frame);
-        MetricsText.Text = $"FPS: {snapshot.FramesPerSecond} | Proc: {snapshot.ProcessingMs:F1}ms | {snapshot.ActiveDetector}";
-        TracksListBox.ItemsSource = snapshot.Tracks
-            .Select(track => $"{track.TrackId}: ({track.X:F0}, {track.Y:F0}) {track.SpeedPixelsPerSecond:F1}px/s")
-            .ToList();
+        return Task.Run(() => OpenCvObjectRecognizer.RecognizeImage(imagePath, _selectedMode));
     }
 
-    private void RenderFrame(FramePacket frame)
+    private void ShowRecognition(RecognitionResult recognition)
     {
-        using var ms = new MemoryStream(frame.EncodedJpeg);
-        var bitmap = new Bitmap(ms);
+        EmptyStateText.IsVisible = false;
+        StatusText.Text = recognition.Status;
+        ResultsListBox.ItemsSource = recognition.Details.Count == 0
+            ? ["No details returned for this sample."]
+            : recognition.Details;
 
-        var previous = PreviewImage.Source as Bitmap;
-        PreviewImage.Source = bitmap;
-        previous?.Dispose();
+        _currentBitmap?.Dispose();
+        _currentBitmap = CreateBitmap(recognition.AnnotatedImageBytes);
+        PreviewImage.Source = _currentBitmap;
+    }
+
+    private async Task RefreshCurrentSourceAsync(string selectedLabel)
+    {
+        switch (_activeSourceKind)
+        {
+            case ActiveSourceKind.Image when !string.IsNullOrWhiteSpace(_currentImagePath):
+            {
+                var recognition = await ProcessImageAsync(_currentImagePath);
+                ShowRecognition(recognition);
+                break;
+            }
+            case ActiveSourceKind.VideoFile when !string.IsNullOrWhiteSpace(_currentVideoPath):
+                await StartVideoFileAsync(_currentVideoPath, true);
+                break;
+            case ActiveSourceKind.Camera when _playbackTask is not null && !_playbackTask.IsCompleted:
+                StatusText.Text = $"Camera preview switched to {selectedLabel}.";
+                break;
+        }
+    }
+
+    private async Task StopPlaybackAsync(string? statusMessage)
+    {
+        var cancellation = _playbackCancellation;
+        var runningTask = _playbackTask;
+
+        _playbackCancellation = null;
+        _playbackTask = null;
+
+        if (cancellation is not null)
+        {
+            cancellation.Cancel();
+            cancellation.Dispose();
+        }
+
+        if (runningTask is not null)
+        {
+            try
+            {
+                await runningTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        _videoCapture?.Release();
+        _videoCapture?.Dispose();
+        _videoCapture = null;
+
+        UpdateCameraButtons(isRunning: false);
+
+        if (!string.IsNullOrWhiteSpace(statusMessage))
+        {
+            StatusText.Text = statusMessage;
+        }
+    }
+
+    private void UpdateCameraButtons(bool isRunning)
+    {
+        StartCameraButton.IsEnabled = !isRunning;
+        StopCameraButton.IsEnabled = isRunning;
+    }
+
+    private static TimeSpan GetFrameDelay(CvCapture capture)
+    {
+        var fps = capture.Fps;
+        if (double.IsNaN(fps) || double.IsInfinity(fps) || fps <= 0)
+        {
+            return TimeSpan.FromMilliseconds(33);
+        }
+
+        return TimeSpan.FromMilliseconds(Math.Clamp(1000d / fps, 15d, 100d));
+    }
+
+    private static Bitmap CreateBitmap(byte[] encodedImage)
+    {
+        using var stream = new MemoryStream(encodedImage);
+        return new Bitmap(stream);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _playbackCancellation?.Cancel();
+        _videoCapture?.Release();
+        _videoCapture?.Dispose();
+        _currentBitmap?.Dispose();
+        base.OnClosed(e);
+    }
+
+    private sealed record SampleModeOption(OpenCvSampleMode Mode, string Label)
+    {
+        public override string ToString() => Label;
     }
 }

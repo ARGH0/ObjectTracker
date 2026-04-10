@@ -2,10 +2,19 @@ using OpenCvSharp;
 
 namespace ObjectTracker.UI.Desktop;
 
+/// <summary>
+/// Extracts large external contours and labels them with a simple polygon-based shape heuristic.
+/// </summary>
 internal sealed class ContoursSampleProcessor : IOpenCvSampleProcessor
 {
     public OpenCvSampleMode Mode => OpenCvSampleMode.Contours;
 
+    /// <summary>
+    /// Detects large contours and overlays coarse shape labels on the source image.
+    /// </summary>
+    /// <param name="source">The source image to analyze.</param>
+    /// <param name="sourceName">The display name of the source being processed.</param>
+    /// <returns>The annotated image and a summary of the retained contour candidates.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
         using var annotated = source.Clone();
@@ -13,6 +22,7 @@ internal sealed class ContoursSampleProcessor : IOpenCvSampleProcessor
         using var blurred = new Mat();
         using var edges = new Mat();
 
+        // The contour sample intentionally uses a straightforward edge pipeline so the intermediate logic stays teachable.
         Cv2.CvtColor(source, gray, ColorConversionCodes.BGR2GRAY);
         Cv2.GaussianBlur(gray, blurred, new Size(5, 5), 0);
         Cv2.Canny(blurred, edges, 60, 180);
@@ -25,6 +35,7 @@ internal sealed class ContoursSampleProcessor : IOpenCvSampleProcessor
         foreach (var contour in contours.OrderByDescending(candidate => Cv2.ContourArea(candidate)))
         {
             var area = Cv2.ContourArea(contour);
+            // Small contours usually come from texture or noise instead of meaningful objects.
             if (area < 1500)
             {
                 continue;
@@ -68,16 +79,26 @@ internal sealed class ContoursSampleProcessor : IOpenCvSampleProcessor
     }
 }
 
+/// <summary>
+/// Labels each connected foreground blob after Otsu thresholding.
+/// </summary>
 internal sealed class ConnectedComponentsSampleProcessor : IOpenCvSampleProcessor
 {
     public OpenCvSampleMode Mode => OpenCvSampleMode.ConnectedComponents;
 
+    /// <summary>
+    /// Detects connected foreground components and draws their bounding boxes.
+    /// </summary>
+    /// <param name="source">The source image to analyze.</param>
+    /// <param name="sourceName">The display name of the source being processed.</param>
+    /// <returns>The annotated image and statistics for the labeled blobs.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
         using var gray = source.CvtColor(ColorConversionCodes.BGR2GRAY);
         using var binary = gray.Threshold(0, 255, ThresholdTypes.Otsu | ThresholdTypes.Binary);
         using var annotated = binary.CvtColor(ColorConversionCodes.GRAY2BGR);
 
+        // Label 0 is the background, so only the remaining blobs represent candidate objects.
         var cc = Cv2.ConnectedComponentsEx(binary);
         if (cc.LabelCount <= 1)
         {
@@ -112,16 +133,26 @@ internal sealed class ConnectedComponentsSampleProcessor : IOpenCvSampleProcesso
     }
 }
 
+/// <summary>
+/// Uses the probabilistic Hough transform to extract visible line segments.
+/// </summary>
 internal sealed class HoughLinesSampleProcessor : IOpenCvSampleProcessor
 {
     public OpenCvSampleMode Mode => OpenCvSampleMode.HoughLines;
 
+    /// <summary>
+    /// Detects prominent line segments and overlays them on the source image.
+    /// </summary>
+    /// <param name="source">The source image to analyze.</param>
+    /// <param name="sourceName">The display name of the source being processed.</param>
+    /// <returns>The annotated image and a summary of the detected line segments.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
         using var annotated = source.Clone();
         using var gray = new Mat();
         using var edges = new Mat();
 
+        // Canny edges provide the sparse binary input expected by the Hough transform.
         Cv2.CvtColor(source, gray, ColorConversionCodes.BGR2GRAY);
         Cv2.Canny(gray, edges, 50, 200, 3, false);
 

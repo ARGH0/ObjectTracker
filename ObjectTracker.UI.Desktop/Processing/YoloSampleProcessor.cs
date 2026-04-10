@@ -3,6 +3,9 @@ using OpenCvSharp.Dnn;
 
 namespace ObjectTracker.UI.Desktop;
 
+/// <summary>
+/// Wraps OpenCV DNN-based YOLO inference and overlays the retained detections on the frame.
+/// </summary>
 internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
 {
     private const int InputImageSize = 640;
@@ -31,10 +34,17 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
 
     public OpenCvSampleMode Mode => OpenCvSampleMode.Yolo;
 
+    /// <summary>
+    /// Runs YOLO inference for the supplied image and renders the retained detections.
+    /// </summary>
+    /// <param name="source">The source image to analyze.</param>
+    /// <param name="sourceName">The display name of the source being processed.</param>
+    /// <returns>The annotated image and YOLO detection details.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
         using var annotated = source.Clone();
 
+        // Model files are resolved at runtime so users can drop supported ONNX exports into the Models folder.
         var modelsDirectory = Path.Combine(AppContext.BaseDirectory, "Models");
         var modelPath = TryFindFirstExistingFile(modelsDirectory, ModelFileNames);
         if (modelPath is null)
@@ -119,10 +129,14 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
         }
     }
 
+    /// <summary>
+    /// Disposes the cached network so the next run reloads the model and labels from disk.
+    /// </summary>
     public void Reset()
     {
         lock (_sync)
         {
+            // Dispose the cached network so model changes on disk are picked up on the next run.
             _net?.Dispose();
             _net = null;
             _loadedModelPath = null;
@@ -130,6 +144,12 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
         }
     }
 
+    /// <summary>
+    /// Loads or reuses the YOLO network and optional class labels.
+    /// </summary>
+    /// <param name="modelPath">The path of the ONNX model to load.</param>
+    /// <param name="labelPath">The optional path of the class-label file.</param>
+    /// <returns>The loaded OpenCV DNN network.</returns>
     private Net EnsureNet(string modelPath, string? labelPath)
     {
         lock (_sync)
@@ -139,6 +159,7 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
                 return _net;
             }
 
+            // The model is cached because loading an ONNX network is much more expensive than running one inference.
             _net?.Dispose();
             var loadedNet = CvDnn.ReadNetFromOnnx(modelPath);
             if (loadedNet is null)
@@ -162,8 +183,15 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
         }
     }
 
+    /// <summary>
+    /// Runs the OpenCV DNN forward pass and parses the first YOLO output tensor.
+    /// </summary>
+    /// <param name="net">The loaded YOLO network.</param>
+    /// <param name="source">The source image to analyze.</param>
+    /// <returns>The detections retained after tensor parsing and confidence filtering.</returns>
     private static List<YoloDetection> RunInference(Net net, Mat source)
     {
+        // Letterbox handling is intentionally skipped here; the sample favors a straightforward OpenCV DNN setup.
         using var blob = CvDnn.BlobFromImage(source, 1d / 255d, new Size(InputImageSize, InputImageSize), new Scalar(), swapRB: true, crop: false);
         net.SetInput(blob);
 
@@ -198,6 +226,12 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
         }
     }
 
+    /// <summary>
+    /// Parses the YOLO output tensor into image-space detections.
+    /// </summary>
+    /// <param name="output">The YOLO output tensor.</param>
+    /// <param name="imageSize">The size of the original image.</param>
+    /// <returns>The detections retained after confidence filtering and non-maximum suppression.</returns>
     private static List<YoloDetection> ParseDetections(Mat output, Size imageSize)
     {
         using var candidates = ReshapeOutput(output);
@@ -217,6 +251,7 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
         var yScale = imageSize.Height / (double)InputImageSize;
         var classStartIndex = DetermineClassStartIndex(cols);
 
+        // Each row is treated as one candidate box followed by class scores.
         for (var row = 0; row < rows; row++)
         {
             var centerX = candidates.At<float>(row, 0);
@@ -269,6 +304,7 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
             return [];
         }
 
+        // NMS removes heavily overlapping boxes that describe the same object.
         CvDnn.NMSBoxes(boxes, confidences, ConfidenceThreshold, NmsThreshold, out var keptIndices);
 
         return keptIndices
@@ -289,6 +325,7 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
             throw new InvalidOperationException($"Unsupported YOLO output dims: {output.Dims}.");
         }
 
+        // Different YOLO exports arrange their output tensor differently, so this normalizes to row-per-detection.
         var dim1 = output.Size(1);
         var dim2 = output.Size(2);
 

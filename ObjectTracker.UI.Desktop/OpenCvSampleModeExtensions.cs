@@ -1,7 +1,15 @@
 namespace ObjectTracker.UI.Desktop;
 
+/// <summary>
+/// Provides UI-friendly metadata for <see cref="OpenCvSampleMode"/> values.
+/// </summary>
 internal static class OpenCvSampleModeExtensions
 {
+    /// <summary>
+    /// Converts a sample mode into the label shown in the UI.
+    /// </summary>
+    /// <param name="mode">The sample mode to describe.</param>
+    /// <returns>A human-readable display name for the sample mode.</returns>
     public static string ToDisplayName(this OpenCvSampleMode mode)
     {
         return mode switch
@@ -25,6 +33,11 @@ internal static class OpenCvSampleModeExtensions
         };
     }
 
+    /// <summary>
+    /// Returns a short explanation of what the selected sample demonstrates.
+    /// </summary>
+    /// <param name="mode">The sample mode to describe.</param>
+    /// <returns>A user-facing description of the sample.</returns>
     public static string GetDescription(this OpenCvSampleMode mode)
     {
         return mode switch

@@ -2,16 +2,26 @@ using OpenCvSharp;
 
 namespace ObjectTracker.UI.Desktop;
 
+/// <summary>
+/// Highlights FAST keypoints directly on top of the original frame.
+/// </summary>
 internal sealed class FastCornersSampleProcessor : IOpenCvSampleProcessor
 {
-    public OpenCvSampleMode Mode => OpenCvSampleMode.FastCorners;
+    public OpenCvSampleMode Mode => OpenCvSampleMode.FastCorners;about:blank#blocked
 
+    /// <summary>
+    /// Detects FAST corners and overlays them on the source image.
+    /// </summary>
+    /// <param name="source">The source image to analyze.</param>
+    /// <param name="sourceName">The display name of the source being processed.</param>
+    /// <returns>The annotated image and FAST detector statistics.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
         using var gray = new Mat();
         using var annotated = source.Clone();
 
         Cv2.CvtColor(source, gray, ColorConversionCodes.BGR2GRAY);
+        // The threshold controls how strong the corner response must be before a point is accepted.
         var keypoints = Cv2.FAST(gray, 50, true);
 
         foreach (var keyPoint in keypoints)
@@ -30,16 +40,26 @@ internal sealed class FastCornersSampleProcessor : IOpenCvSampleProcessor
     }
 }
 
+/// <summary>
+/// Uses OpenCV's built-in HOG plus SVM pedestrian detector.
+/// </summary>
 internal sealed class HogPeopleSampleProcessor : IOpenCvSampleProcessor
 {
     public OpenCvSampleMode Mode => OpenCvSampleMode.HogPeople;
 
+    /// <summary>
+    /// Detects person-like regions with the default OpenCV HOG detector.
+    /// </summary>
+    /// <param name="source">The source image to analyze.</param>
+    /// <param name="sourceName">The display name of the source being processed.</param>
+    /// <returns>The annotated image and pedestrian detection details.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
         using var annotated = source.Clone();
         using var hog = new HOGDescriptor();
         hog.SetSVMDetector(HOGDescriptor.GetDefaultPeopleDetector());
 
+        // DetectMultiScale searches the frame pyramid for person-like windows at multiple scales.
         var found = hog.DetectMultiScale(source, 0, new Size(8, 8), new Size(24, 16), 1.05, 2);
         var details = new List<string>
         {
@@ -50,6 +70,7 @@ internal sealed class HogPeopleSampleProcessor : IOpenCvSampleProcessor
         for (var index = 0; index < found.Length; index++)
         {
             var rect = found[index];
+            // Shrink the raw rectangle slightly because the default detector often returns padded boxes.
             var adjusted = new Rect
             {
                 X = rect.X + (int)Math.Round(rect.Width * 0.1),
@@ -75,10 +96,19 @@ internal sealed class HogPeopleSampleProcessor : IOpenCvSampleProcessor
     }
 }
 
+/// <summary>
+/// Extracts Maximally Stable Extremal Regions that often correspond to text-like or blob-like structures.
+/// </summary>
 internal sealed class MserSampleProcessor : IOpenCvSampleProcessor
 {
     public OpenCvSampleMode Mode => OpenCvSampleMode.Mser;
 
+    /// <summary>
+    /// Detects MSER regions and overlays representative region points.
+    /// </summary>
+    /// <param name="source">The source image to analyze.</param>
+    /// <param name="sourceName">The display name of the source being processed.</param>
+    /// <returns>The annotated image and a summary of the detected regions.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
         using var gray = new Mat();
@@ -88,6 +118,7 @@ internal sealed class MserSampleProcessor : IOpenCvSampleProcessor
         Cv2.CvtColor(source, gray, ColorConversionCodes.BGR2GRAY);
         detector.DetectRegions(gray, out var contours, out _);
 
+        // Draw a subset of points per region so dense regions remain legible in the preview.
         for (var i = 0; i < contours.Length; i++)
         {
             var color = Scalar.RandomColor();
@@ -111,16 +142,27 @@ internal sealed class MserSampleProcessor : IOpenCvSampleProcessor
     }
 }
 
+/// <summary>
+/// Runs two differently tuned blob detectors to separate circular and elongated candidates.
+/// </summary>
 internal sealed class SimpleBlobDetectorSampleProcessor : IOpenCvSampleProcessor
 {
     public OpenCvSampleMode Mode => OpenCvSampleMode.SimpleBlobDetector;
 
+    /// <summary>
+    /// Detects circular and oval-like blobs using two parameter sets.
+    /// </summary>
+    /// <param name="source">The source image to analyze.</param>
+    /// <param name="sourceName">The display name of the source being processed.</param>
+    /// <returns>The annotated image and the blob counts for each detector configuration.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
         using var working = source.Clone();
         using var annotated = new Mat();
+        // Inverting the frame helps the detector when the objects of interest are darker than the background.
         Cv2.BitwiseNot(working, working);
 
+        // Tight circularity and inertia filters bias this detector toward near-perfect circles.
         var circleParams = new SimpleBlobDetector.Params
         {
             MinThreshold = 10,
@@ -136,6 +178,7 @@ internal sealed class SimpleBlobDetectorSampleProcessor : IOpenCvSampleProcessor
             MinInertiaRatio = 0.95f
         };
 
+        // Looser inertia keeps elongated but still compact blobs such as ovals.
         var ovalParams = new SimpleBlobDetector.Params
         {
             MinThreshold = 10,

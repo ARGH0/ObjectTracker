@@ -2,6 +2,9 @@ using OpenCvSharp;
 
 namespace ObjectTracker.UI.Desktop;
 
+/// <summary>
+/// Tracks moving foreground blobs over time using a background subtractor and a simple centroid tracker.
+/// </summary>
 internal sealed class BackgroundTrackingSampleProcessor : IOpenCvSampleProcessor
 {
     private BackgroundSubtractorMOG2 _backgroundSubtractor = CreateBackgroundSubtractor();
@@ -9,6 +12,12 @@ internal sealed class BackgroundTrackingSampleProcessor : IOpenCvSampleProcessor
 
     public OpenCvSampleMode Mode => OpenCvSampleMode.BackgroundTracking;
 
+    /// <summary>
+    /// Detects moving foreground blobs, assigns persistent IDs, and renders tracking overlays.
+    /// </summary>
+    /// <param name="source">The source image to analyze.</param>
+    /// <param name="sourceName">The display name of the source being processed.</param>
+    /// <returns>The annotated image and tracking details for the current frame.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
         using var annotated = source.Clone();
@@ -16,6 +25,7 @@ internal sealed class BackgroundTrackingSampleProcessor : IOpenCvSampleProcessor
         using var thresholdMask = new Mat();
         using var kernel = Cv2.GetStructuringElement(MorphShapes.Rect, new Size(3, 3));
 
+        // MOG2 estimates the static background so moving objects remain in the foreground mask.
         _backgroundSubtractor.Apply(source, foregroundMask);
         Cv2.Threshold(foregroundMask, thresholdMask, 254, 255, ThresholdTypes.Binary);
         Cv2.MorphologyEx(thresholdMask, thresholdMask, MorphTypes.Open, kernel);
@@ -27,6 +37,7 @@ internal sealed class BackgroundTrackingSampleProcessor : IOpenCvSampleProcessor
         foreach (var contour in contours)
         {
             var area = Cv2.ContourArea(contour);
+            // Reject tiny regions before tracking so IDs are not wasted on noise.
             if (area < 400)
             {
                 continue;
@@ -76,18 +87,29 @@ internal sealed class BackgroundTrackingSampleProcessor : IOpenCvSampleProcessor
             annotated);
     }
 
+    /// <summary>
+    /// Resets the background model and tracker state.
+    /// </summary>
     public void Reset()
     {
+        // Reset both background history and object IDs when the source restarts.
         _backgroundSubtractor.Dispose();
         _backgroundSubtractor = CreateBackgroundSubtractor();
         _tracker.Reset();
     }
 
+    /// <summary>
+    /// Creates the background subtractor used for foreground extraction.
+    /// </summary>
+    /// <returns>A configured MOG2 background subtractor.</returns>
     private static BackgroundSubtractorMOG2 CreateBackgroundSubtractor()
     {
         return BackgroundSubtractorMOG2.Create(history: 100, varThreshold: 40, detectShadows: true);
     }
 
+    /// <summary>
+    /// Matches detections to previous centers using nearest-neighbor distance.
+    /// </summary>
     private sealed class EuclideanDistanceTracker
     {
         private readonly Dictionary<int, Point> _centerPoints = new();
@@ -105,6 +127,7 @@ internal sealed class BackgroundTrackingSampleProcessor : IOpenCvSampleProcessor
 
                 foreach (var pair in _centerPoints)
                 {
+                    // A small distance threshold is enough here because the sample assumes short frame-to-frame motion.
                     var distance = Math.Sqrt(Math.Pow(center.X - pair.Value.X, 2) + Math.Pow(center.Y - pair.Value.Y, 2));
                     if (distance < 35)
                     {
@@ -141,6 +164,9 @@ internal sealed class BackgroundTrackingSampleProcessor : IOpenCvSampleProcessor
     private sealed record TrackedObject(int Id, Rect Bounds);
 }
 
+/// <summary>
+/// Predicts whether tracked train-like objects may converge in the near future.
+/// </summary>
 internal sealed class TrainCollisionRiskSampleProcessor : IOpenCvSampleProcessor
 {
     private const int HistoryLength = 12;
@@ -153,6 +179,12 @@ internal sealed class TrainCollisionRiskSampleProcessor : IOpenCvSampleProcessor
 
     public OpenCvSampleMode Mode => OpenCvSampleMode.TrainCollisionRisk;
 
+    /// <summary>
+    /// Detects train-like motion, tracks the candidates, and estimates short-horizon collision risk.
+    /// </summary>
+    /// <param name="source">The source image to analyze.</param>
+    /// <param name="sourceName">The display name of the source being processed.</param>
+    /// <returns>The annotated image and risk-analysis details for the current frame.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
         _frameCounter++;
@@ -165,6 +197,7 @@ internal sealed class TrainCollisionRiskSampleProcessor : IOpenCvSampleProcessor
         using var horizontalKernel = Cv2.GetStructuringElement(MorphShapes.Rect, new Size(7, 3));
         using var cleanupKernel = Cv2.GetStructuringElement(MorphShapes.Rect, new Size(5, 5));
 
+        // The mask is tuned for fixed-camera motion, then stretched horizontally to merge train cars.
         _backgroundSubtractor.Apply(source, foregroundMask);
         Cv2.Threshold(foregroundMask, thresholdMask, 220, 255, ThresholdTypes.Binary);
         Cv2.MorphologyEx(thresholdMask, cleanedMask, MorphTypes.Open, cleanupKernel);
@@ -188,12 +221,14 @@ internal sealed class TrainCollisionRiskSampleProcessor : IOpenCvSampleProcessor
                 continue;
             }
 
+            // Trains are expected to be elongated in the camera view, so extreme aspect ratios are filtered out.
             var aspectRatio = bounds.Width / (double)Math.Max(1, bounds.Height);
             if (aspectRatio < 1.1 || aspectRatio > 8.5)
             {
                 continue;
             }
 
+            // Ignore patches that are almost fully black or white because they are usually mask artifacts.
             var region = new Mat(gray, bounds);
             try
             {
@@ -282,6 +317,9 @@ internal sealed class TrainCollisionRiskSampleProcessor : IOpenCvSampleProcessor
         return OpenCvSampleProcessingHelpers.CreateResult(status, details, annotated);
     }
 
+    /// <summary>
+    /// Resets the background model, train tracker, and frame counter.
+    /// </summary>
     public void Reset()
     {
         _backgroundSubtractor.Dispose();
@@ -290,11 +328,20 @@ internal sealed class TrainCollisionRiskSampleProcessor : IOpenCvSampleProcessor
         _frameCounter = 0;
     }
 
+    /// <summary>
+    /// Creates the background subtractor tuned for the train-collision sample.
+    /// </summary>
+    /// <returns>A configured MOG2 background subtractor.</returns>
     private static BackgroundSubtractorMOG2 CreateBackgroundSubtractor()
     {
         return BackgroundSubtractorMOG2.Create(history: 120, varThreshold: 24, detectShadows: false);
     }
 
+    /// <summary>
+    /// Predicts future overlap events between tracked trains based on their recent motion.
+    /// </summary>
+    /// <param name="trackedTrains">The currently tracked train candidates.</param>
+    /// <returns>A list of predicted collision risks ordered by urgency.</returns>
     private static IReadOnlyList<CollisionRisk> PredictCollisionRisks(IReadOnlyList<TrainTrack> trackedTrains)
     {
         var risks = new List<CollisionRisk>();
@@ -318,6 +365,7 @@ internal sealed class TrainCollisionRiskSampleProcessor : IOpenCvSampleProcessor
                 var combinedReach = first.Radius + second.Radius + CollisionPadding;
                 CollisionRisk? bestRisk = null;
 
+                // Project both trains forward a few frames and flag the first overlap candidate.
                 for (var frame = 1; frame <= PredictionFrames; frame++)
                 {
                     var firstPoint = first.Project(frame);
@@ -353,6 +401,12 @@ internal sealed class TrainCollisionRiskSampleProcessor : IOpenCvSampleProcessor
         return risks.OrderBy(risk => risk.FramesUntilImpact).ThenBy(risk => risk.ProjectedGap).ToList();
     }
 
+    /// <summary>
+    /// Computes the Euclidean distance between two predicted train centers.
+    /// </summary>
+    /// <param name="first">The first point.</param>
+    /// <param name="second">The second point.</param>
+    /// <returns>The Euclidean distance between the two points.</returns>
     private static double Distance(Point2d first, Point2d second)
     {
         var dx = first.X - second.X;
@@ -370,6 +424,7 @@ internal sealed class TrainCollisionRiskSampleProcessor : IOpenCvSampleProcessor
             var results = new List<TrainTrack>();
             var usedTrackIds = new HashSet<int>();
 
+            // Greedy matching is sufficient here because the sample targets a small number of large moving objects.
             foreach (var detection in detections.OrderByDescending(rect => rect.Width * rect.Height))
             {
                 var center = CenterOf(detection);
@@ -455,6 +510,7 @@ internal sealed class TrainCollisionRiskSampleProcessor : IOpenCvSampleProcessor
             Center = new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
             _history.Enqueue(Center);
 
+            // Keep a short motion history so velocity is based on trend instead of a single noisy displacement.
             while (_history.Count > HistoryLength)
             {
                 _history.Dequeue();
@@ -486,6 +542,7 @@ internal sealed class TrainCollisionRiskSampleProcessor : IOpenCvSampleProcessor
         {
             var speed = Math.Sqrt(Velocity.X * Velocity.X + Velocity.Y * Velocity.Y);
             var radius = Math.Sqrt(Math.Pow(LastBounds.Width / 2d, 2) + Math.Pow(LastBounds.Height / 2d, 2));
+            // Only tracks with enough motion get future-position predictions.
             return new TrainTrack(Id, LastBounds, Center, Velocity, speed, radius, speed >= 1.5);
         }
 

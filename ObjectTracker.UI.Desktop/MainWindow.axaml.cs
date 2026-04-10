@@ -16,6 +16,9 @@ using CvMat = OpenCvSharp.Mat;
 
 namespace ObjectTracker.UI.Desktop;
 
+/// <summary>
+/// Hosts the desktop UI for loading media, running OpenCV samples, and presenting results.
+/// </summary>
 public partial class MainWindow : Window
 {
     private enum ActiveSourceKind
@@ -46,15 +49,20 @@ public partial class MainWindow : Window
     private OpenCvSampleMode _selectedMode = OpenCvSampleMode.Contours;
     private CvCapture? _videoCapture;
 
+    /// <summary>
+    /// Initializes the main window and wires the UI controls to the media-processing workflow.
+    /// </summary>
     public MainWindow()
     {
         InitializeComponent();
 
+        // The combo box exposes the processing modes defined by the sample registry.
         ProcessingModeComboBox.ItemsSource = SampleModes;
         ProcessingModeComboBox.SelectedIndex = 0;
         ProcessingModeComboBox.SelectionChanged += ProcessingModeComboBoxOnSelectionChanged;
         SampleDescriptionText.Text = _selectedMode.GetDescription();
 
+        // Wire all media and transport controls in one place so the constructor documents the UI surface.
         OpenImageButton.Click += OpenImageButtonOnClick;
         OpenVideoButton.Click += OpenVideoButtonOnClick;
         StartCameraButton.Click += StartCameraButtonOnClick;
@@ -183,6 +191,7 @@ public partial class MainWindow : Window
         await StopPlaybackAsync(null);
         OpenCvObjectRecognizer.Reset(_selectedMode);
 
+        // Camera capture is created on demand so device access is released again when playback stops.
         var capture = new CvCapture();
         capture.Open(0, CvCaptureApi.ANY);
         if (!capture.IsOpened())
@@ -216,6 +225,7 @@ public partial class MainWindow : Window
         await StopPlaybackAsync(null);
         OpenCvObjectRecognizer.Reset(_selectedMode);
 
+        // Video playback reuses the same processing loop as the camera, but with seek/pause support.
         var capture = new CvCapture();
         capture.Open(videoPath, CvCaptureApi.ANY);
         if (!capture.IsOpened())
@@ -258,12 +268,14 @@ public partial class MainWindow : Window
             {
                 if (sourceKind == ActiveSourceKind.VideoFile)
                 {
+                    // Seeking is coordinated through a shared frame index so slider actions stay on the UI thread.
                     if (_pendingSeekFrame is long seekFrame)
                     {
                         capture.PosFrames = (int)ClampFrameIndex(seekFrame, _videoFrameCount);
                         _pendingSeekFrame = null;
                     }
 
+                    // A paused video keeps the playback task alive so step and seek commands remain responsive.
                     if (_isVideoPaused)
                     {
                         await Task.Delay(30, cancellationToken);
@@ -294,6 +306,7 @@ public partial class MainWindow : Window
                     break;
                 }
 
+                // Each frame is dispatched through the recognizer facade so image, camera, and video share one pipeline.
                 var recognition = OpenCvObjectRecognizer.RecognizeFrame(frame, _selectedMode, sourceName);
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
@@ -431,6 +444,7 @@ public partial class MainWindow : Window
             ? ["No details returned for this sample."]
             : recognition.Details;
 
+        // Replace the previous preview bitmap to avoid holding on to unmanaged image memory.
         _currentBitmap?.Dispose();
         _currentBitmap = CreateBitmap(recognition.AnnotatedImageBytes);
         PreviewImage.Source = _currentBitmap;
@@ -438,6 +452,7 @@ public partial class MainWindow : Window
 
     private async Task RefreshCurrentSourceAsync(string selectedLabel)
     {
+        // Re-run the currently active source whenever the user switches to a different sample mode.
         switch (_activeSourceKind)
         {
             case ActiveSourceKind.Image when !string.IsNullOrWhiteSpace(_currentImagePath):
@@ -462,6 +477,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Reset any stateful processor so a seek does not mix detections from different time positions.
         OpenCvObjectRecognizer.Reset(_selectedMode);
         _isVideoPaused = keepPaused;
         _pendingSeekFrame = ClampFrameIndex(frameIndex, _videoFrameCount);
@@ -483,6 +499,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Single-frame stepping is implemented as a paused seek so the processing loop stays unified.
         OpenCvObjectRecognizer.Reset(_selectedMode);
         _isVideoPaused = true;
         var targetFrame = ClampFrameIndex(_currentVideoFrame + direction, _videoFrameCount);
@@ -503,6 +520,7 @@ public partial class MainWindow : Window
         var cancellation = _playbackCancellation;
         var runningTask = _playbackTask;
 
+        // Clear state first so new playback can start immediately even while the old task is winding down.
         _playbackCancellation = null;
         _playbackTask = null;
 
@@ -601,6 +619,7 @@ public partial class MainWindow : Window
 
     private static TimeSpan GetFrameDelay(CvCapture capture)
     {
+        // Fall back to a reasonable preview cadence when the source does not report a usable FPS.
         var fps = capture.Fps;
         if (double.IsNaN(fps) || double.IsInfinity(fps) || fps <= 0)
         {
@@ -618,6 +637,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        // Dispose unmanaged OpenCV and bitmap resources explicitly when the window closes.
         _playbackCancellation?.Cancel();
         _videoCapture?.Release();
         _videoCapture?.Dispose();

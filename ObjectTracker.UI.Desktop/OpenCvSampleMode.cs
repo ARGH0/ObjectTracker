@@ -1,5 +1,8 @@
 namespace ObjectTracker.UI.Desktop;
 
+/// <summary>
+/// Identifies the OpenCV sample pipelines available in the desktop application.
+/// </summary>
 internal enum OpenCvSampleMode
 {
     BackgroundTracking,

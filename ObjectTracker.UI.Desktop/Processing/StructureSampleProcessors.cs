@@ -7,7 +7,20 @@ namespace ObjectTracker.UI.Desktop;
 /// </summary>
 internal sealed class ContoursSampleProcessor : IOpenCvSampleProcessor
 {
+    private readonly SampleSetting _blurKernel = SampleSetting.Integer("contours-blur-kernel", "Blur kernel", 5, 1, 15, 2, "Oneven kernel voor het gladstrijken voor Canny.");
+    private readonly SampleSetting _cannyLow = SampleSetting.Integer("contours-canny-low", "Canny lower", 60, 0, 255, 1, "Lage Canny-drempel.");
+    private readonly SampleSetting _cannyHigh = SampleSetting.Integer("contours-canny-high", "Canny upper", 180, 1, 255, 1, "Hoge Canny-drempel.");
+    private readonly SampleSetting _minArea = SampleSetting.Integer("contours-min-area", "Min area", 1500, 100, 20000, 100, "Contouren kleiner dan deze oppervlakte worden genegeerd.");
+    private readonly SampleSetting _approximationFactor = SampleSetting.Decimal("contours-approx-factor", "Approx factor", 0.03, 0.01, 0.1, 0.01, 2, "Factor voor polygon-approximation op basis van omtrek.");
+
     public OpenCvSampleMode Mode => OpenCvSampleMode.Contours;
+
+    public IReadOnlyList<SampleSetting> Settings { get; }
+
+    public ContoursSampleProcessor()
+    {
+        Settings = [_blurKernel, _cannyLow, _cannyHigh, _minArea, _approximationFactor];
+    }
 
     /// <summary>
     /// Detects large contours and overlays coarse shape labels on the source image.
@@ -17,6 +30,11 @@ internal sealed class ContoursSampleProcessor : IOpenCvSampleProcessor
     /// <returns>The annotated image and a summary of the retained contour candidates.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
+        var blurKernel = _blurKernel.IntValue;
+        var lowThreshold = Math.Min(_cannyLow.Value, _cannyHigh.Value - 1);
+        var highThreshold = Math.Max(_cannyHigh.Value, lowThreshold + 1);
+        var minArea = _minArea.Value;
+        var approximationFactor = _approximationFactor.Value;
         using var annotated = source.Clone();
         using var gray = new Mat();
         using var blurred = new Mat();
@@ -24,8 +42,8 @@ internal sealed class ContoursSampleProcessor : IOpenCvSampleProcessor
 
         // The contour sample intentionally uses a straightforward edge pipeline so the intermediate logic stays teachable.
         Cv2.CvtColor(source, gray, ColorConversionCodes.BGR2GRAY);
-        Cv2.GaussianBlur(gray, blurred, new Size(5, 5), 0);
-        Cv2.Canny(blurred, edges, 60, 180);
+        Cv2.GaussianBlur(gray, blurred, new Size(blurKernel, blurKernel), 0);
+        Cv2.Canny(blurred, edges, lowThreshold, highThreshold);
 
         Cv2.FindContours(edges, out var contours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
 
@@ -36,7 +54,7 @@ internal sealed class ContoursSampleProcessor : IOpenCvSampleProcessor
         {
             var area = Cv2.ContourArea(contour);
             // Small contours usually come from texture or noise instead of meaningful objects.
-            if (area < 1500)
+            if (area < minArea)
             {
                 continue;
             }
@@ -47,7 +65,7 @@ internal sealed class ContoursSampleProcessor : IOpenCvSampleProcessor
                 continue;
             }
 
-            var polygon = Cv2.ApproxPolyDP(contour, 0.03 * perimeter, true);
+            var polygon = Cv2.ApproxPolyDP(contour, approximationFactor * perimeter, true);
             var bounds = Cv2.BoundingRect(polygon);
             if (bounds.Width < 30 || bounds.Height < 30)
             {
@@ -74,6 +92,9 @@ internal sealed class ContoursSampleProcessor : IOpenCvSampleProcessor
         var status = details.Count == 0
             ? $"Processed {sourceName} with the contour sample. No large contour-based objects were detected."
             : $"Processed {sourceName} with the contour sample. Detected {details.Count} object(s).";
+
+        details.Insert(0, $"Canny thresholds: {lowThreshold:F0} / {highThreshold:F0}");
+        details.Insert(1, $"Min area: {minArea:F0}");
 
         return OpenCvSampleProcessingHelpers.CreateResult(status, details, annotated);
     }
@@ -138,7 +159,20 @@ internal sealed class ConnectedComponentsSampleProcessor : IOpenCvSampleProcesso
 /// </summary>
 internal sealed class HoughLinesSampleProcessor : IOpenCvSampleProcessor
 {
+    private readonly SampleSetting _cannyLow = SampleSetting.Integer("hough-canny-low", "Canny lower", 50, 0, 255, 1, "Lage drempel voor de edge map.");
+    private readonly SampleSetting _cannyHigh = SampleSetting.Integer("hough-canny-high", "Canny upper", 200, 1, 255, 1, "Hoge drempel voor de edge map.");
+    private readonly SampleSetting _houghThreshold = SampleSetting.Integer("hough-threshold", "Accumulator threshold", 60, 1, 200, 1, "Minimum aantal votes voor een lijnsegment.");
+    private readonly SampleSetting _minLineLength = SampleSetting.Integer("hough-min-line-length", "Min line length", 40, 1, 400, 1, "Minimum lengte van een lijnsegment.");
+    private readonly SampleSetting _maxLineGap = SampleSetting.Integer("hough-max-line-gap", "Max line gap", 12, 0, 100, 1, "Maximale afstand tussen segmenten die worden samengevoegd.");
+
     public OpenCvSampleMode Mode => OpenCvSampleMode.HoughLines;
+
+    public IReadOnlyList<SampleSetting> Settings { get; }
+
+    public HoughLinesSampleProcessor()
+    {
+        Settings = [_cannyLow, _cannyHigh, _houghThreshold, _minLineLength, _maxLineGap];
+    }
 
     /// <summary>
     /// Detects prominent line segments and overlays them on the source image.
@@ -148,15 +182,20 @@ internal sealed class HoughLinesSampleProcessor : IOpenCvSampleProcessor
     /// <returns>The annotated image and a summary of the detected line segments.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
+        var lowThreshold = Math.Min(_cannyLow.Value, _cannyHigh.Value - 1);
+        var highThreshold = Math.Max(_cannyHigh.Value, lowThreshold + 1);
+        var houghThreshold = _houghThreshold.IntValue;
+        var minLineLength = _minLineLength.IntValue;
+        var maxLineGap = _maxLineGap.IntValue;
         using var annotated = source.Clone();
         using var gray = new Mat();
         using var edges = new Mat();
 
         // Canny edges provide the sparse binary input expected by the Hough transform.
         Cv2.CvtColor(source, gray, ColorConversionCodes.BGR2GRAY);
-        Cv2.Canny(gray, edges, 50, 200, 3, false);
+        Cv2.Canny(gray, edges, lowThreshold, highThreshold, 3, false);
 
-        var lines = Cv2.HoughLinesP(edges, 1, Math.PI / 180, 60, 40, 12);
+        var lines = Cv2.HoughLinesP(edges, 1, Math.PI / 180, houghThreshold, minLineLength, maxLineGap);
         var details = new List<string>();
 
         for (var index = 0; index < lines.Length; index++)
@@ -182,6 +221,9 @@ internal sealed class HoughLinesSampleProcessor : IOpenCvSampleProcessor
         var status = lines.Length == 0
             ? $"Processed {sourceName} with the Hough line sample. No strong line segments were found."
             : $"Processed {sourceName} with the Hough line sample. Found {lines.Length} line segment(s).";
+
+        details.Insert(0, $"Canny thresholds: {lowThreshold:F0} / {highThreshold:F0}");
+        details.Insert(1, $"Hough threshold: {houghThreshold}, min length {minLineLength}, max gap {maxLineGap}");
 
         return OpenCvSampleProcessingHelpers.CreateResult(status, details, annotated);
     }

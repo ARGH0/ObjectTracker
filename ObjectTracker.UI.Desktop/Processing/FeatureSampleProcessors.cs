@@ -7,7 +7,16 @@ namespace ObjectTracker.UI.Desktop;
 /// </summary>
 internal sealed class FastCornersSampleProcessor : IOpenCvSampleProcessor
 {
-    public OpenCvSampleMode Mode => OpenCvSampleMode.FastCorners;about:blank#blocked
+    private readonly SampleSetting _threshold = SampleSetting.Integer("fast-threshold", "Threshold", 50, 1, 100, 1, "Minimale hoekrespons voor FAST.");
+
+    public OpenCvSampleMode Mode => OpenCvSampleMode.FastCorners;
+
+    public IReadOnlyList<SampleSetting> Settings { get; }
+
+    public FastCornersSampleProcessor()
+    {
+        Settings = [_threshold];
+    }
 
     /// <summary>
     /// Detects FAST corners and overlays them on the source image.
@@ -17,12 +26,13 @@ internal sealed class FastCornersSampleProcessor : IOpenCvSampleProcessor
     /// <returns>The annotated image and FAST detector statistics.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
+        var threshold = _threshold.IntValue;
         using var gray = new Mat();
         using var annotated = source.Clone();
 
         Cv2.CvtColor(source, gray, ColorConversionCodes.BGR2GRAY);
         // The threshold controls how strong the corner response must be before a point is accepted.
-        var keypoints = Cv2.FAST(gray, 50, true);
+        var keypoints = Cv2.FAST(gray, threshold, true);
 
         foreach (var keyPoint in keypoints)
         {
@@ -32,7 +42,7 @@ internal sealed class FastCornersSampleProcessor : IOpenCvSampleProcessor
         var details = new[]
         {
             $"Keypoints: {keypoints.Length}",
-            "Threshold: 50",
+            $"Threshold: {threshold}",
             "Nonmax suppression: enabled"
         };
 
@@ -45,7 +55,18 @@ internal sealed class FastCornersSampleProcessor : IOpenCvSampleProcessor
 /// </summary>
 internal sealed class HogPeopleSampleProcessor : IOpenCvSampleProcessor
 {
+    private readonly SampleSetting _hitThreshold = SampleSetting.Decimal("hog-hit-threshold", "Hit threshold", 0, -1, 2, 0.05, 2, "Hogere waarden maken de detector strenger.");
+    private readonly SampleSetting _scaleFactor = SampleSetting.Decimal("hog-scale-factor", "Scale factor", 1.05, 1.01, 1.2, 0.01, 2, "Stapgrootte voor de beeldpiramide.");
+    private readonly SampleSetting _groupThreshold = SampleSetting.Integer("hog-group-threshold", "Group threshold", 2, 0, 8, 1, "Hoeveel overlappende hits nodig zijn voor een definitieve detectie.");
+
     public OpenCvSampleMode Mode => OpenCvSampleMode.HogPeople;
+
+    public IReadOnlyList<SampleSetting> Settings { get; }
+
+    public HogPeopleSampleProcessor()
+    {
+        Settings = [_hitThreshold, _scaleFactor, _groupThreshold];
+    }
 
     /// <summary>
     /// Detects person-like regions with the default OpenCV HOG detector.
@@ -55,16 +76,20 @@ internal sealed class HogPeopleSampleProcessor : IOpenCvSampleProcessor
     /// <returns>The annotated image and pedestrian detection details.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
+        var hitThreshold = _hitThreshold.Value;
+        var scaleFactor = _scaleFactor.Value;
+        var groupThreshold = _groupThreshold.IntValue;
         using var annotated = source.Clone();
         using var hog = new HOGDescriptor();
         hog.SetSVMDetector(HOGDescriptor.GetDefaultPeopleDetector());
 
         // DetectMultiScale searches the frame pyramid for person-like windows at multiple scales.
-        var found = hog.DetectMultiScale(source, 0, new Size(8, 8), new Size(24, 16), 1.05, 2);
+        var found = hog.DetectMultiScale(source, hitThreshold, new Size(8, 8), new Size(24, 16), scaleFactor, groupThreshold);
         var details = new List<string>
         {
             $"Detector size valid: {hog.CheckDetectorSize()}",
-            $"Regions found: {found.Length}"
+            $"Regions found: {found.Length}",
+            $"Hit threshold: {hitThreshold:F2}, scale factor: {scaleFactor:F2}, group threshold: {groupThreshold}"
         };
 
         for (var index = 0; index < found.Length; index++)

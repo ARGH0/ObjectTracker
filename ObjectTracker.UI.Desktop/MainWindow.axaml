@@ -42,137 +42,162 @@
             </Grid>
         </Border>
 
-        <StackPanel Grid.Column="2" Spacing="14">
-            <Border Background="#FFFDF8"
-                    BorderBrush="#D9D3C6"
-                    BorderThickness="1"
-                    CornerRadius="18"
-                    Padding="20">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="ObjectTracker"
-                               FontSize="28"
-                               FontWeight="SemiBold" />
-                    <TextBlock Text="Avalonia ports of OpenCvSharp samples"
-                               FontSize="16"
-                               Foreground="#6C6559" />
-                </StackPanel>
-            </Border>
-
-            <Border Background="#FFFDF8"
-                    BorderBrush="#D9D3C6"
-                    BorderThickness="1"
-                    CornerRadius="18"
-                    Padding="20">
-                <StackPanel Spacing="14">
-                    <TextBlock Text="Input Source"
-                               FontSize="18"
-                               FontWeight="SemiBold" />
-                    <TextBlock Text="Kies los of je een afbeelding, video of live camera als bron wilt gebruiken."
-                               TextWrapping="Wrap"
-                               Foreground="#6C6559" />
-                    <StackPanel Spacing="10">
-                        <Button x:Name="OpenImageButton"
-                                Content="Open image"
-                                Height="40" />
-                        <Button x:Name="OpenVideoButton"
-                                Content="Open video"
-                                Height="40" />
-                        <Button x:Name="StartCameraButton"
-                                Content="Start camera"
-                                Height="40" />
-                        <Button x:Name="StopCameraButton"
-                                Content="Stop playback"
-                                Height="40"
-                                IsEnabled="False" />
-                    </StackPanel>
-                        <Border Background="#F4EFE4"
-                            BorderBrush="#D9D3C6"
-                            BorderThickness="1"
-                            CornerRadius="14"
-                            Padding="14">
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="Video Transport"
-                                   FontSize="16"
+        <ScrollViewer Grid.Column="2"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="14">
+                <Border Background="#FFFDF8"
+                        BorderBrush="#D9D3C6"
+                        BorderThickness="1"
+                        CornerRadius="18"
+                        Padding="20">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="ObjectTracker"
+                                   FontSize="28"
                                    FontWeight="SemiBold" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button x:Name="PauseVideoButton"
-                                Content="Pause"
-                                Height="36"
-                                IsEnabled="False" />
-                            <Button x:Name="ResumeVideoButton"
-                                Content="Resume"
-                                Height="36"
-                                IsEnabled="False" />
-                            <Button x:Name="StepBackButton"
-                                Content="-1 frame"
-                                Height="36"
-                                IsEnabled="False" />
-                            <Button x:Name="StepForwardButton"
-                                Content="+1 frame"
-                                Height="36"
-                                IsEnabled="False" />
-                            </StackPanel>
-                            <Slider x:Name="VideoPositionSlider"
-                                Minimum="0"
-                                Maximum="1"
-                                Value="0"
-                                IsEnabled="False" />
-                            <TextBlock x:Name="PlaybackPositionText"
-                                   Text="Geen video geladen."
+                        <TextBlock Text="Avalonia ports of OpenCvSharp samples"
+                                   FontSize="16"
                                    Foreground="#6C6559" />
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#FFFDF8"
+                        BorderBrush="#D9D3C6"
+                        BorderThickness="1"
+                        CornerRadius="18"
+                        Padding="20">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="Input Source"
+                                   FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <TextBlock Text="Kies los of je een afbeelding, video of live camera als bron wilt gebruiken."
+                                   TextWrapping="Wrap"
+                                   Foreground="#6C6559" />
+                        <StackPanel Spacing="10">
+                            <Button x:Name="OpenImageButton"
+                                    Content="Open image"
+                                    Height="40" />
+                            <Button x:Name="OpenVideoButton"
+                                    Content="Open video"
+                                    Height="40" />
+                            <Button x:Name="StartCameraButton"
+                                    Content="Start camera"
+                                    Height="40" />
+                            <Button x:Name="StopCameraButton"
+                                    Content="Stop playback"
+                                    Height="40"
+                                    IsEnabled="False" />
                         </StackPanel>
+                        <Border Background="#F4EFE4"
+                                BorderBrush="#D9D3C6"
+                                BorderThickness="1"
+                                CornerRadius="14"
+                                Padding="14">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Video Transport"
+                                           FontSize="16"
+                                           FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button x:Name="PauseVideoButton"
+                                            Content="Pause"
+                                            Height="36"
+                                            IsEnabled="False" />
+                                    <Button x:Name="ResumeVideoButton"
+                                            Content="Resume"
+                                            Height="36"
+                                            IsEnabled="False" />
+                                    <Button x:Name="StepBackButton"
+                                            Content="-1 frame"
+                                            Height="36"
+                                            IsEnabled="False" />
+                                    <Button x:Name="StepForwardButton"
+                                            Content="+1 frame"
+                                            Height="36"
+                                            IsEnabled="False" />
+                                </StackPanel>
+                                <Slider x:Name="VideoPositionSlider"
+                                        Minimum="0"
+                                        Maximum="1"
+                                        Value="0"
+                                        IsEnabled="False" />
+                                <TextBlock x:Name="PlaybackPositionText"
+                                           Text="Geen video geladen."
+                                           Foreground="#6C6559" />
+                            </StackPanel>
                         </Border>
-                </StackPanel>
-            </Border>
+                    </StackPanel>
+                </Border>
 
-            <Border Background="#FFFDF8"
-                    BorderBrush="#D9D3C6"
-                    BorderThickness="1"
-                    CornerRadius="18"
-                    Padding="20">
-                <StackPanel Spacing="14">
-                    <TextBlock Text="Algorithm Detection"
-                               FontSize="18"
-                               FontWeight="SemiBold" />
-                    <ComboBox x:Name="ProcessingModeComboBox" />
-                    <TextBlock x:Name="SampleDescriptionText"
-                               Text="Select a sample to see what it does."
-                               TextWrapping="Wrap"
-                               Foreground="#6C6559" />
-                    <TextBlock Text="Wissel van sample om de actieve bron direct opnieuw te verwerken."
-                               TextWrapping="Wrap"
-                               Foreground="#6C6559" />
-                </StackPanel>
-            </Border>
+                <Border Background="#FFFDF8"
+                        BorderBrush="#D9D3C6"
+                        BorderThickness="1"
+                        CornerRadius="18"
+                        Padding="20">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="Algorithm Detection"
+                                   FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <ComboBox x:Name="ProcessingModeComboBox" />
+                        <TextBlock x:Name="SampleDescriptionText"
+                                   Text="Select a sample to see what it does."
+                                   TextWrapping="Wrap"
+                                   Foreground="#6C6559" />
+                        <TextBlock Text="Wissel van sample om de actieve bron direct opnieuw te verwerken."
+                                   TextWrapping="Wrap"
+                                   Foreground="#6C6559" />
+                    </StackPanel>
+                </Border>
 
-            <Border Background="#FFFDF8"
-                    BorderBrush="#D9D3C6"
-                    BorderThickness="1"
-                    CornerRadius="18"
-                    Padding="20">
-                <StackPanel Spacing="10">
-                    <TextBlock Text="Status"
-                               FontSize="18"
-                               FontWeight="SemiBold" />
-                    <TextBlock x:Name="StatusText"
-                               Text="Load an image to begin."
-                               TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
+                <Border Background="#FFFDF8"
+                        BorderBrush="#D9D3C6"
+                        BorderThickness="1"
+                        CornerRadius="18"
+                        Padding="20">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Sample Settings"
+                                   FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <TextBlock Text="Pas de actieve sample live aan. Tijdens video of camera worden nieuwe waarden direct op volgende frames toegepast."
+                                   TextWrapping="Wrap"
+                                   Foreground="#6C6559" />
+                        <TextBlock x:Name="SampleSettingsEmptyText"
+                                   Text="Deze sample heeft op dit moment geen instelbare parameters."
+                                   TextWrapping="Wrap"
+                                   Foreground="#6C6559" />
+                        <StackPanel x:Name="SampleSettingsPanel"
+                                    Spacing="10" />
+                    </StackPanel>
+                </Border>
 
-            <Border Background="#FFFDF8"
-                    BorderBrush="#D9D3C6"
-                    BorderThickness="1"
-                    CornerRadius="18"
-                    Padding="20">
-                <StackPanel Spacing="10">
-                    <TextBlock Text="Sample output"
-                               FontSize="18"
-                               FontWeight="SemiBold" />
-                    <ListBox x:Name="ResultsListBox"
-                             Height="260" />
-                </StackPanel>
-            </Border>
-        </StackPanel>
+                <Border Background="#FFFDF8"
+                        BorderBrush="#D9D3C6"
+                        BorderThickness="1"
+                        CornerRadius="18"
+                        Padding="20">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Status"
+                                   FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <TextBlock x:Name="StatusText"
+                                   Text="Load an image to begin."
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#FFFDF8"
+                        BorderBrush="#D9D3C6"
+                        BorderThickness="1"
+                        CornerRadius="18"
+                        Padding="20">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Sample output"
+                                   FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <ListBox x:Name="ResultsListBox"
+                                 Height="260" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 </Window>

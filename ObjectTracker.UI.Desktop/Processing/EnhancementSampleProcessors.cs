@@ -7,7 +7,17 @@ namespace ObjectTracker.UI.Desktop;
 /// </summary>
 internal sealed class BlurSampleProcessor : IOpenCvSampleProcessor
 {
+    private readonly SampleSetting _kernelSize = SampleSetting.Integer("blur-kernel", "Kernel", 9, 1, 31, 2, "Oneven kernelgrootte voor de Gaussian blur.");
+    private readonly SampleSetting _sigma = SampleSetting.Decimal("blur-sigma", "Sigma", 1.8, 0.1, 10, 0.1, 1, "Hogere sigma geeft meer vervaging.");
+
     public OpenCvSampleMode Mode => OpenCvSampleMode.Blur;
+
+    public IReadOnlyList<SampleSetting> Settings { get; }
+
+    public BlurSampleProcessor()
+    {
+        Settings = [_kernelSize, _sigma];
+    }
 
     /// <summary>
     /// Applies Gaussian blur to the supplied image.
@@ -17,14 +27,16 @@ internal sealed class BlurSampleProcessor : IOpenCvSampleProcessor
     /// <returns>The blurred image and a summary of the blur settings.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
+        var kernelSize = _kernelSize.IntValue;
+        var sigma = _sigma.Value;
         using var annotated = new Mat();
         // Apply the blur directly to the color image so the preview matches the original scene layout.
-        Cv2.GaussianBlur(source, annotated, new Size(9, 9), 1.8);
+        Cv2.GaussianBlur(source, annotated, new Size(kernelSize, kernelSize), sigma);
 
         var details = new[]
         {
-            "Kernel: 9x9",
-            "Sigma: 1.8",
+            $"Kernel: {kernelSize}x{kernelSize}",
+            $"Sigma: {sigma:F1}",
             $"Frame size: {source.Width}x{source.Height}"
         };
 
@@ -37,7 +49,17 @@ internal sealed class BlurSampleProcessor : IOpenCvSampleProcessor
 /// </summary>
 internal sealed class ClaheSampleProcessor : IOpenCvSampleProcessor
 {
+    private readonly SampleSetting _clipLimit = SampleSetting.Decimal("clahe-clip-limit", "Clip limit", 20, 1, 40, 0.5, 1, "Beperkt lokale contrastversterking.");
+    private readonly SampleSetting _tileSize = SampleSetting.Integer("clahe-tile-size", "Tile size", 8, 2, 16, 1, "Aantal pixels per CLAHE-tile in beide richtingen.");
+
     public OpenCvSampleMode Mode => OpenCvSampleMode.Clahe;
+
+    public IReadOnlyList<SampleSetting> Settings { get; }
+
+    public ClaheSampleProcessor()
+    {
+        Settings = [_clipLimit, _tileSize];
+    }
 
     /// <summary>
     /// Applies CLAHE to the grayscale luminance representation of the source image.
@@ -47,6 +69,8 @@ internal sealed class ClaheSampleProcessor : IOpenCvSampleProcessor
     /// <returns>The contrast-enhanced image and summary statistics.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
+        var clipLimit = _clipLimit.Value;
+        var tileSize = _tileSize.IntValue;
         using var gray = new Mat();
         using var enhanced = new Mat();
         using var annotated = new Mat();
@@ -54,16 +78,16 @@ internal sealed class ClaheSampleProcessor : IOpenCvSampleProcessor
 
         // CLAHE works on a single channel, so the sample converts to grayscale first.
         Cv2.CvtColor(source, gray, ColorConversionCodes.BGR2GRAY);
-        clahe.ClipLimit = 20;
-        clahe.TilesGridSize = new Size(8, 8);
+        clahe.ClipLimit = clipLimit;
+        clahe.TilesGridSize = new Size(tileSize, tileSize);
         clahe.Apply(gray, enhanced);
         // Convert back to BGR so the UI can render the result consistently with other samples.
         Cv2.CvtColor(enhanced, annotated, ColorConversionCodes.GRAY2BGR);
 
         var details = new[]
         {
-            "Clip limit: 20",
-            "Tile grid: 8x8",
+            $"Clip limit: {clipLimit:F1}",
+            $"Tile grid: {tileSize}x{tileSize}",
             $"Mean intensity: {Cv2.Mean(enhanced).Val0:F1}"
         };
 
@@ -76,7 +100,19 @@ internal sealed class ClaheSampleProcessor : IOpenCvSampleProcessor
 /// </summary>
 internal sealed class CannySampleProcessor : IOpenCvSampleProcessor
 {
+    private readonly SampleSetting _blurKernel = SampleSetting.Integer("canny-blur-kernel", "Blur kernel", 5, 1, 15, 2, "Oneven kernel om ruis te dempen voor edge detection.");
+    private readonly SampleSetting _blurSigma = SampleSetting.Decimal("canny-blur-sigma", "Blur sigma", 1.2, 0, 5, 0.1, 1, "Sigma voor de pre-blur stap.");
+    private readonly SampleSetting _lowThreshold = SampleSetting.Integer("canny-low-threshold", "Lower threshold", 60, 0, 255, 1, "Lage drempel voor de hysteresisstap.");
+    private readonly SampleSetting _highThreshold = SampleSetting.Integer("canny-high-threshold", "Upper threshold", 180, 1, 255, 1, "Hoge drempel voor sterke edges.");
+
     public OpenCvSampleMode Mode => OpenCvSampleMode.Canny;
+
+    public IReadOnlyList<SampleSetting> Settings { get; }
+
+    public CannySampleProcessor()
+    {
+        Settings = [_blurKernel, _blurSigma, _lowThreshold, _highThreshold];
+    }
 
     /// <summary>
     /// Extracts edges from the supplied image using Canny thresholding.
@@ -86,6 +122,10 @@ internal sealed class CannySampleProcessor : IOpenCvSampleProcessor
     /// <returns>The rendered edge map and basic edge statistics.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
+        var blurKernel = _blurKernel.IntValue;
+        var blurSigma = _blurSigma.Value;
+        var lowThreshold = Math.Min(_lowThreshold.Value, _highThreshold.Value - 1);
+        var highThreshold = Math.Max(_highThreshold.Value, lowThreshold + 1);
         using var gray = new Mat();
         using var blurred = new Mat();
         using var edges = new Mat();
@@ -93,14 +133,15 @@ internal sealed class CannySampleProcessor : IOpenCvSampleProcessor
 
         // A light blur reduces noise before edge extraction and cuts down on false positives.
         Cv2.CvtColor(source, gray, ColorConversionCodes.BGR2GRAY);
-        Cv2.GaussianBlur(gray, blurred, new Size(5, 5), 1.2);
-        Cv2.Canny(blurred, edges, 60, 180);
+        Cv2.GaussianBlur(gray, blurred, new Size(blurKernel, blurKernel), blurSigma);
+        Cv2.Canny(blurred, edges, lowThreshold, highThreshold);
         Cv2.CvtColor(edges, annotated, ColorConversionCodes.GRAY2BGR);
 
         var details = new List<string>
         {
             $"Edge pixels: {Cv2.CountNonZero(edges):N0}",
-            "Thresholds: 60 / 180",
+            $"Thresholds: {lowThreshold:F0} / {highThreshold:F0}",
+            $"Blur: {blurKernel}x{blurKernel}, sigma {blurSigma:F1}",
             $"Frame size: {source.Width}x{source.Height}"
         };
 
@@ -162,7 +203,17 @@ internal sealed class HistogramSampleProcessor : IOpenCvSampleProcessor
 /// </summary>
 internal sealed class MorphologySampleProcessor : IOpenCvSampleProcessor
 {
+    private readonly SampleSetting _kernelSize = SampleSetting.Integer("morphology-kernel-size", "Kernel", 3, 3, 11, 2, "Oneven kernel voor de dilate-stap.");
+    private readonly SampleSetting _iterations = SampleSetting.Integer("morphology-iterations", "Iterations", 1, 1, 5, 1, "Aantal dilate-iteraties.");
+
     public OpenCvSampleMode Mode => OpenCvSampleMode.Morphology;
+
+    public IReadOnlyList<SampleSetting> Settings { get; }
+
+    public MorphologySampleProcessor()
+    {
+        Settings = [_kernelSize, _iterations];
+    }
 
     /// <summary>
     /// Applies thresholding and dilation to highlight foreground structures.
@@ -172,23 +223,24 @@ internal sealed class MorphologySampleProcessor : IOpenCvSampleProcessor
     /// <returns>The dilated binary preview and summary statistics.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
+        var kernelSize = _kernelSize.IntValue;
+        var iterations = _iterations.IntValue;
         using var gray = new Mat();
         using var binary = new Mat();
         using var annotated = new Mat();
-
-        byte[] kernelValues = [0, 1, 0, 1, 1, 1, 0, 1, 0];
-        using var kernel = Mat.FromPixelData(3, 3, MatType.CV_8UC1, kernelValues);
+        using var kernel = Cv2.GetStructuringElement(MorphShapes.Cross, new Size(kernelSize, kernelSize));
 
         // Otsu chooses the threshold automatically, making the sample adapt to different lighting conditions.
         Cv2.CvtColor(source, gray, ColorConversionCodes.BGR2GRAY);
         Cv2.Threshold(gray, binary, 0, 255, ThresholdTypes.Otsu);
-        Cv2.Dilate(binary, annotated, kernel);
+        Cv2.Dilate(binary, annotated, kernel, iterations: iterations);
         Cv2.CvtColor(annotated, annotated, ColorConversionCodes.GRAY2BGR);
 
         var details = new[]
         {
             "Operation: dilate",
-            "Kernel: 3x3 cross",
+            $"Kernel: {kernelSize}x{kernelSize} cross",
+            $"Iterations: {iterations}",
             $"Foreground pixels: {Cv2.CountNonZero(binary):N0}"
         };
 

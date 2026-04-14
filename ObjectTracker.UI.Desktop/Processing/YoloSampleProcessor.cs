@@ -8,9 +8,8 @@ namespace ObjectTracker.UI.Desktop;
 /// </summary>
 internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
 {
-    private const int InputImageSize = 640;
-    private const float ConfidenceThreshold = 0.35f;
-    private const float NmsThreshold = 0.45f;
+    private readonly SampleSetting _confidenceThreshold = SampleSetting.Decimal("yolo-confidence-threshold", "Confidence threshold", 0.35, 0.05, 0.95, 0.01, 2, "Minimale confidence om een detectie te behouden.");
+    private readonly SampleSetting _nmsThreshold = SampleSetting.Decimal("yolo-nms-threshold", "NMS threshold", 0.45, 0.05, 0.95, 0.01, 2, "Overlapdrempel voor non-maximum suppression.");
 
     private static readonly string[] ModelFileNames =
     [
@@ -34,6 +33,13 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
 
     public OpenCvSampleMode Mode => OpenCvSampleMode.Yolo;
 
+    public IReadOnlyList<SampleSetting> Settings { get; }
+
+    public YoloSampleProcessor()
+    {
+        Settings = [_confidenceThreshold, _nmsThreshold];
+    }
+
     /// <summary>
     /// Runs YOLO inference for the supplied image and renders the retained detections.
     /// </summary>
@@ -42,6 +48,8 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
     /// <returns>The annotated image and YOLO detection details.</returns>
     public RecognitionResult Process(Mat source, string sourceName)
     {
+        var confidenceThreshold = (float)_confidenceThreshold.Value;
+        var nmsThreshold = (float)_nmsThreshold.Value;
         using var annotated = source.Clone();
 
         // Model files are resolved at runtime so users can drop supported ONNX exports into the Models folder.
@@ -65,12 +73,13 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
         try
         {
             var net = EnsureNet(modelPath, labelPath);
-            var detections = RunInference(net, source);
+            var detections = RunInference(net, source, confidenceThreshold, nmsThreshold);
 
             var details = new List<string>
             {
                 $"Model: {Path.GetFileName(modelPath)}",
-                $"Detections: {detections.Count}"
+                $"Detections: {detections.Count}",
+                $"Confidence threshold: {confidenceThreshold:F2}, NMS threshold: {nmsThreshold:F2}"
             };
 
             for (var index = 0; index < detections.Count; index++)
@@ -189,10 +198,10 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
     /// <param name="net">The loaded YOLO network.</param>
     /// <param name="source">The source image to analyze.</param>
     /// <returns>The detections retained after tensor parsing and confidence filtering.</returns>
-    private static List<YoloDetection> RunInference(Net net, Mat source)
+    private static List<YoloDetection> RunInference(Net net, Mat source, float confidenceThreshold, float nmsThreshold)
     {
         // Letterbox handling is intentionally skipped here; the sample favors a straightforward OpenCV DNN setup.
-        using var blob = CvDnn.BlobFromImage(source, 1d / 255d, new Size(InputImageSize, InputImageSize), new Scalar(), swapRB: true, crop: false);
+        using var blob = CvDnn.BlobFromImage(source, 1d / 255d, new Size(640, 640), new Scalar(), swapRB: true, crop: false);
         net.SetInput(blob);
 
         var outputNames = net.GetUnconnectedOutLayersNames()
@@ -215,7 +224,7 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
                 return [];
             }
 
-            return ParseDetections(outputBlobs[0], source.Size());
+            return ParseDetections(outputBlobs[0], source.Size(), confidenceThreshold, nmsThreshold);
         }
         finally
         {
@@ -232,7 +241,7 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
     /// <param name="output">The YOLO output tensor.</param>
     /// <param name="imageSize">The size of the original image.</param>
     /// <returns>The detections retained after confidence filtering and non-maximum suppression.</returns>
-    private static List<YoloDetection> ParseDetections(Mat output, Size imageSize)
+    private static List<YoloDetection> ParseDetections(Mat output, Size imageSize, float confidenceThreshold, float nmsThreshold)
     {
         using var candidates = ReshapeOutput(output);
 
@@ -247,8 +256,8 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
         var confidences = new List<float>();
         var classIds = new List<int>();
 
-        var xScale = imageSize.Width / (double)InputImageSize;
-        var yScale = imageSize.Height / (double)InputImageSize;
+        var xScale = imageSize.Width / 640d;
+        var yScale = imageSize.Height / 640d;
         var classStartIndex = DetermineClassStartIndex(cols);
 
         // Each row is treated as one candidate box followed by class scores.
@@ -278,7 +287,7 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
 
             var objectness = classStartIndex == 5 ? candidates.At<float>(row, 4) : 1f;
             var confidence = objectness * bestClassScore;
-            if (confidence < ConfidenceThreshold)
+            if (confidence < confidenceThreshold)
             {
                 continue;
             }
@@ -305,7 +314,7 @@ internal sealed class YoloSampleProcessor : IOpenCvSampleProcessor
         }
 
         // NMS removes heavily overlapping boxes that describe the same object.
-        CvDnn.NMSBoxes(boxes, confidences, ConfidenceThreshold, NmsThreshold, out var keptIndices);
+        CvDnn.NMSBoxes(boxes, confidences, confidenceThreshold, nmsThreshold, out var keptIndices);
 
         return keptIndices
             .Select(index => new YoloDetection(classIds[index], confidences[index], boxes[index]))

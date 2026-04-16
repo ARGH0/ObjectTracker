@@ -1,10 +1,106 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="ObjectTracker.UI.Desktop.App"
-             RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+             RequestedThemeVariant="Dark">
 
     <Application.Styles>
         <FluentTheme />
+
+        <Style Selector="Window">
+            <Setter Property="Background" Value="#0B1217" />
+        </Style>
+
+        <Style Selector="Button">
+            <Setter Property="Foreground" Value="#F3FBFF" />
+            <Setter Property="Background" Value="#17303D" />
+            <Setter Property="BorderBrush" Value="#285062" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="14,10" />
+        </Style>
+
+        <Style Selector="Button:pointerover">
+            <Setter Property="Background" Value="#214150" />
+            <Setter Property="BorderBrush" Value="#3F7085" />
+        </Style>
+
+        <Style Selector="Button:pressed">
+            <Setter Property="Background" Value="#102731" />
+            <Setter Property="BorderBrush" Value="#4C869E" />
+        </Style>
+
+        <Style Selector="Button:disabled">
+            <Setter Property="Foreground" Value="#6C8794" />
+            <Setter Property="Background" Value="#102028" />
+            <Setter Property="BorderBrush" Value="#1C3340" />
+            <Setter Property="Opacity" Value="0.8" />
+        </Style>
+
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#1F7A8C" />
+            <Setter Property="BorderBrush" Value="#49A3B6" />
+            <Setter Property="Foreground" Value="#F7FEFF" />
+        </Style>
+
+        <Style Selector="Button.primary:pointerover">
+            <Setter Property="Background" Value="#2992A6" />
+            <Setter Property="BorderBrush" Value="#6DC0D1" />
+        </Style>
+
+        <Style Selector="Button.primary:pressed">
+            <Setter Property="Background" Value="#176B7A" />
+        </Style>
+
+        <Style Selector="Button.destructive">
+            <Setter Property="Background" Value="#462229" />
+            <Setter Property="BorderBrush" Value="#7A3B46" />
+            <Setter Property="Foreground" Value="#FFF4F5" />
+        </Style>
+
+        <Style Selector="Button.destructive:pointerover">
+            <Setter Property="Background" Value="#5B2D35" />
+            <Setter Property="BorderBrush" Value="#A3515F" />
+        </Style>
+
+        <Style Selector="TextBox">
+            <Setter Property="Foreground" Value="#EAF7FC" />
+            <Setter Property="Background" Value="#091218" />
+            <Setter Property="BorderBrush" Value="#33515F" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,8" />
+        </Style>
+
+        <Style Selector="TextBox:focus">
+            <Setter Property="BorderBrush" Value="#61B3C5" />
+        </Style>
+
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="#D8ECF4" />
+        </Style>
+
+        <Style Selector="ListBox">
+            <Setter Property="Foreground" Value="#EAF7FC" />
+            <Setter Property="Background" Value="#091218" />
+            <Setter Property="BorderBrush" Value="#355260" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Foreground" Value="#DCEFF6" />
+        </Style>
+
+        <Style Selector="ListBoxItem:pointerover">
+            <Setter Property="Background" Value="#13242D" />
+        </Style>
+
+        <Style Selector="ListBoxItem:selected">
+            <Setter Property="Background" Value="#1B3946" />
+            <Setter Property="Foreground" Value="#F6FDFF" />
+        </Style>
     </Application.Styles>
 </Application>

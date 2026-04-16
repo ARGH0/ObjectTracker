@@ -4,6 +4,17 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <OpenCvSharpVersion>4.13.0.20260308</OpenCvSharpVersion>
+    <OpenCvSharpRuntimeWinVersion>4.13.0.20260302</OpenCvSharpRuntimeWinVersion>
+    <OpenCvSharpRuntimeLinuxVersion>4.13.0.20260329</OpenCvSharpRuntimeLinuxVersion>
+    <OpenCvSharpRuntimePackage Condition="'$(RuntimeIdentifier)' == 'win-x64'">OpenCvSharp4.runtime.win</OpenCvSharpRuntimePackage>
+    <OpenCvSharpRuntimePackage Condition="'$(RuntimeIdentifier)' == 'linux-x64'">OpenCvSharp4.official.runtime.linux-x64</OpenCvSharpRuntimePackage>
+    <OpenCvSharpRuntimePackageVersion Condition="'$(RuntimeIdentifier)' == 'win-x64'">$(OpenCvSharpRuntimeWinVersion)</OpenCvSharpRuntimePackageVersion>
+    <OpenCvSharpRuntimePackageVersion Condition="'$(RuntimeIdentifier)' == 'linux-x64'">$(OpenCvSharpRuntimeLinuxVersion)</OpenCvSharpRuntimePackageVersion>
+    <OpenCvSharpRuntimePackage Condition="'$(OpenCvSharpRuntimePackage)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">OpenCvSharp4.runtime.win</OpenCvSharpRuntimePackage>
+    <OpenCvSharpRuntimePackage Condition="'$(OpenCvSharpRuntimePackage)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">OpenCvSharp4.official.runtime.linux-x64</OpenCvSharpRuntimePackage>
+    <OpenCvSharpRuntimePackageVersion Condition="'$(OpenCvSharpRuntimePackageVersion)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">$(OpenCvSharpRuntimeWinVersion)</OpenCvSharpRuntimePackageVersion>
+    <OpenCvSharpRuntimePackageVersion Condition="'$(OpenCvSharpRuntimePackageVersion)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">$(OpenCvSharpRuntimeLinuxVersion)</OpenCvSharpRuntimePackageVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,8 +22,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260308" />
-    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260302" />
+    <PackageReference Include="OpenCvSharp4" Version="$(OpenCvSharpVersion)" />
+    <PackageReference Include="$(OpenCvSharpRuntimePackage)" Version="$(OpenCvSharpRuntimePackageVersion)" Condition="'$(OpenCvSharpRuntimePackage)' != ''" />
   </ItemGroup>
 
 </Project>

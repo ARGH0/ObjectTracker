@@ -3,104 +3,190 @@
              x:Class="ObjectTracker.UI.Desktop.App"
              RequestedThemeVariant="Dark">
 
+    <Application.Resources>
+        <SolidColorBrush x:Key="AppBackgroundBrush" Color="#090C10" />
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#11161C" />
+        <SolidColorBrush x:Key="SurfaceAltBrush" Color="#161D25" />
+        <SolidColorBrush x:Key="InputBrush" Color="#0C1117" />
+        <SolidColorBrush x:Key="BorderBrush" Color="#28333D" />
+        <SolidColorBrush x:Key="BorderStrongBrush" Color="#3A4E5D" />
+        <SolidColorBrush x:Key="TextBrush" Color="#F3F7FA" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#93A6B5" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#6E92AB" />
+        <SolidColorBrush x:Key="AccentStrongBrush" Color="#89AEC8" />
+        <SolidColorBrush x:Key="DangerBrush" Color="#7E4952" />
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
 
         <Style Selector="Window">
-            <Setter Property="Background" Value="#0B1217" />
+            <Setter Property="Background" Value="{StaticResource AppBackgroundBrush}" />
         </Style>
 
         <Style Selector="Button">
-            <Setter Property="Foreground" Value="#F3FBFF" />
-            <Setter Property="Background" Value="#17303D" />
-            <Setter Property="BorderBrush" Value="#285062" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Padding" Value="14,10" />
+            <Setter Property="MinHeight" Value="38" />
         </Style>
 
         <Style Selector="Button:pointerover">
-            <Setter Property="Background" Value="#214150" />
-            <Setter Property="BorderBrush" Value="#3F7085" />
+            <Setter Property="Background" Value="#1A222B" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
         </Style>
 
         <Style Selector="Button:pressed">
-            <Setter Property="Background" Value="#102731" />
-            <Setter Property="BorderBrush" Value="#4C869E" />
+            <Setter Property="Background" Value="#0F141A" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
         </Style>
 
         <Style Selector="Button:disabled">
-            <Setter Property="Foreground" Value="#6C8794" />
-            <Setter Property="Background" Value="#102028" />
-            <Setter Property="BorderBrush" Value="#1C3340" />
-            <Setter Property="Opacity" Value="0.8" />
+            <Setter Property="Foreground" Value="#667787" />
+            <Setter Property="Background" Value="#0E1217" />
+            <Setter Property="BorderBrush" Value="#1D252D" />
+            <Setter Property="Opacity" Value="0.85" />
         </Style>
 
         <Style Selector="Button.primary">
-            <Setter Property="Background" Value="#1F7A8C" />
-            <Setter Property="BorderBrush" Value="#49A3B6" />
-            <Setter Property="Foreground" Value="#F7FEFF" />
+            <Setter Property="Background" Value="#54728A" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentStrongBrush}" />
+            <Setter Property="Foreground" Value="#F8FBFD" />
         </Style>
 
         <Style Selector="Button.primary:pointerover">
-            <Setter Property="Background" Value="#2992A6" />
-            <Setter Property="BorderBrush" Value="#6DC0D1" />
+            <Setter Property="Background" Value="#64859F" />
+            <Setter Property="BorderBrush" Value="#B6D0E3" />
         </Style>
 
         <Style Selector="Button.primary:pressed">
-            <Setter Property="Background" Value="#176B7A" />
+            <Setter Property="Background" Value="#476277" />
+        </Style>
+
+        <Style Selector="Button.ghost">
+            <Setter Property="Background" Value="#0E1318" />
+            <Setter Property="BorderBrush" Value="#313F4B" />
+        </Style>
+
+        <Style Selector="Button.ghost:pointerover">
+            <Setter Property="Background" Value="#151C22" />
+            <Setter Property="BorderBrush" Value="#526879" />
         </Style>
 
         <Style Selector="Button.destructive">
-            <Setter Property="Background" Value="#462229" />
-            <Setter Property="BorderBrush" Value="#7A3B46" />
+            <Setter Property="Background" Value="#2B1A1E" />
+            <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
             <Setter Property="Foreground" Value="#FFF4F5" />
         </Style>
 
         <Style Selector="Button.destructive:pointerover">
-            <Setter Property="Background" Value="#5B2D35" />
-            <Setter Property="BorderBrush" Value="#A3515F" />
+            <Setter Property="Background" Value="#382127" />
+            <Setter Property="BorderBrush" Value="#A4616C" />
         </Style>
 
         <Style Selector="TextBox">
-            <Setter Property="Foreground" Value="#EAF7FC" />
-            <Setter Property="Background" Value="#091218" />
-            <Setter Property="BorderBrush" Value="#33515F" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Background" Value="{StaticResource InputBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12,9" />
         </Style>
 
         <Style Selector="TextBox:focus">
-            <Setter Property="BorderBrush" Value="#61B3C5" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentStrongBrush}" />
+        </Style>
+
+        <Style Selector="ComboBox">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Background" Value="{StaticResource InputBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12,9" />
+        </Style>
+
+        <Style Selector="ComboBox:pointerover">
+            <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
+        </Style>
+
+        <Style Selector="ComboBox:focus">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentStrongBrush}" />
+        </Style>
+
+        <Style Selector="ComboBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Padding" Value="10,8" />
         </Style>
 
         <Style Selector="CheckBox">
-            <Setter Property="Foreground" Value="#D8ECF4" />
+            <Setter Property="Foreground" Value="#D8E4EC" />
         </Style>
 
         <Style Selector="ListBox">
-            <Setter Property="Foreground" Value="#EAF7FC" />
-            <Setter Property="Background" Value="#091218" />
-            <Setter Property="BorderBrush" Value="#355260" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Background" Value="{StaticResource InputBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="4" />
         </Style>
 
         <Style Selector="ListBoxItem">
-            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Padding" Value="12,10" />
             <Setter Property="Margin" Value="4" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Foreground" Value="#DCEFF6" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Foreground" Value="#DCE7EE" />
         </Style>
 
         <Style Selector="ListBoxItem:pointerover">
-            <Setter Property="Background" Value="#13242D" />
+            <Setter Property="Background" Value="#131A21" />
         </Style>
 
         <Style Selector="ListBoxItem:selected">
-            <Setter Property="Background" Value="#1B3946" />
-            <Setter Property="Foreground" Value="#F6FDFF" />
+            <Setter Property="Background" Value="#1D2731" />
+            <Setter Property="BorderBrush" Value="#4F677B" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="#F6FBFE" />
+        </Style>
+
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
+
+        <Style Selector="TextBlock.eyebrow">
+            <Setter Property="Foreground" Value="#A6BDCD" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style Selector="TextBlock.sectionTitle">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style Selector="TextBlock.cardTitle">
+            <Setter Property="Foreground" Value="#E8F1F6" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style Selector="Border.surface">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="16" />
+        </Style>
+
+        <Style Selector="Border.surfaceAlt">
+            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
         </Style>
     </Application.Styles>
 </Application>

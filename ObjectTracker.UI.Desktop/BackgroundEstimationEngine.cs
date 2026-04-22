@@ -21,6 +21,7 @@ internal sealed class BackgroundEstimationEngine
         int sampleCount,
         int threshold,
         ProcessingOptions options,
+        string? bakeImagePath,
         Func<PreviewFrameSet, Task> onFrame,
         Func<string, Task> onStatus,
         Func<LiveTuning>? getLiveTuning,
@@ -48,13 +49,7 @@ internal sealed class BackgroundEstimationEngine
         }
 
         var processSize = BuildProcessSize(frameWidth, frameHeight, options.ProcessMaxWidth);
-        var bakedPath = BuildBackgroundFilePath(videoPath, sampleCount, processSize);
-
-        if (!File.Exists(bakedPath))
-        {
-            await onStatus($"baking background for {Path.GetFileName(videoPath)}...");
-            await BakeBackgroundAsync(videoPath, sampleCount, processSize, cancellationToken, onStatus);
-        }
+        var bakedPath = await EnsureBakedBackgroundAsync(videoPath, sampleCount, options, bakeImagePath, cancellationToken, onStatus);
 
         using var medianBackground = Cv2.ImRead(bakedPath, ImreadModes.Grayscale);
         if (medianBackground.Empty())
@@ -70,11 +65,108 @@ internal sealed class BackgroundEstimationEngine
         await onStatus($"using baked background: {Path.GetFileName(bakedPath)}");
 
         capture.PosFrames = 0;
+        return await ProcessCaptureFramesAsync(
+            capture,
+            Path.GetFileName(videoPath),
+            fps,
+            medianBackground,
+            threshold,
+            options,
+            onFrame,
+            onStatus,
+            getLiveTuning,
+            shouldStopEarly,
+            cancellationToken,
+            pacePlayback: true);
+    }
+
+    public async Task<VideoProcessResult> ProcessUsbCameraAsync(
+        int cameraIndex,
+        VideoCaptureAPIs api,
+        string sourceLabel,
+        int sampleCount,
+        int threshold,
+        ProcessingOptions options,
+        string? bakeImagePath,
+        Func<PreviewFrameSet, Task> onFrame,
+        Func<string, Task> onStatus,
+        Func<LiveTuning>? getLiveTuning,
+        Func<bool>? shouldStopEarly,
+        CancellationToken cancellationToken)
+    {
+        using var capture = new VideoCapture(cameraIndex, api);
+        capture.Set(VideoCaptureProperties.FrameWidth, 640);
+        capture.Set(VideoCaptureProperties.FrameHeight, 480);
+        capture.Set(VideoCaptureProperties.Fps, 20);
+        capture.Set(VideoCaptureProperties.BufferSize, 1);
+
+        if (!capture.IsOpened())
+        {
+            return VideoProcessResult.Fail($"Unable to open USB camera {cameraIndex}.");
+        }
+
+        var frameWidth = (int)Math.Max(0, capture.Get(VideoCaptureProperties.FrameWidth));
+        var frameHeight = (int)Math.Max(0, capture.Get(VideoCaptureProperties.FrameHeight));
+        if (frameWidth <= 0 || frameHeight <= 0)
+        {
+            using var probeFrame = new Mat();
+            if (!capture.Read(probeFrame) || probeFrame.Empty())
+            {
+                return VideoProcessResult.Fail($"USB camera {cameraIndex} did not return frames.");
+            }
+
+            frameWidth = probeFrame.Width;
+            frameHeight = probeFrame.Height;
+        }
+
+        var processSize = BuildProcessSize(frameWidth, frameHeight, options.ProcessMaxWidth);
+        using var medianBackground = await CreateMedianBackgroundForUsbCameraAsync(
+            capture,
+            sourceLabel,
+            sampleCount,
+            processSize,
+            bakeImagePath,
+            onStatus,
+            cancellationToken);
+
+        return await ProcessCaptureFramesAsync(
+            capture,
+            sourceLabel,
+            capture.Fps,
+            medianBackground,
+            threshold,
+            options,
+            onFrame,
+            onStatus,
+            getLiveTuning,
+            shouldStopEarly,
+            cancellationToken,
+            pacePlayback: false);
+    }
+
+    private static async Task<VideoProcessResult> ProcessCaptureFramesAsync(
+        VideoCapture capture,
+        string sourceLabel,
+        double fps,
+        Mat medianBackground,
+        int threshold,
+        ProcessingOptions options,
+        Func<PreviewFrameSet, Task> onFrame,
+        Func<string, Task> onStatus,
+        Func<LiveTuning>? getLiveTuning,
+        Func<bool>? shouldStopEarly,
+        CancellationToken cancellationToken,
+        bool pacePlayback)
+    {
         var frameIndex = 0;
         var pacingFps = GetPacingFps(fps);
         var playbackClock = Stopwatch.StartNew();
+        var processSize = medianBackground.Size();
 
-        await onStatus($"playback pacing: {pacingFps:0.0} fps");
+        if (pacePlayback)
+        {
+            await onStatus($"playback pacing: {pacingFps:0.0} fps");
+        }
 
         using var frame = new Mat();
         using var gray = new Mat();
@@ -152,17 +244,27 @@ internal sealed class BackgroundEstimationEngine
                 frameIndex++;
                 if (frameIndex % 20 == 0)
                 {
-                    var positionMs = capture.PosMsec;
                     var fpsText = fps > 0 ? $"{fps:0.0}" : "n/a";
-                    await onStatus($"processing {Path.GetFileName(videoPath)} | frame {frameIndex} | source fps {fpsText} | t={positionMs / 1000:0.0}s");
+                    if (pacePlayback)
+                    {
+                        var positionMs = capture.PosMsec;
+                        await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps {fpsText} | t={positionMs / 1000:0.0}s");
+                    }
+                    else
+                    {
+                        await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps {fpsText}");
+                    }
                 }
 
-                await WaitForPlaybackScheduleAsync(
-                    frameIndex,
-                    pacingFps,
-                    playbackClock,
-                    shouldStopEarly,
-                    cancellationToken);
+                if (pacePlayback)
+                {
+                    await WaitForPlaybackScheduleAsync(
+                        frameIndex,
+                        pacingFps,
+                        playbackClock,
+                        shouldStopEarly,
+                        cancellationToken);
+                }
             }
         }
         finally
@@ -178,29 +280,49 @@ internal sealed class BackgroundEstimationEngine
         return PreBakeBackgroundInternalAsync(videoPath, sampleCount, ProcessingOptions.Default, cancellationToken);
     }
 
-    public string? GetExistingBakedBackgroundPath(string videoPath, int sampleCount, ProcessingOptions options)
+    public async Task<string> EnsureBakedBackgroundAsync(
+        string videoPath,
+        int sampleCount,
+        ProcessingOptions options,
+        string? bakeImagePath,
+        CancellationToken cancellationToken,
+        Func<string, Task>? onStatus = null)
     {
         if (!File.Exists(videoPath))
         {
-            return null;
+            throw new FileNotFoundException("Video file not found.", videoPath);
         }
 
         using var capture = new VideoCapture(videoPath);
         if (!capture.IsOpened())
         {
-            return null;
+            throw new InvalidOperationException($"Unable to open video: {Path.GetFileName(videoPath)}");
         }
 
         var frameWidth = (int)capture.FrameWidth;
         var frameHeight = (int)capture.FrameHeight;
         if (frameWidth <= 0 || frameHeight <= 0)
         {
-            return null;
+            throw new InvalidOperationException("Video has invalid dimensions.");
         }
 
         var processSize = BuildProcessSize(frameWidth, frameHeight, options.ProcessMaxWidth);
-        var bakedPath = BuildBackgroundFilePath(videoPath, sampleCount, processSize);
-        return File.Exists(bakedPath) ? bakedPath : null;
+        if (!string.IsNullOrWhiteSpace(bakeImagePath))
+        {
+            if (onStatus is not null)
+            {
+                await onStatus($"preparing baked background from image {Path.GetFileName(bakeImagePath)}...");
+            }
+
+            return await BuildBackgroundFromImageAsync(bakeImagePath, processSize, cancellationToken);
+        }
+
+        if (onStatus is not null)
+        {
+            await onStatus($"baking background for {Path.GetFileName(videoPath)}...");
+        }
+
+        return await BakeBackgroundAsync(videoPath, sampleCount, processSize, cancellationToken, onStatus);
     }
 
     public Task PreBakeBackgroundAsync(string videoPath, int sampleCount, ProcessingOptions options, CancellationToken cancellationToken)
@@ -230,6 +352,44 @@ internal sealed class BackgroundEstimationEngine
 
         var processSize = BuildProcessSize(frameWidth, frameHeight, options.ProcessMaxWidth);
         await BakeBackgroundAsync(videoPath, sampleCount, processSize, cancellationToken);
+    }
+
+    private async Task<Mat> CreateMedianBackgroundForUsbCameraAsync(
+        VideoCapture capture,
+        string sourceLabel,
+        int sampleCount,
+        Size processSize,
+        string? bakeImagePath,
+        Func<string, Task> onStatus,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(bakeImagePath))
+        {
+            await onStatus($"using bake image {Path.GetFileName(bakeImagePath)} for {sourceLabel}");
+            return LoadBackgroundImageMat(bakeImagePath, processSize);
+        }
+
+        var samplingCount = Math.Max(5, sampleCount);
+        var progressStep = Math.Max(1, samplingCount / 5);
+
+        await onStatus($"estimating background for {sourceLabel}...");
+        var medianBackground = EstimateMedianBackgroundFromLiveCapture(
+            capture,
+            samplingCount,
+            processSize,
+            cancellationToken,
+            reportProgress: (completed, total) =>
+            {
+                if (completed % progressStep != 0 && completed != total)
+                {
+                    return;
+                }
+
+                onStatus($"sampling {sourceLabel}: frame {completed}/{total}").GetAwaiter().GetResult();
+            });
+
+        await onStatus($"live capture ready: {sourceLabel}");
+        return medianBackground;
     }
 
     private Task<string> BakeBackgroundAsync(
@@ -318,17 +478,79 @@ internal sealed class BackgroundEstimationEngine
         return bakedPath;
     }
 
+    private async Task<string> BuildBackgroundFromImageAsync(
+        string imagePath,
+        Size processSize,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!File.Exists(imagePath))
+        {
+            throw new FileNotFoundException("Bake image not found.", imagePath);
+        }
+
+        var bakedPath = BuildBackgroundImageFilePath(imagePath, processSize);
+        if (File.Exists(bakedPath))
+        {
+            return bakedPath;
+        }
+
+        await Task.Yield();
+
+        using var background = LoadBackgroundImageMat(imagePath, processSize);
+        var directory = Path.GetDirectoryName(bakedPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        Cv2.ImWrite(bakedPath, background);
+        return bakedPath;
+    }
+
+    private static Mat LoadBackgroundImageMat(string imagePath, Size processSize)
+    {
+        if (!File.Exists(imagePath))
+        {
+            throw new FileNotFoundException("Bake image not found.", imagePath);
+        }
+
+        using var source = Cv2.ImRead(imagePath, ImreadModes.Color);
+        if (source.Empty())
+        {
+            throw new InvalidOperationException($"Unable to load bake image: {Path.GetFileName(imagePath)}");
+        }
+
+        using var gray = new Mat();
+        Cv2.CvtColor(source, gray, ColorConversionCodes.BGR2GRAY);
+        var resized = new Mat();
+        Cv2.Resize(gray, resized, processSize, interpolation: InterpolationFlags.Area);
+        return resized;
+    }
+
     private static string BuildBackgroundFilePath(string videoPath, int sampleCount, Size processSize)
     {
-        var cacheRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ObjectTracker",
-            "background-cache");
-
         var info = new FileInfo(videoPath);
         var keyRaw = $"{videoPath}|{info.Length}|{info.LastWriteTimeUtc.Ticks}|{sampleCount}|{processSize.Width}|{processSize.Height}";
         var key = ComputeSha256Hex(keyRaw);
-        return Path.Combine(cacheRoot, $"{key}.png");
+        return Path.Combine(GetBackgroundCacheRoot(), $"{key}.png");
+    }
+
+    private static string BuildBackgroundImageFilePath(string imagePath, Size processSize)
+    {
+        var info = new FileInfo(imagePath);
+        var keyRaw = $"image|{imagePath}|{info.Length}|{info.LastWriteTimeUtc.Ticks}|{processSize.Width}|{processSize.Height}";
+        var key = ComputeSha256Hex(keyRaw);
+        return Path.Combine(GetBackgroundCacheRoot(), $"{key}.png");
+    }
+
+    private static string GetBackgroundCacheRoot()
+    {
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ObjectTracker",
+            "background-cache");
     }
 
     private static string ComputeSha256Hex(string input)
@@ -635,6 +857,50 @@ internal sealed class BackgroundEstimationEngine
         {
             throw new InvalidOperationException("No frames available to estimate background.");
         }
+
+        return BuildMedianBackground(sampledFrames, processSize);
+    }
+
+    private static Mat EstimateMedianBackgroundFromLiveCapture(
+        VideoCapture capture,
+        int sampleCount,
+        Size processSize,
+        CancellationToken cancellationToken,
+        Action<int, int>? reportProgress = null)
+    {
+        var sampledFrames = new List<Mat>(sampleCount);
+        using var sampledFrame = new Mat();
+        using var sampledGray = new Mat();
+
+        var attempts = 0;
+        var maxAttempts = Math.Max(sampleCount * 4, 20);
+        while (sampledFrames.Count < sampleCount && attempts < maxAttempts)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            attempts++;
+
+            if (!capture.Read(sampledFrame) || sampledFrame.Empty())
+            {
+                continue;
+            }
+
+            Cv2.CvtColor(sampledFrame, sampledGray, ColorConversionCodes.BGR2GRAY);
+            var resized = new Mat();
+            Cv2.Resize(sampledGray, resized, processSize, interpolation: InterpolationFlags.Area);
+            sampledFrames.Add(resized);
+            reportProgress?.Invoke(sampledFrames.Count, sampleCount);
+        }
+
+        if (sampledFrames.Count == 0)
+        {
+            throw new InvalidOperationException("No live frames available to estimate background.");
+        }
+
+        return BuildMedianBackground(sampledFrames, processSize);
+    }
+
+    private static Mat BuildMedianBackground(List<Mat> sampledFrames, Size processSize)
+    {
 
         var pixelCount = processSize.Width * processSize.Height;
         var samples = sampledFrames.Select(ToByteArray).ToArray();

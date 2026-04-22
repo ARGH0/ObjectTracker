@@ -11,6 +11,9 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using VideoCapture = OpenCvSharp.VideoCapture;
+using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
+using VideoCaptureProperties = OpenCvSharp.VideoCaptureProperties;
 
 namespace ObjectTracker.UI.Desktop;
 
@@ -18,6 +21,7 @@ public partial class MainWindow : Window
 {
     private const int MaxLogEntries = 300;
     private const int PreviewIntervalMs = 33;
+    private const int MaxUsbCameraProbeIndex = 5;
 
     private readonly object _cameraSync = new();
     private readonly object _settingsSync = new();
@@ -67,6 +71,9 @@ public partial class MainWindow : Window
         StartStopButton.Click += StartStopButtonOnClick;
         OpenBakedMaskButton.Click += OpenBakedMaskButtonOnClick;
         PlaylistListBox.SelectionChanged += CameraSelectionChanged;
+        BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
+        SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
+        ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
 
         SampleCountTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         ThresholdTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
@@ -78,6 +85,25 @@ public partial class MainWindow : Window
 
     private async void AddCamerasButtonOnClick(object? sender, RoutedEventArgs e)
     {
+        var selection = await new CameraSourceChoiceDialog().ShowDialog<CameraAddChoice?>(this);
+        if (selection is null)
+        {
+            return;
+        }
+
+        switch (selection.Value)
+        {
+            case CameraAddChoice.VideoFiles:
+                await AddVideoCamerasAsync();
+                break;
+            case CameraAddChoice.UsbCamera:
+                await AddUsbCameraAsync();
+                break;
+        }
+    }
+
+    private async Task AddVideoCamerasAsync()
+    {
         if (StorageProvider is null)
         {
             SetStatus("Status: file picker is not available in this runtime.");
@@ -86,7 +112,7 @@ public partial class MainWindow : Window
 
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Select mock camera video files",
+            Title = "Select camera video files",
             AllowMultiple = true,
             FileTypeFilter = new List<FilePickerFileType>
             {
@@ -100,14 +126,14 @@ public partial class MainWindow : Window
             foreach (var file in files)
             {
                 var path = file.TryGetLocalPath();
-                if (string.IsNullOrWhiteSpace(path) || _cameras.Any(c => string.Equals(c.PrimaryVideoPath, path, StringComparison.OrdinalIgnoreCase)))
+                if (string.IsNullOrWhiteSpace(path) || _cameras.Any(c => string.Equals(c.Id, path, StringComparison.OrdinalIgnoreCase)))
                 {
                     continue;
                 }
 
                 var cameraId = path;
                 var displayName = BuildCameraName(path, _cameras.Count + 1);
-                _cameras.Add(new CameraProfile(cameraId, displayName, new List<string> { path }));
+                _cameras.Add(CameraProfile.CreateVideo(cameraId, displayName, new List<string> { path }));
 
                 if (!_cameraSettings.ContainsKey(cameraId))
                 {
@@ -125,12 +151,124 @@ public partial class MainWindow : Window
 
         PersistCameraSettings();
         RefreshCameraUi();
-        SetStatus($"Status: added {added} mock camera(s).");
+        SetStatus(added == 0
+            ? "Status: no new video cameras added."
+            : $"Status: added {added} video camera(s).");
 
         if (_runTask is not null)
         {
             StartBakeForAllCameras(_runCts?.Token ?? CancellationToken.None);
         }
+    }
+
+    private async Task AddUsbCameraAsync()
+    {
+        SetStatus("Status: scanning USB cameras...");
+        var usbOptions = await Task.Run(DiscoverUsbCameraOptions);
+        if (usbOptions.Count == 0)
+        {
+            SetStatus("Status: no USB cameras detected.");
+            return;
+        }
+
+        var selectedOption = await new UsbCameraSelectionDialog(usbOptions).ShowDialog<UsbCameraOption?>(this);
+        if (selectedOption is null)
+        {
+            SetStatus("Status: USB camera selection cancelled.");
+            return;
+        }
+
+        var option = selectedOption.Value;
+        var added = false;
+
+        lock (_cameraSync)
+        {
+            if (!_cameras.Any(camera => string.Equals(camera.Id, option.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                _cameras.Add(CameraProfile.CreateUsb(option.Id, option.DisplayName, option.CameraIndex, option.Api));
+
+                if (!_cameraSettings.ContainsKey(option.Id))
+                {
+                    _cameraSettings[option.Id] = RuntimeProcessingSettings.Default;
+                }
+
+                if (_selectedCameraIndex < 0)
+                {
+                    _selectedCameraIndex = 0;
+                }
+
+                added = true;
+            }
+        }
+
+        if (!added)
+        {
+            SetStatus($"Status: {option.DisplayName} is already added.");
+            return;
+        }
+
+        PersistCameraSettings();
+        RefreshCameraUi();
+        SetStatus($"Status: added {option.DisplayName}.");
+    }
+
+    private void BakeSourceComboBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        ApplyBakeSourceUiState();
+        UpdateSelectedCameraSettingsFromUi(logChange: false);
+    }
+
+    private async void SelectBakeImageButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        var camera = GetSelectedCamera();
+        if (camera is null)
+        {
+            SetStatus("Status: select a camera first.");
+            return;
+        }
+
+        if (StorageProvider is null)
+        {
+            SetStatus("Status: file picker is not available in this runtime.");
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Select bake image",
+            AllowMultiple = false,
+            FileTypeFilter = new List<FilePickerFileType>
+            {
+                new("Image files") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tif", "*.tiff", "*.webp" } }
+            }
+        });
+
+        var path = files.FirstOrDefault()?.TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        BakeSourceComboBox.SelectedIndex = (int)BakeSourceMode.ImageFile;
+        BakeImagePathTextBox.Text = path;
+        ApplyBakeSourceUiState();
+        UpdateSelectedCameraSettingsFromUi(logChange: false);
+        SetStatus($"Status: bake image selected for {camera.Value.DisplayName}.");
+    }
+
+    private void ClearBakeImageButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        var camera = GetSelectedCamera();
+        if (camera is null)
+        {
+            SetStatus("Status: select a camera first.");
+            return;
+        }
+
+        BakeImagePathTextBox.Text = string.Empty;
+        ApplyBakeSourceUiState();
+        UpdateSelectedCameraSettingsFromUi(logChange: false);
+        SetStatus($"Status: cleared bake image for {camera.Value.DisplayName}.");
     }
 
     private void RemoveCameraButtonOnClick(object? sender, RoutedEventArgs e)
@@ -213,6 +351,8 @@ public partial class MainWindow : Window
         if (camera is not null)
         {
             ApplySettingsToUi(GetSettingsForCamera(camera.Value.Id));
+            CurrentVideoText.Text = BuildCurrentSourceText(camera.Value);
+            OpenBakedMaskButton.IsEnabled = camera.Value.CanOpenBakedMask;
         }
 
         if (_runTask is not null && index >= 0)
@@ -232,7 +372,7 @@ public partial class MainWindow : Window
 
         if (GetCameraCount() == 0)
         {
-            SetStatus("Status: add at least one mock camera.");
+            SetStatus("Status: add at least one camera.");
             return;
         }
 
@@ -269,12 +409,18 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OpenBakedMaskButtonOnClick(object? sender, RoutedEventArgs e)
+    private async void OpenBakedMaskButtonOnClick(object? sender, RoutedEventArgs e)
     {
         var camera = GetSelectedCamera();
         if (camera is null)
         {
             SetStatus("Status: select a camera first.");
+            return;
+        }
+
+        if (camera.Value.IsUsbCamera)
+        {
+            SetStatus("Status: baked masks are only available for video cameras.");
             return;
         }
 
@@ -286,10 +432,20 @@ public partial class MainWindow : Window
             settings.ColorMinPixels,
             settings.MorphKernelSize);
 
-        var bakedPath = _engine.GetExistingBakedBackgroundPath(camera.Value.PrimaryVideoPath, settings.SampleCount, options);
-        if (string.IsNullOrWhiteSpace(bakedPath))
+        string? bakedPath;
+        try
         {
-            SetStatus("Status: no baked mask found yet for this camera/video. Run or pre-bake first.");
+            bakedPath = await _engine.EnsureBakedBackgroundAsync(
+                camera.Value.PrimaryVideoPath,
+                settings.SampleCount,
+                options,
+                GetBakeImagePath(settings),
+                CancellationToken.None,
+                async message => await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {message}")));
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Status: failed to prepare baked mask - {ex.Message}");
             return;
         }
 
@@ -352,10 +508,11 @@ public partial class MainWindow : Window
             {
                 PlaylistListBox.SelectedIndex = cameraIndex;
                 ApplySettingsToUi(GetSettingsForCamera(camera.Id));
-                CurrentVideoText.Text = $"Current camera/video: {camera.DisplayName} / {Path.GetFileName(camera.PrimaryVideoPath)}";
+                CurrentVideoText.Text = BuildCurrentSourceText(camera);
+                OpenBakedMaskButton.IsEnabled = camera.CanOpenBakedMask;
             });
 
-            await ProcessCameraVideosAsync(camera, loopCameraVideos, cancellationToken);
+            await ProcessCameraAsync(camera, loopCameraVideos, cancellationToken);
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -373,8 +530,43 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task ProcessCameraVideosAsync(CameraProfile camera, bool loopCameraVideos, CancellationToken cancellationToken)
+    private async Task ProcessCameraAsync(CameraProfile camera, bool loopCameraVideos, CancellationToken cancellationToken)
     {
+        if (camera.IsUsbCamera && camera.UsbCamera is { } usbCamera)
+        {
+            var settings = GetSettingsForCamera(camera.Id);
+            var options = new BackgroundEstimationEngine.ProcessingOptions(
+                settings.ProcessMaxWidth,
+                settings.MotionArea,
+                settings.ColorMinPixels,
+                settings.MorphKernelSize);
+
+            var result = await _engine.ProcessUsbCameraAsync(
+                usbCamera.CameraIndex,
+                usbCamera.Api,
+                camera.DisplayName,
+                settings.SampleCount,
+                settings.Threshold,
+                options,
+                GetBakeImagePath(settings),
+                onFrame: frameSet =>
+                {
+                    QueuePreviewFrame(frameSet, cancellationToken);
+                    return Task.CompletedTask;
+                },
+                onStatus: async message => await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {message}")),
+                getLiveTuning: () => GetLiveTuningForCamera(camera.Id),
+                shouldStopEarly: HasPendingCameraSwitchRequest,
+                cancellationToken: cancellationToken);
+
+            if (!result.Success)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {result.Message}"));
+            }
+
+            return;
+        }
+
         var videoIndex = 0;
 
         while (!cancellationToken.IsCancellationRequested)
@@ -404,7 +596,7 @@ public partial class MainWindow : Window
             var videoPath = camera.VideoPaths[videoIndex];
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                CurrentVideoText.Text = $"Current camera/video: {camera.DisplayName} / {Path.GetFileName(videoPath)}";
+                CurrentVideoText.Text = BuildCurrentSourceText(camera, Path.GetFileName(videoPath));
             });
 
             var result = await _engine.ProcessVideoAsync(
@@ -412,6 +604,7 @@ public partial class MainWindow : Window
                 settings.SampleCount,
                 settings.Threshold,
                 options,
+                GetBakeImagePath(settings),
                 onFrame: frameSet =>
                 {
                     QueuePreviewFrame(frameSet, cancellationToken);
@@ -446,6 +639,11 @@ public partial class MainWindow : Window
 
         foreach (var camera in snapshot)
         {
+            if (camera.IsUsbCamera)
+            {
+                continue;
+            }
+
             var settings = GetSettingsForCamera(camera.Id);
             var options = new BackgroundEstimationEngine.ProcessingOptions(
                 settings.ProcessMaxWidth,
@@ -459,7 +657,12 @@ public partial class MainWindow : Window
                 {
                     try
                     {
-                        await _engine.PreBakeBackgroundAsync(videoPath, settings.SampleCount, options, cancellationToken);
+                        await _engine.EnsureBakedBackgroundAsync(
+                            videoPath,
+                            settings.SampleCount,
+                            options,
+                            GetBakeImagePath(settings),
+                            cancellationToken);
                     }
                     catch (OperationCanceledException)
                     {
@@ -555,6 +758,8 @@ public partial class MainWindow : Window
         if (snapshot.Count == 0)
         {
             PlaylistListBox.SelectedIndex = -1;
+            CurrentVideoText.Text = "Current camera/source: -";
+            OpenBakedMaskButton.IsEnabled = false;
             return;
         }
 
@@ -563,6 +768,8 @@ public partial class MainWindow : Window
 
         var selected = snapshot[_selectedCameraIndex];
         ApplySettingsToUi(GetSettingsForCamera(selected.Id));
+        CurrentVideoText.Text = BuildCurrentSourceText(selected);
+        OpenBakedMaskButton.IsEnabled = selected.CanOpenBakedMask;
     }
 
     private void SetRunState(bool isRunning)
@@ -602,6 +809,8 @@ public partial class MainWindow : Window
         var colorMinPixels = ParseInt(ColorMinPixelsTextBox.Text, 40, 1, 100000);
         var morphKernelSize = ParseOddInt(MorphKernelSizeTextBox.Text, 3, 1, 31);
         var processMaxWidth = ParseInt(ProcessWidthTextBox.Text, 640, 160, 1920);
+        var bakeSourceMode = ParseBakeSourceMode();
+        var bakeImagePath = (BakeImagePathTextBox.Text ?? string.Empty).Trim();
 
         SampleCountTextBox.Text = sampleCount.ToString();
         ThresholdTextBox.Text = threshold.ToString();
@@ -609,6 +818,7 @@ public partial class MainWindow : Window
         ColorMinPixelsTextBox.Text = colorMinPixels.ToString();
         MorphKernelSizeTextBox.Text = morphKernelSize.ToString();
         ProcessWidthTextBox.Text = processMaxWidth.ToString();
+        BakeImagePathTextBox.Text = bakeImagePath;
 
         lock (_settingsSync)
         {
@@ -618,10 +828,13 @@ public partial class MainWindow : Window
                 motionArea,
                 colorMinPixels,
                 morphKernelSize,
-                processMaxWidth);
+                processMaxWidth,
+                bakeSourceMode,
+                bakeImagePath);
         }
 
         PersistCameraSettings();
+        UpdateOpenBakedMaskButtonState(camera.Value, _cameraSettings[camera.Value.Id]);
 
         if (logChange)
         {
@@ -637,6 +850,9 @@ public partial class MainWindow : Window
         ColorMinPixelsTextBox.Text = settings.ColorMinPixels.ToString();
         MorphKernelSizeTextBox.Text = settings.MorphKernelSize.ToString();
         ProcessWidthTextBox.Text = settings.ProcessMaxWidth.ToString();
+        BakeSourceComboBox.SelectedIndex = (int)settings.BakeSourceMode;
+        BakeImagePathTextBox.Text = settings.BakeImagePath;
+        ApplyBakeSourceUiState();
     }
 
     private RuntimeProcessingSettings GetSettingsForCamera(string cameraId)
@@ -746,9 +962,90 @@ public partial class MainWindow : Window
         if (TryGetCamera(target, out var camera))
         {
             ApplySettingsToUi(GetSettingsForCamera(camera.Id));
-            CurrentVideoText.Text = $"Current camera/video: {camera.DisplayName} / {Path.GetFileName(camera.PrimaryVideoPath)}";
+            CurrentVideoText.Text = BuildCurrentSourceText(camera);
+            OpenBakedMaskButton.IsEnabled = camera.CanOpenBakedMask;
             SetStatus($"Status: selected camera {camera.DisplayName}");
         }
+    }
+
+    private static IReadOnlyList<UsbCameraOption> DiscoverUsbCameraOptions()
+    {
+        var api = GetDefaultUsbCaptureApi();
+        var options = new List<UsbCameraOption>();
+
+        for (var cameraIndex = 0; cameraIndex <= MaxUsbCameraProbeIndex; cameraIndex++)
+        {
+            using var capture = new VideoCapture(cameraIndex, api);
+            capture.Set(VideoCaptureProperties.BufferSize, 1);
+            if (!capture.IsOpened())
+            {
+                continue;
+            }
+
+            var width = (int)Math.Round(capture.Get(VideoCaptureProperties.FrameWidth));
+            var height = (int)Math.Round(capture.Get(VideoCaptureProperties.FrameHeight));
+            var sizeSuffix = width > 0 && height > 0
+                ? $" ({width}x{height})"
+                : string.Empty;
+
+            options.Add(new UsbCameraOption(
+                $"usb:{cameraIndex}:{api.ToString().ToLowerInvariant()}",
+                $"USB camera {cameraIndex}{sizeSuffix}",
+                cameraIndex,
+                api));
+        }
+
+        return options;
+    }
+
+    private static VideoCaptureAPIs GetDefaultUsbCaptureApi()
+    {
+        return OperatingSystem.IsWindows()
+            ? VideoCaptureAPIs.DSHOW
+            : VideoCaptureAPIs.ANY;
+    }
+
+    private static string BuildCurrentSourceText(CameraProfile camera, string? activeSourceLabel = null)
+    {
+        var sourceLabel = string.IsNullOrWhiteSpace(activeSourceLabel)
+            ? camera.CurrentSourceLabel
+            : activeSourceLabel;
+
+        return $"Current camera/source: {camera.DisplayName} / {sourceLabel}";
+    }
+
+    private void ApplyBakeSourceUiState()
+    {
+        var bakeSourceMode = ParseBakeSourceMode();
+        var usesImage = bakeSourceMode == BakeSourceMode.ImageFile;
+
+        SampleCountTextBox.IsEnabled = !usesImage;
+        SelectBakeImageButton.IsEnabled = usesImage;
+        BakeImagePathTextBox.IsEnabled = usesImage;
+        ClearBakeImageButton.IsEnabled = usesImage && !string.IsNullOrWhiteSpace(BakeImagePathTextBox.Text);
+    }
+
+    private BakeSourceMode ParseBakeSourceMode()
+    {
+        return BakeSourceComboBox.SelectedIndex == (int)BakeSourceMode.ImageFile
+            ? BakeSourceMode.ImageFile
+            : BakeSourceMode.Samples;
+    }
+
+    private static string? GetBakeImagePath(RuntimeProcessingSettings settings)
+    {
+        if (settings.BakeSourceMode != BakeSourceMode.ImageFile || string.IsNullOrWhiteSpace(settings.BakeImagePath))
+        {
+            return null;
+        }
+
+        return settings.BakeImagePath;
+    }
+
+    private void UpdateOpenBakedMaskButtonState(CameraProfile camera, RuntimeProcessingSettings settings)
+    {
+        OpenBakedMaskButton.IsEnabled = !camera.IsUsbCamera
+            && (settings.BakeSourceMode == BakeSourceMode.Samples || !string.IsNullOrWhiteSpace(settings.BakeImagePath));
     }
 
     private bool HasPendingCameraSwitchRequest()
@@ -813,9 +1110,42 @@ public partial class MainWindow : Window
         return name;
     }
 
-    private readonly record struct CameraProfile(string Id, string DisplayName, List<string> VideoPaths)
+    private enum CameraSourceKind
+    {
+        VideoFiles,
+        UsbCamera
+    }
+
+    internal enum BakeSourceMode
+    {
+        Samples = 0,
+        ImageFile = 1
+    }
+
+    private readonly record struct UsbCameraSource(int CameraIndex, VideoCaptureAPIs Api);
+
+    private readonly record struct CameraProfile(
+        string Id,
+        string DisplayName,
+        CameraSourceKind SourceKind,
+        List<string> VideoPaths,
+        UsbCameraSource? UsbCamera)
     {
         public string PrimaryVideoPath => VideoPaths.Count > 0 ? VideoPaths[0] : string.Empty;
+
+        public bool IsUsbCamera => SourceKind == CameraSourceKind.UsbCamera && UsbCamera is not null;
+
+        public bool CanOpenBakedMask => SourceKind == CameraSourceKind.VideoFiles && !string.IsNullOrWhiteSpace(PrimaryVideoPath);
+
+        public string CurrentSourceLabel => IsUsbCamera && UsbCamera is { } usbCamera
+            ? $"USB camera {usbCamera.CameraIndex}"
+            : (string.IsNullOrWhiteSpace(PrimaryVideoPath) ? DisplayName : Path.GetFileName(PrimaryVideoPath));
+
+        public static CameraProfile CreateVideo(string id, string displayName, List<string> videoPaths)
+            => new(id, displayName, CameraSourceKind.VideoFiles, videoPaths, null);
+
+        public static CameraProfile CreateUsb(string id, string displayName, int cameraIndex, VideoCaptureAPIs api)
+            => new(id, displayName, CameraSourceKind.UsbCamera, new List<string>(), new UsbCameraSource(cameraIndex, api));
     }
 
     internal readonly record struct RuntimeProcessingSettings(
@@ -824,8 +1154,10 @@ public partial class MainWindow : Window
         int MotionArea,
         int ColorMinPixels,
         int MorphKernelSize,
-        int ProcessMaxWidth)
+        int ProcessMaxWidth,
+        BakeSourceMode BakeSourceMode,
+        string BakeImagePath)
     {
-        public static RuntimeProcessingSettings Default => new(20, 100, 220, 40, 3, 640);
+        public static RuntimeProcessingSettings Default => new(20, 100, 220, 40, 3, 640, BakeSourceMode.Samples, string.Empty);
     }
 }

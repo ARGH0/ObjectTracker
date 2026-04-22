@@ -49,7 +49,9 @@ internal sealed class CameraSettingsStore
                 MotionArea: Math.Clamp(item.MotionArea, 20, 100000),
                 ColorMinPixels: Math.Clamp(item.ColorMinPixels, 1, 100000),
                 MorphKernelSize: EnsureOdd(Math.Clamp(item.MorphKernelSize, 1, 31)),
-                ProcessMaxWidth: Math.Clamp(item.ProcessMaxWidth, 160, 1920));
+                ProcessMaxWidth: Math.Clamp(item.ProcessMaxWidth, 160, 1920),
+                BakeSourceMode: ParseBakeSourceMode(item.BakeSourceMode),
+                BakeImagePath: item.BakeImagePath ?? string.Empty);
         }
 
         return result;
@@ -72,7 +74,9 @@ internal sealed class CameraSettingsStore
                 MotionArea = settings.MotionArea,
                 ColorMinPixels = settings.ColorMinPixels,
                 MorphKernelSize = settings.MorphKernelSize,
-                ProcessMaxWidth = settings.ProcessMaxWidth
+                ProcessMaxWidth = settings.ProcessMaxWidth,
+                BakeSourceMode = settings.BakeSourceMode.ToString(),
+                BakeImagePath = settings.BakeImagePath
             });
         }
 
@@ -91,6 +95,13 @@ internal sealed class CameraSettingsStore
         return value % 2 == 0 ? value + 1 : value;
     }
 
+    private static MainWindow.BakeSourceMode ParseBakeSourceMode(string? value)
+    {
+        return Enum.TryParse<MainWindow.BakeSourceMode>(value, ignoreCase: true, out var parsed)
+            ? parsed
+            : MainWindow.BakeSourceMode.Samples;
+    }
+
     private sealed class CameraSettingsFileDto
     {
         public List<CameraSettingsItemDto> Items { get; set; } = new();
@@ -105,5 +116,7 @@ internal sealed class CameraSettingsStore
         public int ColorMinPixels { get; set; } = 40;
         public int MorphKernelSize { get; set; } = 3;
         public int ProcessMaxWidth { get; set; } = 640;
+        public string BakeSourceMode { get; set; } = nameof(MainWindow.BakeSourceMode.Samples);
+        public string BakeImagePath { get; set; } = string.Empty;
     }
 }

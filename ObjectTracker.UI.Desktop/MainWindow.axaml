@@ -73,37 +73,90 @@
                                 Padding="10">
                                 <Grid RowDefinitions="Auto,6,*,8,Auto">
                                 <StackPanel Grid.Row="0"
-                                            Spacing="2">
+                                        Spacing="2">
                                     <TextBlock Text="Processing"
                                                Classes="sectionTitle" />
                                     <TextBlock Text="Compact runtime tuning for selected camera"
                                                Classes="muted"
                                                TextWrapping="Wrap" />
+                                    <DockPanel LastChildFill="False"
+                                           Margin="0,2,0,0">
+                                    <Border Background="#26323B"
+                                        BorderBrush="#3C4F5E"
+                                        BorderThickness="1"
+                                        Padding="4,1"
+                                        Margin="0,0,6,0">
+                                        <TextBlock Text="i"
+                                               Foreground="#CFE0EC"
+                                               FontSize="11"
+                                               FontWeight="Bold" />
+                                    </Border>
+                                    <TextBlock Text="Hover labels for parameter help"
+                                           Classes="muted"
+                                           FontSize="11"
+                                           VerticalAlignment="Center" />
+                                    </DockPanel>
                                 </StackPanel>
 
                                 <ScrollViewer Grid.Row="2"
                                               VerticalScrollBarVisibility="Auto">
                                     <StackPanel Spacing="8">
-                                        <CheckBox x:Name="LoopPlaylistCheckBox"
-                                                  Content="Loop camera videos"
-                                                  ToolTip.Tip="When enabled, the selected video source restarts automatically after reaching the end."
-                                                  IsChecked="True" />
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <CheckBox x:Name="LoopPlaylistCheckBox"
+                                                      Content="Loop camera videos"
+                                                      IsChecked="True" />
+                                            <Border Background="#26323B"
+                                                    BorderBrush="#3C4F5E"
+                                                    BorderThickness="1"
+                                                    Padding="4,1"
+                                                    ToolTip.Tip="When enabled, the selected video source restarts automatically after reaching the end."
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="i"
+                                                           Foreground="#CFE0EC"
+                                                           FontSize="11"
+                                                           FontWeight="Bold" />
+                                            </Border>
+                                        </StackPanel>
 
                                             <Grid ColumnDefinitions="*,8,*"
                                                 RowDefinitions="Auto,8,Auto,8,Auto,8,Auto">
                                             <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
-                                                <TextBlock Text="Samples"
-                                                           ToolTip.Tip="Number of frames used to estimate the static background model. Higher values improve stability but increase startup time."
-                                                           Classes="eyebrow" />
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="Samples"
+                                                               Classes="eyebrow" />
+                                                    <Border Background="#26323B"
+                                                            BorderBrush="#3C4F5E"
+                                                            BorderThickness="1"
+                                                            Padding="4,1"
+                                                            ToolTip.Tip="Number of frames used to estimate the static background model. Higher values improve stability but increase startup time."
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="i"
+                                                                   Foreground="#CFE0EC"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold" />
+                                                    </Border>
+                                                </StackPanel>
                                                 <TextBox x:Name="SampleCountTextBox"
                                                          Text="20"
                                                          Watermark="20" />
                                             </StackPanel>
 
                                             <StackPanel Grid.Row="0" Grid.Column="2" Spacing="4">
-                                                <TextBlock Text="Bake Source"
-                                                           ToolTip.Tip="Choose whether the background model is baked from sampled source frames or from a single image file."
-                                                           Classes="eyebrow" />
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="Bake Source"
+                                                               Classes="eyebrow" />
+                                                    <Border Background="#26323B"
+                                                            BorderBrush="#3C4F5E"
+                                                            BorderThickness="1"
+                                                            Padding="4,1"
+                                                            ToolTip.Tip="Choose whether the background model is baked from sampled source frames or from a single image file."
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="i"
+                                                                   Foreground="#CFE0EC"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold" />
+                                                    </Border>
+                                                </StackPanel>
                                                 <ComboBox x:Name="BakeSourceComboBox"
                                                           ToolTip.Tip="Source used to create the baked background mask for subtraction."
                                                           SelectedIndex="0">
@@ -113,9 +166,21 @@
                                             </StackPanel>
 
                                             <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Spacing="4">
-                                                <TextBlock Text="Bake Image"
-                                                           ToolTip.Tip="Path to an image used as the background reference when Bake Source is set to Image file."
-                                                           Classes="eyebrow" />
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="Bake Image"
+                                                               Classes="eyebrow" />
+                                                    <Border Background="#26323B"
+                                                            BorderBrush="#3C4F5E"
+                                                            BorderThickness="1"
+                                                            Padding="4,1"
+                                                            ToolTip.Tip="Path to an image used as the background reference when Bake Source is set to Image file."
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="i"
+                                                                   Foreground="#CFE0EC"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold" />
+                                                    </Border>
+                                                </StackPanel>
                                                 <TextBox x:Name="BakeImagePathTextBox"
                                                          IsReadOnly="True"
                                                          Watermark="No image selected" />
@@ -134,36 +199,84 @@
                                             </StackPanel>
 
                                             <StackPanel Grid.Row="4" Grid.Column="0" Spacing="4">
-                                                <TextBlock Text="Threshold"
-                                                           ToolTip.Tip="Pixel-difference threshold for foreground detection. Lower values detect subtle motion; higher values ignore small changes/noise."
-                                                           Classes="eyebrow" />
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="Threshold"
+                                                               Classes="eyebrow" />
+                                                    <Border Background="#26323B"
+                                                            BorderBrush="#3C4F5E"
+                                                            BorderThickness="1"
+                                                            Padding="4,1"
+                                                            ToolTip.Tip="Pixel-difference threshold for foreground detection. Lower values detect subtle motion; higher values ignore small changes/noise."
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="i"
+                                                                   Foreground="#CFE0EC"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold" />
+                                                    </Border>
+                                                </StackPanel>
                                                 <TextBox x:Name="ThresholdTextBox"
                                                          Text="100"
                                                          Watermark="100" />
                                             </StackPanel>
 
                                             <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4">
-                                                <TextBlock Text="Motion Area"
-                                                           ToolTip.Tip="Minimum contour/pixel area treated as valid motion. Increase to suppress tiny flicker and noise blobs."
-                                                           Classes="eyebrow" />
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="Motion Area"
+                                                               Classes="eyebrow" />
+                                                    <Border Background="#26323B"
+                                                            BorderBrush="#3C4F5E"
+                                                            BorderThickness="1"
+                                                            Padding="4,1"
+                                                            ToolTip.Tip="Minimum contour/pixel area treated as valid motion. Increase to suppress tiny flicker and noise blobs."
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="i"
+                                                                   Foreground="#CFE0EC"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold" />
+                                                    </Border>
+                                                </StackPanel>
                                                 <TextBox x:Name="MotionAreaTextBox"
                                                          Text="220"
                                                          Watermark="220" />
                                             </StackPanel>
 
                                             <StackPanel Grid.Row="6" Grid.Column="0" Spacing="4">
-                                                <TextBlock Text="Color Pixels"
-                                                           ToolTip.Tip="Minimum number of matched color pixels required before color-based detection is considered active."
-                                                           Classes="eyebrow" />
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="Color Pixels"
+                                                               Classes="eyebrow" />
+                                                    <Border Background="#26323B"
+                                                            BorderBrush="#3C4F5E"
+                                                            BorderThickness="1"
+                                                            Padding="4,1"
+                                                            ToolTip.Tip="Minimum number of matched color pixels required before color-based detection is considered active."
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="i"
+                                                                   Foreground="#CFE0EC"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold" />
+                                                    </Border>
+                                                </StackPanel>
                                                 <TextBox x:Name="ColorMinPixelsTextBox"
                                                          Text="40"
                                                          Watermark="40" />
                                             </StackPanel>
 
                                             <StackPanel Grid.Row="6" Grid.Column="2" Spacing="4">
-                                                <TextBlock Text="Morph Kernel"
-                                                           ToolTip.Tip="Kernel size for morphology (erode/dilate) cleanup. Larger kernels remove more speckle but can merge nearby regions."
-                                                           Classes="eyebrow" />
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="Morph Kernel"
+                                                               Classes="eyebrow" />
+                                                    <Border Background="#26323B"
+                                                            BorderBrush="#3C4F5E"
+                                                            BorderThickness="1"
+                                                            Padding="4,1"
+                                                            ToolTip.Tip="Kernel size for morphology (erode/dilate) cleanup. Larger kernels remove more speckle but can merge nearby regions."
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="i"
+                                                                   Foreground="#CFE0EC"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold" />
+                                                    </Border>
+                                                </StackPanel>
                                                 <TextBox x:Name="MorphKernelSizeTextBox"
                                                          Text="3"
                                                          Watermark="3" />
@@ -171,9 +284,21 @@
                                         </Grid>
 
                                         <StackPanel Spacing="4">
-                                            <TextBlock Text="Process Width"
-                                                       ToolTip.Tip="Target frame width used for processing. Lower widths run faster; higher widths preserve detail at higher CPU cost."
-                                                       Classes="eyebrow" />
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="Process Width"
+                                                           Classes="eyebrow" />
+                                                <Border Background="#26323B"
+                                                        BorderBrush="#3C4F5E"
+                                                        BorderThickness="1"
+                                                        Padding="4,1"
+                                                        ToolTip.Tip="Target frame width used for processing. Lower widths run faster; higher widths preserve detail at higher CPU cost."
+                                                        VerticalAlignment="Center">
+                                                    <TextBlock Text="i"
+                                                               Foreground="#CFE0EC"
+                                                               FontSize="11"
+                                                               FontWeight="Bold" />
+                                                </Border>
+                                            </StackPanel>
                                             <TextBox x:Name="ProcessWidthTextBox"
                                                      Text="640"
                                                      Watermark="640" />

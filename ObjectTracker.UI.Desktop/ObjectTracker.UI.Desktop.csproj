@@ -24,6 +24,7 @@
     <PackageReference Include="Avalonia" Version="11.0.6" />
     <PackageReference Include="Avalonia.Desktop" Version="11.0.6" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.6" />
+    <PackageReference Include="FluentAvaloniaUI" Version="2.0.5" />
     <PackageReference Include="OpenCvSharp4" Version="$(OpenCvSharpVersion)" />
     <PackageReference Include="$(OpenCvSharpRuntimePackage)" Version="$(OpenCvSharpRuntimePackageVersion)" Condition="'$(OpenCvSharpRuntimePackage)' != ''" />
     <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->

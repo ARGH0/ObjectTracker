@@ -11,13 +11,14 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using FluentAvalonia.UI.Windowing;
 using VideoCapture = OpenCvSharp.VideoCapture;
 using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
 using VideoCaptureProperties = OpenCvSharp.VideoCaptureProperties;
 
 namespace ObjectTracker.UI.Desktop;
 
-public partial class MainWindow : Window
+public partial class MainWindow : AppWindow
 {
     private const int MaxLogEntries = 300;
     private const int PreviewIntervalMs = 33;
@@ -42,6 +43,13 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        if (OperatingSystem.IsWindows())
+        {
+            TitleBar.ExtendsContentIntoTitleBar = true;
+            TitleBar.Height = 40;
+        }
+
         LogListBox.ItemsSource = _logEntries;
 
         foreach (var (cameraId, settings) in _cameraSettingsStore.Load())
@@ -747,10 +755,6 @@ public partial class MainWindow : Window
 
         PlaylistListBox.ItemsSource = snapshot.Select(camera => camera.DisplayName).ToList();
 
-        PlaylistCountText.Text = snapshot.Count == 1
-            ? "1 camera"
-            : $"{snapshot.Count} cameras";
-
         var canNavigate = snapshot.Count > 1;
         PreviousVideoButton.IsEnabled = canNavigate;
         NextVideoButton.IsEnabled = canNavigate;
@@ -779,10 +783,6 @@ public partial class MainWindow : Window
         RemoveSelectedButton.IsEnabled = !isRunning;
         ClearPlaylistButton.IsEnabled = !isRunning;
         LoopPlaylistCheckBox.IsEnabled = !isRunning;
-        RunStateBadge.Text = isRunning ? "Running" : "Idle";
-        RunStateBadge.Foreground = isRunning
-            ? Avalonia.Media.Brushes.LightGreen
-            : Avalonia.Media.Brushes.LightBlue;
 
         if (!isRunning)
         {

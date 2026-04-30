@@ -1,9 +1,17 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sty="using:FluentAvalonia.Styling"
              x:Class="ObjectTracker.UI.Desktop.App"
              RequestedThemeVariant="Dark">
 
     <Application.Resources>
+        <x:Double x:Key="Space2">2</x:Double>
+        <x:Double x:Key="Space4">4</x:Double>
+        <x:Double x:Key="Space6">6</x:Double>
+        <x:Double x:Key="Space8">8</x:Double>
+        <x:Double x:Key="Space12">12</x:Double>
+        <x:Double x:Key="Space16">16</x:Double>
+
         <SolidColorBrush x:Key="AppBackgroundBrush" Color="#090C10" />
         <SolidColorBrush x:Key="SurfaceBrush" Color="#11161C" />
         <SolidColorBrush x:Key="SurfaceAltBrush" Color="#161D25" />
@@ -18,7 +26,7 @@
     </Application.Resources>
 
     <Application.Styles>
-        <FluentTheme />
+        <sty:FluentAvaloniaTheme PreferUserAccentColor="True" />
 
         <Style Selector="Window">
             <Setter Property="Background" Value="{StaticResource AppBackgroundBrush}" />
@@ -29,9 +37,9 @@
             <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="14,10" />
-            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="MinHeight" Value="34" />
         </Style>
 
         <Style Selector="Button:pointerover">
@@ -92,8 +100,9 @@
             <Setter Property="Background" Value="{StaticResource InputBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="12,9" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="MinHeight" Value="34" />
         </Style>
 
         <Style Selector="TextBox:focus">
@@ -105,8 +114,9 @@
             <Setter Property="Background" Value="{StaticResource InputBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="12,9" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="MinHeight" Value="34" />
         </Style>
 
         <Style Selector="ComboBox:pointerover">
@@ -131,15 +141,31 @@
             <Setter Property="Background" Value="{StaticResource InputBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="4" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="2" />
         </Style>
 
         <Style Selector="ListBoxItem">
-            <Setter Property="Padding" Value="12,10" />
-            <Setter Property="Margin" Value="4" />
-            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Foreground" Value="#DCE7EE" />
+        </Style>
+
+        <Style Selector="Expander">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="10" />
+        </Style>
+
+        <Style Selector="Expander /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Margin" Value="0,8,0,0" />
+        </Style>
+
+        <Style Selector="GridSplitter">
+            <Setter Property="Background" Value="#1A222C" />
         </Style>
 
         <Style Selector="ListBoxItem:pointerover">
@@ -165,13 +191,13 @@
 
         <Style Selector="TextBlock.sectionTitle">
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontSize" Value="16" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
         <Style Selector="TextBlock.cardTitle">
             <Setter Property="Foreground" Value="#E8F1F6" />
-            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 

@@ -1,174 +1,104 @@
-<Window xmlns="https://github.com/avaloniaui"
+<wnd:AppWindow xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:wnd="using:FluentAvalonia.UI.Windowing"
         mc:Ignorable="d"
         x:Class="ObjectTracker.UI.Desktop.MainWindow"
-        Title="ObjectTracker - Background Estimation Lab"
-        Width="1460"
-        Height="900"
+        Title="ObjectTracker"
+        Width="1920"
+        Height="1080"
         MinWidth="1080"
         MinHeight="680"
         Background="{StaticResource AppBackgroundBrush}"
-        d:DesignWidth="1460"
-        d:DesignHeight="900">
-    <Grid RowDefinitions="Auto,18,*,18,190" Margin="24">
-        <Border Grid.Row="0"
-                Classes="surface"
-                Padding="24"
-                Margin="0,0,0,0">
-            <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Offset="0" Color="#171D25" />
-                    <GradientStop Offset="0.55" Color="#202A35" />
-                    <GradientStop Offset="1" Color="#59768C" />
-                </LinearGradientBrush>
-            </Border.Background>
-            <Grid ColumnDefinitions="*,24,Auto">
-                <StackPanel Grid.Column="0" Spacing="10">
-                    <TextBlock Text="VISION PIPELINE"
-                               Classes="eyebrow" />
-                    <TextBlock Text="Background Estimation Lab"
-                               FontSize="34"
-                               FontWeight="Bold"
-                               Foreground="#F4F8FB" />
-                    <TextBlock Text="Build a baseline from recorded video or a live USB camera and extract moving foreground against that background."
-                               MaxWidth="760"
-                               Foreground="#CFDCE5"
-                               FontSize="14"
-                               LineHeight="22"
-                               TextWrapping="Wrap" />
-                </StackPanel>
-                <Grid Grid.Column="2"
-                      Width="250"
-                      RowDefinitions="Auto,14,Auto"
-                      VerticalAlignment="Center">
-                    <Border Grid.Row="0"
-                        HorizontalAlignment="Right"
-                        CornerRadius="999"
-                        Padding="14,7"
-                        Background="#111820"
-                        BorderThickness="1"
-                        BorderBrush="#6A859A">
-                        <TextBlock x:Name="RunStateBadge"
-                                   Text="Idle"
-                                   Foreground="#F1F7FA"
-                                   FontWeight="SemiBold" />
-                    </Border>
+        d:DesignWidth="1920"
+        d:DesignHeight="1080">
+    <Grid RowDefinitions="40,*,Auto"
+          Margin="10,0,10,10">
 
-                    <Border Grid.Row="2"
-                            Classes="surfaceAlt"
-                            Padding="14">
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="Workspace"
-                                       Classes="eyebrow" />
-                            <TextBlock Text="Camera-based foreground extraction"
-                                       TextWrapping="Wrap"
-                                       Foreground="#E7EFF4"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="Use the left panel for source management and tuning, then inspect each stage in the preview grid."
-                                       Classes="muted"
-                                       FontSize="12"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-                </Grid>
-            </Grid>
+        <!-- Compact title bar / branding strip -->
+        <Border Grid.Row="0"
+                Background="Transparent"
+                wnd:AppWindow.AllowInteractionInTitleBar="False">
+            <DockPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                <TextBlock Text="ObjectTracker"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="Background Estimation Lab"
+                           FontSize="11"
+                           Classes="muted"
+                           Margin="10,1,0,0"
+                           VerticalAlignment="Center" />
+            </DockPanel>
         </Border>
 
-        <Grid Grid.Row="2" ColumnDefinitions="360,20,*">
-            <Grid Grid.Column="0" RowDefinitions="Auto,16,*">
-                <Border Grid.Row="0"
-                        Classes="surface"
-                        Padding="18">
-                    <StackPanel>
-                        <TextBlock Text="Sources"
-                                   Classes="sectionTitle" />
-                        <TextBlock x:Name="PlaylistCountText"
-                                   Text="0 cameras"
-                                   Margin="0,4,0,0"
-                                   Classes="muted" />
-                    </StackPanel>
-                </Border>
+        <Grid Grid.Row="1"
+              ColumnDefinitions="340,6,*">
+            <Border Grid.Column="0"
+                    Classes="surface"
+                    Padding="10">
+                    <Grid RowDefinitions="Auto,8,Auto,8,*,8,Auto">
+                    <TextBlock Grid.Row="0"
+                               Text="Camera Sources"
+                               Classes="sectionTitle" />
 
-                <Border Grid.Row="2"
-                        Classes="surface"
-                        Padding="16">
-                    <Grid RowDefinitions="Auto,12,Auto,16,*,16,Auto">
-                        <Border Grid.Row="0"
-                                Classes="surfaceAlt"
-                                Padding="12">
-                            <StackPanel Spacing="6">
-                                <TextBlock Text="Available Cameras"
-                                           Classes="cardTitle" />
-                                <TextBlock Text="Organize recorded clips and USB sources in one list."
-                                           Classes="muted"
-                                           FontSize="12"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Border>
+                    <ListBox Grid.Row="2"
+                             x:Name="PlaylistListBox"
+                             MinHeight="150"
+                             MaxHeight="220" />
 
-                        <Border Grid.Row="2"
-                                Classes="surfaceAlt"
-                                Padding="12">
-                            <Grid RowDefinitions="*,12,Auto,10,Auto">
-                                <ListBox Grid.Row="0"
-                                         x:Name="PlaylistListBox"
-                                         MinHeight="220" />
+                      <Grid Grid.Row="4"
+                          RowDefinitions="Auto,8,Auto,8,*">
+                        <Grid Grid.Row="0"
+                            ColumnDefinitions="*,6,*">
+                            <Button x:Name="AddVideosButton"
+                                    Grid.Column="0"
+                                    Classes="primary"
+                                    Content="Add Camera" />
+                            <Button x:Name="RemoveSelectedButton"
+                                    Grid.Column="2"
+                                    Classes="destructive"
+                                    Content="Remove" />
+                        </Grid>
 
-                                <Grid Grid.Row="2" ColumnDefinitions="*,10,*">
-                                    <Button x:Name="AddVideosButton"
-                                            Grid.Column="0"
-                                            Classes="primary"
-                                            Content="Add Camera"
-                                            Height="40" />
-                                    <Button x:Name="RemoveSelectedButton"
-                                            Grid.Column="2"
-                                            Classes="destructive"
-                                            Content="Remove Camera"
-                                            Height="40" />
-                                </Grid>
-
-                                <Button Grid.Row="4"
-                                        x:Name="ClearPlaylistButton"
-                                        Classes="destructive"
-                                        Content="Clear Cameras"
-                                        Height="38" />
-                            </Grid>
-                        </Border>
+                        <Button Grid.Row="2"
+                                x:Name="ClearPlaylistButton"
+                                Classes="ghost"
+                                Content="Clear Cameras" />
 
                         <Border Grid.Row="4"
                                 Classes="surfaceAlt"
-                                Padding="14">
-                            <Grid RowDefinitions="Auto,12,*,14,Auto">
-                                <StackPanel>
-                                    <TextBlock Text="Processing Settings"
+                                Padding="10">
+                                <Grid RowDefinitions="Auto,6,*,8,Auto">
+                                <StackPanel Grid.Row="0"
+                                            Spacing="2">
+                                    <TextBlock Text="Processing"
                                                Classes="sectionTitle" />
-                                    <TextBlock Text="Tune the background model and color motion filters for the selected camera."
-                                               Margin="0,4,0,0"
+                                    <TextBlock Text="Compact runtime tuning for selected camera"
                                                Classes="muted"
                                                TextWrapping="Wrap" />
                                 </StackPanel>
 
                                 <ScrollViewer Grid.Row="2"
                                               VerticalScrollBarVisibility="Auto">
-                                    <StackPanel Spacing="12">
+                                    <StackPanel Spacing="8">
                                         <CheckBox x:Name="LoopPlaylistCheckBox"
                                                   Content="Loop camera videos"
                                                   IsChecked="True" />
 
-                                        <Grid ColumnDefinitions="*,12,*"
-                                              RowDefinitions="Auto,14,Auto,14,Auto,14,Auto">
-                                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="6">
+                                            <Grid ColumnDefinitions="*,8,*"
+                                                RowDefinitions="Auto,8,Auto,8,Auto,8,Auto">
+                                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                                                 <TextBlock Text="Samples"
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="SampleCountTextBox"
                                                          Text="20"
-                                                         Watermark="20"
-                                                         HorizontalAlignment="Stretch" />
+                                                         Watermark="20" />
                                             </StackPanel>
 
-                                            <StackPanel Grid.Row="0" Grid.Column="2" Spacing="6">
+                                            <StackPanel Grid.Row="0" Grid.Column="2" Spacing="4">
                                                 <TextBlock Text="Bake Source"
                                                            Classes="eyebrow" />
                                                 <ComboBox x:Name="BakeSourceComboBox"
@@ -178,220 +108,216 @@
                                                 </ComboBox>
                                             </StackPanel>
 
-                                            <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Spacing="6">
+                                            <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Spacing="4">
                                                 <TextBlock Text="Bake Image"
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="BakeImagePathTextBox"
                                                          IsReadOnly="True"
-                                                         Watermark="No image selected"
-                                                         HorizontalAlignment="Stretch" />
-                                                <Grid ColumnDefinitions="*,10,*">
+                                                         Watermark="No image selected" />
+                                                <Grid ColumnDefinitions="*,8,*">
                                                     <Button x:Name="SelectBakeImageButton"
                                                             Grid.Column="0"
                                                             Classes="ghost"
-                                                            Content="Select Image"
-                                                            Height="36" />
+                                                            Content="Select Image" />
                                                     <Button x:Name="ClearBakeImageButton"
                                                             Grid.Column="2"
                                                             Classes="ghost"
-                                                            Content="Clear Image"
-                                                            Height="36" />
+                                                            Content="Clear Image" />
                                                 </Grid>
                                             </StackPanel>
 
-                                            <StackPanel Grid.Row="4" Grid.Column="0" Spacing="6">
+                                            <StackPanel Grid.Row="4" Grid.Column="0" Spacing="4">
                                                 <TextBlock Text="Threshold"
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="ThresholdTextBox"
                                                          Text="100"
-                                                         Watermark="100"
-                                                         HorizontalAlignment="Stretch" />
+                                                         Watermark="100" />
                                             </StackPanel>
 
-                                            <StackPanel Grid.Row="4" Grid.Column="2" Spacing="6">
+                                            <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4">
                                                 <TextBlock Text="Motion Area"
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="MotionAreaTextBox"
                                                          Text="220"
-                                                         Watermark="220"
-                                                         HorizontalAlignment="Stretch" />
+                                                         Watermark="220" />
                                             </StackPanel>
 
-                                            <StackPanel Grid.Row="6" Grid.Column="0" Spacing="6">
+                                            <StackPanel Grid.Row="6" Grid.Column="0" Spacing="4">
                                                 <TextBlock Text="Color Pixels"
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="ColorMinPixelsTextBox"
                                                          Text="40"
-                                                         Watermark="40"
-                                                         HorizontalAlignment="Stretch" />
+                                                         Watermark="40" />
                                             </StackPanel>
 
-                                            <StackPanel Grid.Row="6" Grid.Column="2" Spacing="6">
+                                            <StackPanel Grid.Row="6" Grid.Column="2" Spacing="4">
                                                 <TextBlock Text="Morph Kernel"
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="MorphKernelSizeTextBox"
                                                          Text="3"
-                                                         Watermark="3"
-                                                         HorizontalAlignment="Stretch" />
+                                                         Watermark="3" />
                                             </StackPanel>
                                         </Grid>
 
-                                        <StackPanel Spacing="6">
+                                        <StackPanel Spacing="4">
                                             <TextBlock Text="Process Width"
                                                        Classes="eyebrow" />
                                             <TextBox x:Name="ProcessWidthTextBox"
                                                      Text="640"
-                                                     Watermark="640"
-                                                     HorizontalAlignment="Stretch" />
+                                                     Watermark="640" />
                                         </StackPanel>
                                     </StackPanel>
                                 </ScrollViewer>
 
-                                <StackPanel Grid.Row="4" Spacing="10">
+                                <Grid Grid.Row="4"
+                                      ColumnDefinitions="*,8,*">
                                     <Button x:Name="StartStopButton"
+                                            Grid.Column="0"
                                             Classes="primary"
                                             Content="Start"
-                                            Height="46"
-                                            FontSize="16"
                                             FontWeight="Bold" />
-
                                     <Button x:Name="OpenBakedMaskButton"
+                                            Grid.Column="2"
                                             Classes="ghost"
-                                            Content="Open Baked Mask"
-                                            Height="38" />
-                                </StackPanel>
+                                            Content="Open Baked Mask" />
+                                </Grid>
                             </Grid>
                         </Border>
                     </Grid>
-                </Border>
-            </Grid>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="1"
+                          ResizeDirection="Columns"
+                          Width="6"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch" />
 
             <Border Grid.Column="2"
                     Classes="surface"
-                    Padding="16">
-                <Grid RowDefinitions="Auto,14,*,14,Auto,12,Auto">
-                    <Grid Grid.Row="0" ColumnDefinitions="*,20,Auto">
-                        <StackPanel Grid.Column="0" Spacing="4">
-                            <TextBlock Text="Pipeline Preview"
-                                       Classes="sectionTitle" />
-                            <TextBlock Text="Inspect each processing stage in sequence and compare the output per source."
-                                       Classes="muted"
+                    Padding="10">
+                    <Grid RowDefinitions="Auto,8,*">
+                    <Border Grid.Row="0"
+                            Classes="surfaceAlt"
+                            Padding="8">
+                        <Grid ColumnDefinitions="*,8,*,Auto">
+                            <TextBlock x:Name="CurrentVideoText"
+                                       Grid.Column="0"
+                                       Text="Current camera/source: -"
+                                       VerticalAlignment="Center"
+                                       Foreground="#E8F0F5"
+                                       FontWeight="SemiBold"
                                        TextWrapping="Wrap" />
-                        </StackPanel>
 
-                        <Grid Grid.Column="2" ColumnDefinitions="Auto,10,Auto">
-                            <Button Grid.Column="0"
-                                    x:Name="PreviousVideoButton"
-                                    Classes="ghost"
-                                    Content="Previous"
-                                    Height="36" />
+                            <TextBlock x:Name="StatusText"
+                                       Grid.Column="2"
+                                       Text="Status: ready"
+                                       Classes="muted"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap" />
 
-                            <Button Grid.Column="2"
-                                    x:Name="NextVideoButton"
-                                    Classes="ghost"
-                                    Content="Next"
-                                    Height="36" />
+                            <Grid Grid.Column="3"
+                                  ColumnDefinitions="Auto,6,Auto">
+                                <Button Grid.Column="0"
+                                        x:Name="PreviousVideoButton"
+                                        Classes="ghost"
+                                        Content="Previous" />
+                                <Button Grid.Column="2"
+                                        x:Name="NextVideoButton"
+                                        Classes="ghost"
+                                        Content="Next" />
+                            </Grid>
                         </Grid>
+                    </Border>
+
+                      <Grid Grid.Row="2"
+                          RowDefinitions="*,8,*"
+                          ColumnDefinitions="*,8,*">
+                        <Border Grid.Row="0"
+                                Grid.Column="0"
+                                Classes="surfaceAlt"
+                                Padding="8">
+                            <Grid RowDefinitions="Auto,6,*">
+                                <TextBlock Text="1. Background Estimation"
+                                           Classes="cardTitle" />
+                                <Border Grid.Row="2"
+                                        BorderThickness="1"
+                                        BorderBrush="#2A3642"
+                                        Background="#070A0E"
+                                        CornerRadius="8">
+                                    <Image x:Name="PreviewBackgroundMaskImage"
+                                           Stretch="Uniform" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="0"
+                                Grid.Column="2"
+                                Classes="surfaceAlt"
+                                Padding="8">
+                            <Grid RowDefinitions="Auto,6,*">
+                                <TextBlock Text="2. Moving Objects"
+                                           Classes="cardTitle" />
+                                <Border Grid.Row="2"
+                                        BorderThickness="1"
+                                        BorderBrush="#2A3642"
+                                        Background="#070A0E"
+                                        CornerRadius="8">
+                                    <Image x:Name="PreviewMovingColorImage"
+                                           Stretch="Uniform" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="2"
+                                Grid.Column="0"
+                                Classes="surfaceAlt"
+                                Padding="8">
+                            <Grid RowDefinitions="Auto,6,*">
+                                <TextBlock Text="3. Color Detection"
+                                           Classes="cardTitle" />
+                                <Border Grid.Row="2"
+                                        BorderThickness="1"
+                                        BorderBrush="#2A3642"
+                                        Background="#070A0E"
+                                        CornerRadius="8">
+                                    <Image x:Name="PreviewColorDetectionImage"
+                                           Stretch="Uniform" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="2"
+                                Grid.Column="2"
+                                Classes="surfaceAlt"
+                                Padding="8">
+                            <Grid RowDefinitions="Auto,6,*">
+                                <TextBlock Text="4. Speed + Direction"
+                                           Classes="cardTitle" />
+                                <Border Grid.Row="2"
+                                        BorderThickness="1"
+                                        BorderBrush="#2A3642"
+                                        Background="#070A0E"
+                                        CornerRadius="8">
+                                    <Image x:Name="PreviewMotionImage"
+                                           Stretch="Uniform" />
+                                </Border>
+                            </Grid>
+                        </Border>
                     </Grid>
-
-                    <Border Grid.Row="2"
-                            Classes="surfaceAlt"
-                            Padding="12">
-                        <Grid RowDefinitions="*,12,*" ColumnDefinitions="*,12,*">
-                            <Border Grid.Row="0" Grid.Column="0" Classes="surface" Padding="10">
-                                <Grid RowDefinitions="Auto,8,*">
-                                    <TextBlock Text="1. Background Estimation"
-                                               Classes="cardTitle" />
-                                    <Border Grid.Row="2"
-                                            CornerRadius="10"
-                                            BorderThickness="1"
-                                            BorderBrush="#2A3642"
-                                            Background="#070A0E">
-                                        <Image x:Name="PreviewBackgroundMaskImage" Stretch="Uniform" />
-                                    </Border>
-                                </Grid>
-                            </Border>
-
-                            <Border Grid.Row="0" Grid.Column="2" Classes="surface" Padding="10">
-                                <Grid RowDefinitions="Auto,8,*">
-                                    <TextBlock Text="2. Moving Objects"
-                                               Classes="cardTitle" />
-                                    <Border Grid.Row="2"
-                                            CornerRadius="10"
-                                            BorderThickness="1"
-                                            BorderBrush="#2A3642"
-                                            Background="#070A0E">
-                                        <Image x:Name="PreviewMovingColorImage" Stretch="Uniform" />
-                                    </Border>
-                                </Grid>
-                            </Border>
-
-                            <Border Grid.Row="2" Grid.Column="0" Classes="surface" Padding="10">
-                                <Grid RowDefinitions="Auto,8,*">
-                                    <TextBlock Text="3. Color Detection"
-                                               Classes="cardTitle" />
-                                    <Border Grid.Row="2"
-                                            CornerRadius="10"
-                                            BorderThickness="1"
-                                            BorderBrush="#2A3642"
-                                            Background="#070A0E">
-                                        <Image x:Name="PreviewColorDetectionImage" Stretch="Uniform" />
-                                    </Border>
-                                </Grid>
-                            </Border>
-
-                            <Border Grid.Row="2" Grid.Column="2" Classes="surface" Padding="10">
-                                <Grid RowDefinitions="Auto,8,*">
-                                    <TextBlock Text="4. Speed + Direction"
-                                               Classes="cardTitle" />
-                                    <Border Grid.Row="2"
-                                            CornerRadius="10"
-                                            BorderThickness="1"
-                                            BorderBrush="#2A3642"
-                                            Background="#070A0E">
-                                        <Image x:Name="PreviewMotionImage" Stretch="Uniform" />
-                                    </Border>
-                                </Grid>
-                            </Border>
-                        </Grid>
-                    </Border>
-
-                    <Border Grid.Row="4"
-                            Classes="surfaceAlt"
-                            Padding="14,12">
-                        <TextBlock x:Name="CurrentVideoText"
-                                   Text="Current camera/source: -"
-                                   VerticalAlignment="Center"
-                                   Foreground="#E8F0F5"
-                                   FontWeight="SemiBold"
-                                   TextWrapping="Wrap" />
-                    </Border>
-
-                    <Border Grid.Row="6"
-                            Classes="surfaceAlt"
-                            Padding="14,12">
-                        <TextBlock x:Name="StatusText"
-                                   Text="Status: ready"
-                                   Classes="muted"
-                                   TextWrapping="Wrap" />
-                    </Border>
                 </Grid>
             </Border>
         </Grid>
 
-        <Border Grid.Row="4"
-                Classes="surface"
-                Padding="14">
-            <Grid RowDefinitions="Auto,*">
-                <TextBlock Text="Runtime Log"
-                           Classes="sectionTitle" />
-
-                <ListBox Grid.Row="1"
-                         x:Name="LogListBox"
-                         Margin="0,10,0,0"
-                         FontFamily="Cascadia Mono"
-                         FontSize="12" />
-            </Grid>
-        </Border>
+        <Expander Grid.Row="2"
+                  IsExpanded="False"
+                  Header="Runtime Log"
+                  Margin="0,8,0,0"
+                  FontWeight="SemiBold">
+            <ListBox x:Name="LogListBox"
+                     Height="170"
+                     FontFamily="Cascadia Mono"
+                     FontSize="12" />
+        </Expander>
     </Grid>
-</Window>
+</wnd:AppWindow>

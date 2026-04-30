@@ -231,78 +231,58 @@
                     </Border>
 
                       <Grid Grid.Row="2"
-                          RowDefinitions="*,8,*"
-                          ColumnDefinitions="*,8,*">
-                        <Border Grid.Row="0"
-                                Grid.Column="0"
-                                Classes="surfaceAlt"
-                                Padding="8">
-                            <Grid RowDefinitions="Auto,6,*">
-                                <TextBlock Text="1. Background Estimation"
-                                           Classes="cardTitle" />
-                                <Border Grid.Row="2"
-                                        BorderThickness="1"
-                                        BorderBrush="#2A3642"
-                                        Background="#070A0E"
-                                        CornerRadius="8">
-                                    <Image x:Name="PreviewBackgroundMaskImage"
-                                           Stretch="Uniform" />
+                          RowDefinitions="*,*"
+                          ColumnDefinitions="*,*">
+                        <Border Grid.Row="0" Grid.Column="0"
+                                Background="#070A0E">
+                            <Panel>
+                                <Image x:Name="PreviewBackgroundMaskImage" Stretch="Uniform" />
+                                <Border VerticalAlignment="Top"
+                                        Background="#99000000"
+                                        Padding="8,5">
+                                    <TextBlock Text="1. Background Estimation"
+                                               Classes="cardTitle" />
                                 </Border>
-                            </Grid>
+                            </Panel>
                         </Border>
 
-                        <Border Grid.Row="0"
-                                Grid.Column="2"
-                                Classes="surfaceAlt"
-                                Padding="8">
-                            <Grid RowDefinitions="Auto,6,*">
-                                <TextBlock Text="2. Moving Objects"
-                                           Classes="cardTitle" />
-                                <Border Grid.Row="2"
-                                        BorderThickness="1"
-                                        BorderBrush="#2A3642"
-                                        Background="#070A0E"
-                                        CornerRadius="8">
-                                    <Image x:Name="PreviewMovingColorImage"
-                                           Stretch="Uniform" />
+                        <Border Grid.Row="0" Grid.Column="1"
+                                Background="#070A0E">
+                            <Panel>
+                                <Image x:Name="PreviewMovingColorImage" Stretch="Uniform" />
+                                <Border VerticalAlignment="Top"
+                                        Background="#99000000"
+                                        Padding="8,5">
+                                    <TextBlock Text="2. Moving Objects"
+                                               Classes="cardTitle" />
                                 </Border>
-                            </Grid>
+                            </Panel>
                         </Border>
 
-                        <Border Grid.Row="2"
-                                Grid.Column="0"
-                                Classes="surfaceAlt"
-                                Padding="8">
-                            <Grid RowDefinitions="Auto,6,*">
-                                <TextBlock Text="3. Color Detection"
-                                           Classes="cardTitle" />
-                                <Border Grid.Row="2"
-                                        BorderThickness="1"
-                                        BorderBrush="#2A3642"
-                                        Background="#070A0E"
-                                        CornerRadius="8">
-                                    <Image x:Name="PreviewColorDetectionImage"
-                                           Stretch="Uniform" />
+                        <Border Grid.Row="1" Grid.Column="0"
+                                Background="#070A0E">
+                            <Panel>
+                                <Image x:Name="PreviewColorDetectionImage" Stretch="Uniform" />
+                                <Border VerticalAlignment="Top"
+                                        Background="#99000000"
+                                        Padding="8,5">
+                                    <TextBlock Text="3. Color Detection"
+                                               Classes="cardTitle" />
                                 </Border>
-                            </Grid>
+                            </Panel>
                         </Border>
 
-                        <Border Grid.Row="2"
-                                Grid.Column="2"
-                                Classes="surfaceAlt"
-                                Padding="8">
-                            <Grid RowDefinitions="Auto,6,*">
-                                <TextBlock Text="4. Speed + Direction"
-                                           Classes="cardTitle" />
-                                <Border Grid.Row="2"
-                                        BorderThickness="1"
-                                        BorderBrush="#2A3642"
-                                        Background="#070A0E"
-                                        CornerRadius="8">
-                                    <Image x:Name="PreviewMotionImage"
-                                           Stretch="Uniform" />
+                        <Border Grid.Row="1" Grid.Column="1"
+                                Background="#070A0E">
+                            <Panel>
+                                <Image x:Name="PreviewMotionImage" Stretch="Uniform" />
+                                <Border VerticalAlignment="Top"
+                                        Background="#99000000"
+                                        Padding="8,5">
+                                    <TextBlock Text="4. Speed + Direction"
+                                               Classes="cardTitle" />
                                 </Border>
-                            </Grid>
+                            </Panel>
                         </Border>
                     </Grid>
                 </Grid>

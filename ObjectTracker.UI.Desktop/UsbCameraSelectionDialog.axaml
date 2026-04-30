@@ -1,0 +1,50 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ObjectTracker.UI.Desktop.UsbCameraSelectionDialog"
+        Title="Select USB Camera"
+        Width="520"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource AppBackgroundBrush}">
+
+    <Grid RowDefinitions="*,Auto" Margin="18">
+
+        <StackPanel Grid.Row="0" Spacing="14">
+
+            <TextBlock Text="DEVICE PICKER" Classes="eyebrow" />
+
+            <TextBlock Text="Select a USB camera"
+                       FontSize="22"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource TextBrush}" />
+
+            <TextBlock x:Name="HeaderText"
+                       Classes="muted"
+                       TextWrapping="Wrap" />
+
+            <Border Classes="surfaceAlt" Padding="8">
+                <ListBox x:Name="CameraListBox"
+                         MinHeight="160"
+                         MaxHeight="300" />
+            </Border>
+
+        </StackPanel>
+
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="10"
+                    Margin="0,14,0,0">
+            <Button x:Name="AddButton"
+                    Classes="primary"
+                    Content="Add USB Camera"
+                    MinWidth="140" />
+            <Button x:Name="CancelButton"
+                    Classes="ghost"
+                    Content="Cancel"
+                    MinWidth="100" />
+        </StackPanel>
+
+    </Grid>
+</Window>

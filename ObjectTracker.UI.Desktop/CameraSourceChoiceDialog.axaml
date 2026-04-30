@@ -1,0 +1,66 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ObjectTracker.UI.Desktop.CameraSourceChoiceDialog"
+        Title="Add Camera"
+        Width="480"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource AppBackgroundBrush}">
+
+    <Grid RowDefinitions="*,Auto" Margin="18">
+
+        <StackPanel Grid.Row="0" Spacing="14">
+
+            <TextBlock Text="SOURCE SETUP" Classes="eyebrow" />
+
+            <TextBlock Text="Add a new camera feed"
+                       FontSize="22"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource TextBrush}" />
+
+            <TextBlock Text="Choose whether you want to work from recorded footage or a live USB device."
+                       Classes="muted"
+                       TextWrapping="Wrap" />
+
+            <Border Classes="surfaceAlt" Padding="14">
+                <StackPanel Spacing="8">
+                    <Button x:Name="VideoFilesButton"
+                            Classes="primary"
+                            Content="Use Video Files"
+                            Height="44"
+                            HorizontalAlignment="Stretch" />
+                    <TextBlock Text="Best when you want stable repeatable testing with the same clips."
+                               Classes="muted"
+                               TextWrapping="Wrap"
+                               FontSize="12" />
+                </StackPanel>
+            </Border>
+
+            <Border Classes="surfaceAlt" Padding="14">
+                <StackPanel Spacing="8">
+                    <Button x:Name="UsbCameraButton"
+                            Classes="ghost"
+                            Content="Use USB Camera"
+                            Height="44"
+                            HorizontalAlignment="Stretch" />
+                    <TextBlock Text="Best for live tuning and quick validation with an attached device."
+                               Classes="muted"
+                               TextWrapping="Wrap"
+                               FontSize="12" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+
+        <Button Grid.Row="1"
+                x:Name="CancelButton"
+                Classes="ghost"
+                Content="Cancel"
+                HorizontalAlignment="Right"
+                MinWidth="100"
+                Margin="0,14,0,0" />
+
+    </Grid>
+</Window>

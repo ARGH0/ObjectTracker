@@ -86,12 +86,14 @@
                                     <StackPanel Spacing="8">
                                         <CheckBox x:Name="LoopPlaylistCheckBox"
                                                   Content="Loop camera videos"
+                                                  ToolTip.Tip="When enabled, the selected video source restarts automatically after reaching the end."
                                                   IsChecked="True" />
 
                                             <Grid ColumnDefinitions="*,8,*"
                                                 RowDefinitions="Auto,8,Auto,8,Auto,8,Auto">
                                             <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                                                 <TextBlock Text="Samples"
+                                                           ToolTip.Tip="Number of frames used to estimate the static background model. Higher values improve stability but increase startup time."
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="SampleCountTextBox"
                                                          Text="20"
@@ -100,8 +102,10 @@
 
                                             <StackPanel Grid.Row="0" Grid.Column="2" Spacing="4">
                                                 <TextBlock Text="Bake Source"
+                                                           ToolTip.Tip="Choose whether the background model is baked from sampled source frames or from a single image file."
                                                            Classes="eyebrow" />
                                                 <ComboBox x:Name="BakeSourceComboBox"
+                                                          ToolTip.Tip="Source used to create the baked background mask for subtraction."
                                                           SelectedIndex="0">
                                                     <ComboBoxItem Content="Samples from source" />
                                                     <ComboBoxItem Content="Image file" />
@@ -110,6 +114,7 @@
 
                                             <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Spacing="4">
                                                 <TextBlock Text="Bake Image"
+                                                           ToolTip.Tip="Path to an image used as the background reference when Bake Source is set to Image file."
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="BakeImagePathTextBox"
                                                          IsReadOnly="True"
@@ -118,16 +123,19 @@
                                                     <Button x:Name="SelectBakeImageButton"
                                                             Grid.Column="0"
                                                             Classes="ghost"
+                                                            ToolTip.Tip="Pick an image file to use as the baked background reference."
                                                             Content="Select Image" />
                                                     <Button x:Name="ClearBakeImageButton"
                                                             Grid.Column="2"
                                                             Classes="ghost"
+                                                            ToolTip.Tip="Remove the currently selected baked image path."
                                                             Content="Clear Image" />
                                                 </Grid>
                                             </StackPanel>
 
                                             <StackPanel Grid.Row="4" Grid.Column="0" Spacing="4">
                                                 <TextBlock Text="Threshold"
+                                                           ToolTip.Tip="Pixel-difference threshold for foreground detection. Lower values detect subtle motion; higher values ignore small changes/noise."
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="ThresholdTextBox"
                                                          Text="100"
@@ -136,6 +144,7 @@
 
                                             <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4">
                                                 <TextBlock Text="Motion Area"
+                                                           ToolTip.Tip="Minimum contour/pixel area treated as valid motion. Increase to suppress tiny flicker and noise blobs."
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="MotionAreaTextBox"
                                                          Text="220"
@@ -144,6 +153,7 @@
 
                                             <StackPanel Grid.Row="6" Grid.Column="0" Spacing="4">
                                                 <TextBlock Text="Color Pixels"
+                                                           ToolTip.Tip="Minimum number of matched color pixels required before color-based detection is considered active."
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="ColorMinPixelsTextBox"
                                                          Text="40"
@@ -152,6 +162,7 @@
 
                                             <StackPanel Grid.Row="6" Grid.Column="2" Spacing="4">
                                                 <TextBlock Text="Morph Kernel"
+                                                           ToolTip.Tip="Kernel size for morphology (erode/dilate) cleanup. Larger kernels remove more speckle but can merge nearby regions."
                                                            Classes="eyebrow" />
                                                 <TextBox x:Name="MorphKernelSizeTextBox"
                                                          Text="3"
@@ -161,6 +172,7 @@
 
                                         <StackPanel Spacing="4">
                                             <TextBlock Text="Process Width"
+                                                       ToolTip.Tip="Target frame width used for processing. Lower widths run faster; higher widths preserve detail at higher CPU cost."
                                                        Classes="eyebrow" />
                                             <TextBox x:Name="ProcessWidthTextBox"
                                                      Text="640"

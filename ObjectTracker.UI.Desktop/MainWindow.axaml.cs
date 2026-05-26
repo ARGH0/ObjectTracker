@@ -34,6 +34,7 @@ public partial class MainWindow : AppWindow
 
     private readonly BackgroundEstimationEngine engine = new ();
     private readonly CameraSettingsStore cameraSettingsStore = new ();
+    private readonly SessionAuditLogger sessionAuditLogger = new ();
 
     private CancellationTokenSource? runCts;
     private Task? runTask;
@@ -69,6 +70,7 @@ public partial class MainWindow : AppWindow
     {
         await StopProcessingAsync();
         PersistCameraSettings();
+        sessionAuditLogger.Dispose();
         base.OnClosing(e);
     }
 
@@ -402,6 +404,11 @@ public partial class MainWindow : AppWindow
 
         runCts = new CancellationTokenSource();
         var token = runCts.Token;
+        sessionAuditLogger.StartSession();
+        if (!string.IsNullOrWhiteSpace(sessionAuditLogger.CurrentFilePath))
+        {
+            SetStatus($"Status: session log active at {sessionAuditLogger.CurrentFilePath}");
+        }
 
         SetRunState(isRunning: true);
         StartBakeForAllCameras(token);
@@ -424,6 +431,7 @@ public partial class MainWindow : AppWindow
             runTask = null;
             runCts?.Dispose();
             runCts = null;
+            sessionAuditLogger.StopSession();
             SetRunState(isRunning: false);
         }
     }
@@ -1111,6 +1119,7 @@ public partial class MainWindow : AppWindow
         var line = $"[{timestamp}] {message}";
 
         logEntries.Add(line);
+        sessionAuditLogger.Append(line);
         while (logEntries.Count > MaxLogEntries)
         {
             logEntries.RemoveAt(0);

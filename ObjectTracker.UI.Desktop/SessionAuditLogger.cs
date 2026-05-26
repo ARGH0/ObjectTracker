@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 
@@ -9,6 +10,12 @@ internal sealed class SessionAuditLogger : IDisposable
 {
     private readonly Lock sync = new();
     private StreamWriter? writer;
+
+    public const string EventRunStart = "run-start";
+    public const string EventRunStop = "run-stop";
+    public const string EventStatus = "status";
+    public const string EventCameraSwitch = "camera-switch";
+    public const string EventCalibrationChange = "calibration-change";
 
     public string? CurrentFilePath { get; private set; }
 
@@ -55,6 +62,35 @@ internal sealed class SessionAuditLogger : IDisposable
         }
     }
 
+    public void AppendStatus(string status)
+    {
+        AppendEvent(EventStatus, status);
+    }
+
+    public void AppendEvent(string eventType, string message, params (string Key, string Value)[] fields)
+    {
+        lock (sync)
+        {
+            if (writer is null)
+            {
+                return;
+            }
+
+            var timestamp = DateTime.UtcNow.ToString("O");
+            var cleanType = Sanitize(eventType);
+            var cleanMessage = Sanitize(message);
+            var line = $"{timestamp}|{cleanType}|{cleanMessage}";
+
+            if (fields.Length > 0)
+            {
+                var metadata = string.Join(";", fields.Select(field => $"{Sanitize(field.Key)}={Sanitize(field.Value)}"));
+                line = $"{line}|{metadata}";
+            }
+
+            writer.WriteLine(line);
+        }
+    }
+
     public void StopSession()
     {
         lock (sync)
@@ -78,5 +114,15 @@ internal sealed class SessionAuditLogger : IDisposable
         }
 
         CurrentFilePath = null;
+    }
+
+    private static string Sanitize(string value)
+    {
+        return value
+            .Replace("|", "/", StringComparison.Ordinal)
+            .Replace(";", ",", StringComparison.Ordinal)
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
     }
 }

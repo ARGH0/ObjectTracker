@@ -380,6 +380,15 @@ public partial class MainWindow : AppWindow
         {
             Interlocked.Exchange(ref requestedCameraIndex, index);
             SetStatus($"Status: switching to camera {camera?.DisplayName}...");
+            if (camera is { } selected)
+            {
+                sessionAuditLogger.AppendEvent(
+                    SessionAuditLogger.EventCameraSwitch,
+                    "Camera switch requested from playlist selection.",
+                    ("cameraId", selected.Id),
+                    ("cameraName", selected.DisplayName),
+                    ("requestedIndex", index.ToString()));
+            }
         }
     }
 
@@ -401,10 +410,22 @@ public partial class MainWindow : AppWindow
 
         var startIndex = selectedCameraIndex >= 0 ? selectedCameraIndex : 0;
         var loopCameraVideos = LoopPlaylistCheckBox.IsChecked == true;
+        var runStopwatch = Stopwatch.StartNew();
+        var stopReason = "completed";
 
         runCts = new CancellationTokenSource();
         var token = runCts.Token;
         sessionAuditLogger.StartSession();
+        var selectedCamera = GetSelectedCamera();
+        sessionAuditLogger.AppendEvent(
+            SessionAuditLogger.EventRunStart,
+            "Processing run started.",
+            ("cameraCount", GetCameraCount().ToString()),
+            ("startIndex", startIndex.ToString()),
+            ("loopVideos", loopCameraVideos.ToString()),
+            ("startCameraId", selectedCamera?.Id ?? string.Empty),
+            ("startCameraName", selectedCamera?.DisplayName ?? string.Empty));
+
         if (!string.IsNullOrWhiteSpace(sessionAuditLogger.CurrentFilePath))
         {
             SetStatus($"Status: session log active at {sessionAuditLogger.CurrentFilePath}");
@@ -420,17 +441,35 @@ public partial class MainWindow : AppWindow
         }
         catch (OperationCanceledException)
         {
+            stopReason = "canceled";
             SetStatus("Status: processing stopped.");
         }
         catch (Exception ex)
         {
+            stopReason = "error";
             SetStatus($"Status: error - {ex.Message}");
+            sessionAuditLogger.AppendEvent(
+                SessionAuditLogger.EventRunStop,
+                "Processing run failed.",
+                ("reason", stopReason),
+                ("durationMs", runStopwatch.ElapsedMilliseconds.ToString()),
+                ("error", ex.Message));
         }
         finally
         {
             runTask = null;
             runCts?.Dispose();
             runCts = null;
+
+            if (stopReason != "error")
+            {
+                sessionAuditLogger.AppendEvent(
+                    SessionAuditLogger.EventRunStop,
+                    "Processing run stopped.",
+                    ("reason", stopReason),
+                    ("durationMs", runStopwatch.ElapsedMilliseconds.ToString()));
+            }
+
             sessionAuditLogger.StopSession();
             SetRunState(isRunning: false);
         }
@@ -1004,6 +1043,16 @@ public partial class MainWindow : AppWindow
         {
             Interlocked.Exchange(ref requestedCameraIndex, target);
             SetStatus($"Status: switching to camera #{target + 1}...");
+            if (TryGetCamera(target, out var requestedCamera))
+            {
+                sessionAuditLogger.AppendEvent(
+                    SessionAuditLogger.EventCameraSwitch,
+                    "Camera switch requested from navigation buttons.",
+                    ("cameraId", requestedCamera.Id),
+                    ("cameraName", requestedCamera.DisplayName),
+                    ("requestedIndex", target.ToString()));
+            }
+
             return;
         }
 
@@ -1119,7 +1168,7 @@ public partial class MainWindow : AppWindow
         var line = $"[{timestamp}] {message}";
 
         logEntries.Add(line);
-        sessionAuditLogger.Append(line);
+        sessionAuditLogger.AppendStatus(message);
         while (logEntries.Count > MaxLogEntries)
         {
             logEntries.RemoveAt(0);
@@ -1153,6 +1202,23 @@ public partial class MainWindow : AppWindow
         if (logChange)
         {
             SetStatus($"Status: {camera.Value.DisplayName} color calibration updated for {selectedCalibrationColor}.");
+        }
+
+        var selectedProfile = updatedCalibrations.FirstOrDefault(profile => profile.Name.Equals(selectedCalibrationColor, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(selectedProfile.Name))
+        {
+            sessionAuditLogger.AppendEvent(
+                SessionAuditLogger.EventCalibrationChange,
+                "Color calibration updated.",
+                ("cameraId", camera.Value.Id),
+                ("cameraName", camera.Value.DisplayName),
+                ("color", selectedProfile.Name),
+                ("hMin", selectedProfile.HueLower.ToString()),
+                ("hMax", selectedProfile.HueUpper.ToString()),
+                ("sMin", selectedProfile.SaturationLower.ToString()),
+                ("sMax", selectedProfile.SaturationUpper.ToString()),
+                ("vMin", selectedProfile.ValueLower.ToString()),
+                ("vMax", selectedProfile.ValueUpper.ToString()));
         }
     }
 

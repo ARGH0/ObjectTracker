@@ -7,6 +7,7 @@ namespace ObjectTracker.Vision;
 public sealed class OpenCvArucoDetector : IDetectionAlgorithm
 {
     public DetectorMode Mode => DetectorMode.Aruco;
+
     public string Name => "OpenCV ArUco-like";
 
     public Task<IReadOnlyList<Detection>> DetectAsync(FramePacket frame, CancellationToken cancellationToken)
@@ -54,8 +55,8 @@ public sealed class OpenCvArucoDetector : IDetectionAlgorithm
 
             detections.Add(new Detection(
                 $"aruco-{rect.X}-{rect.Y}",
-                rect.X + rect.Width / 2f,
-                rect.Y + rect.Height / 2f,
+                rect.X + (rect.Width / 2f),
+                rect.Y + (rect.Height / 2f),
                 rect.X,
                 rect.Y,
                 rect.Width,

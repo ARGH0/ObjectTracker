@@ -6,17 +6,17 @@ namespace ObjectTracker.Vision.Source;
 
 public sealed class OpenCvUsbFrameSource : IFrameSource
 {
-    private const VideoCaptureProperties OrientationMetaProperty = (VideoCaptureProperties)48;
-    private const VideoCaptureProperties OrientationAutoProperty = (VideoCaptureProperties)49;
-    private const VideoCaptureProperties BackendProperty = (VideoCaptureProperties)42;
+    private const VideoCaptureProperties OrientationMetaProperty = VideoCaptureProperties.OrientationMeta;
+    private const VideoCaptureProperties OrientationAutoProperty = VideoCaptureProperties.OrientationAuto;
+    private const VideoCaptureProperties BackendProperty = VideoCaptureProperties.Backend;
 
-    private readonly int _cameraIndex;
-    private readonly VideoCaptureAPIs _api;
-    private VideoCapture? _capture;
-    private string? _pendingDiagnosticEvent;
-    private double? _lastOrientationAuto;
-    private double? _lastOrientationMeta;
-    private int _frameCounter;
+    private readonly int cameraIndex;
+    private readonly VideoCaptureAPIs api;
+    private VideoCapture? capture;
+    private string? pendingDiagnosticEvent;
+    private double? lastOrientationAuto;
+    private double? lastOrientationMeta;
+    private int frameCounter;
 
     public OpenCvUsbFrameSource(int cameraIndex)
         : this(cameraIndex, VideoCaptureAPIs.ANY)
@@ -25,83 +25,85 @@ public sealed class OpenCvUsbFrameSource : IFrameSource
 
     public OpenCvUsbFrameSource(int cameraIndex, VideoCaptureAPIs api)
     {
-        _cameraIndex = cameraIndex;
-        _api = api;
+        this.cameraIndex = cameraIndex;
+        this.api = api;
         Id = $"usb:{cameraIndex}:{api.ToString().ToLowerInvariant()}";
         DisplayName = $"USB camera {cameraIndex} ({api})";
     }
 
     public string Id { get; }
+
     public string DisplayName { get; }
+
     public string Diagnostics { get; private set; } = "capture not started";
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _capture = new VideoCapture(_cameraIndex, _api);
-        _capture.Set(VideoCaptureProperties.FrameWidth, 640);
-        _capture.Set(VideoCaptureProperties.FrameHeight, 480);
-        _capture.Set(VideoCaptureProperties.Fps, 20);
-        _capture.Set(VideoCaptureProperties.BufferSize, 1);
-        _capture.Set(OrientationAutoProperty, 0);
+        capture = new VideoCapture(cameraIndex, api);
+        capture.Set(VideoCaptureProperties.FrameWidth, 640);
+        capture.Set(VideoCaptureProperties.FrameHeight, 480);
+        capture.Set(VideoCaptureProperties.Fps, 20);
+        capture.Set(VideoCaptureProperties.BufferSize, 1);
+        capture.Set(OrientationAutoProperty, 0);
 
-        if (!_capture.IsOpened())
+        if (!capture.IsOpened())
         {
-            throw new InvalidOperationException($"USB camera {_cameraIndex} kon niet worden geopend.");
+            throw new InvalidOperationException($"USB camera {cameraIndex} kon niet worden geopend.");
         }
 
-        var width = _capture.Get(VideoCaptureProperties.FrameWidth);
-        var height = _capture.Get(VideoCaptureProperties.FrameHeight);
-        var fps = _capture.Get(VideoCaptureProperties.Fps);
-        var backend = _capture.Get(BackendProperty);
-        _lastOrientationAuto = _capture.Get(OrientationAutoProperty);
-        _lastOrientationMeta = _capture.Get(OrientationMetaProperty);
-        _frameCounter = 0;
+        var width = capture.Get(VideoCaptureProperties.FrameWidth);
+        var height = capture.Get(VideoCaptureProperties.FrameHeight);
+        var fps = capture.Get(VideoCaptureProperties.Fps);
+        var backend = capture.Get(BackendProperty);
+        lastOrientationAuto = capture.Get(OrientationAutoProperty);
+        lastOrientationMeta = capture.Get(OrientationMetaProperty);
+        frameCounter = 0;
 
         Diagnostics =
-            $"source={Id} | backend={backend:F0} ({_api}) | {width:F0}x{height:F0}@{fps:F1} | orientation_auto={_lastOrientationAuto:F0} | orientation_meta={_lastOrientationMeta:F0}";
+            $"source={Id} | backend={backend:F0} ({api}) | {width:F0}x{height:F0}@{fps:F1} | orientation_auto={lastOrientationAuto:F0} | orientation_meta={lastOrientationMeta:F0}";
 
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        _capture?.Release();
+        capture?.Release();
         return Task.CompletedTask;
     }
 
     public Task<FramePacket?> ReadFrameAsync(CancellationToken cancellationToken)
     {
-        if (_capture is null || !_capture.IsOpened())
+        if (capture is null || !capture.IsOpened())
         {
             return Task.FromResult<FramePacket?>(null);
         }
 
         using var frame = new Mat();
-        if (!_capture.Read(frame) || frame.Empty())
+        if (!capture.Read(frame) || frame.Empty())
         {
             return Task.FromResult<FramePacket?>(null);
         }
 
-        _frameCounter++;
-        if (_frameCounter % 60 == 0)
+        frameCounter++;
+        if (frameCounter % 60 == 0)
         {
-            var orientationAuto = _capture.Get(OrientationAutoProperty);
-            var orientationMeta = _capture.Get(OrientationMetaProperty);
+            var orientationAuto = capture.Get(OrientationAutoProperty);
+            var orientationMeta = capture.Get(OrientationMetaProperty);
 
-            if (_lastOrientationAuto is not null && _lastOrientationMeta is not null)
+            if (lastOrientationAuto is not null && lastOrientationMeta is not null)
             {
-                if (!NearlyEqual(_lastOrientationAuto.Value, orientationAuto) || !NearlyEqual(_lastOrientationMeta.Value, orientationMeta))
+                if (!NearlyEqual(lastOrientationAuto.Value, orientationAuto) || !NearlyEqual(lastOrientationMeta.Value, orientationMeta))
                 {
-                    _pendingDiagnosticEvent =
-                        $"Camera orientation property change gedetecteerd: auto {_lastOrientationAuto:F0}->{orientationAuto:F0}, meta {_lastOrientationMeta:F0}->{orientationMeta:F0}";
+                    pendingDiagnosticEvent =
+                        $"Camera orientation property change gedetecteerd: auto {lastOrientationAuto:F0}->{orientationAuto:F0}, meta {lastOrientationMeta:F0}->{orientationMeta:F0}";
                 }
             }
 
-            _lastOrientationAuto = orientationAuto;
-            _lastOrientationMeta = orientationMeta;
+            lastOrientationAuto = orientationAuto;
+            lastOrientationMeta = orientationMeta;
         }
 
-        Cv2.ImEncode(".jpg", frame, out var bytes, [new ImageEncodingParam(ImwriteFlags.JpegQuality, 80)]);
+        Cv2.ImEncode(".jpg", frame, out var bytes,[new ImageEncodingParam(ImwriteFlags.JpegQuality, 80)]);
         var packet = new FramePacket(
             Id,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
@@ -114,15 +116,15 @@ public sealed class OpenCvUsbFrameSource : IFrameSource
 
     public string? ConsumeDiagnosticEvent()
     {
-        var message = _pendingDiagnosticEvent;
-        _pendingDiagnosticEvent = null;
+        var message = pendingDiagnosticEvent;
+        pendingDiagnosticEvent = null;
         return message;
     }
 
     public ValueTask DisposeAsync()
     {
-        _capture?.Dispose();
-        _capture = null;
+        capture?.Dispose();
+        capture = null;
         return ValueTask.CompletedTask;
     }
 

@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ObjectTracker.Core.Domain;
 using ObjectTracker.Vision;
 using OpenCvSharp;
 
@@ -14,7 +16,7 @@ namespace ObjectTracker.UI.Desktop;
 
 internal sealed class BackgroundEstimationEngine
 {
-    private readonly SessionCalibrationService _sessionCalibration = new();
+    private readonly SessionCalibrationService sessionCalibration = new ();
 
     public async Task<VideoProcessResult> ProcessVideoAsync(
         string videoPath,
@@ -41,8 +43,8 @@ internal sealed class BackgroundEstimationEngine
 
         var fps = capture.Fps;
         var frameCount = (int)Math.Max(0, capture.Get(VideoCaptureProperties.FrameCount));
-        var frameWidth = (int)capture.FrameWidth;
-        var frameHeight = (int)capture.FrameHeight;
+        var frameWidth = capture.FrameWidth;
+        var frameHeight = capture.FrameHeight;
         if (frameWidth <= 0 || frameHeight <= 0)
         {
             return VideoProcessResult.Fail("Video has invalid dimensions.");
@@ -181,6 +183,7 @@ internal sealed class BackgroundEstimationEngine
         using var colorDetections = new Mat();
         using var motionView = new Mat();
         using var hsv = new Mat();
+        var activeColorCalibrations = options.ColorCalibrations;
 
         var previousTracks = new Dictionary<int, MotionTrackState>();
         var nextTrackId = 1;
@@ -208,6 +211,7 @@ internal sealed class BackgroundEstimationEngine
                     activeThreshold = live.Threshold;
                     activeMinMotionArea = live.MinMotionArea;
                     activeMinColorPixels = live.MinColorPixels;
+                    activeColorCalibrations = live.ColorCalibrations;
 
                     if (live.MorphKernelSize != activeMorphKernelSize)
                     {
@@ -232,7 +236,7 @@ internal sealed class BackgroundEstimationEngine
                 DrawMovingObjectBoxes(movingColor, movingRects);
 
                 colorResized.CopyTo(colorDetections);
-                RenderColorDetections(colorDetections, colorResized, cleanMask, hsv, movingRects, activeMinColorPixels);
+                RenderColorDetections(colorDetections, colorResized, cleanMask, hsv, movingRects, activeColorCalibrations, activeMinColorPixels);
 
                 colorResized.CopyTo(motionView);
                 var timestampSec = capture.PosMsec / 1000.0;
@@ -277,7 +281,7 @@ internal sealed class BackgroundEstimationEngine
 
     public Task PreBakeBackgroundAsync(string videoPath, int sampleCount, CancellationToken cancellationToken)
     {
-        return _sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, ProcessingOptions.Default.ProcessMaxWidth, cancellationToken);
+        return sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, ProcessingOptions.Default.ProcessMaxWidth, cancellationToken);
     }
 
     public async Task<string> EnsureBakedBackgroundAsync(
@@ -288,7 +292,7 @@ internal sealed class BackgroundEstimationEngine
         CancellationToken cancellationToken,
         Func<string, Task>? onStatus = null)
     {
-        return await _sessionCalibration.EnsureBakedBackgroundAsync(
+        return await sessionCalibration.EnsureBakedBackgroundAsync(
             videoPath,
             sampleCount,
             options.ProcessMaxWidth,
@@ -299,7 +303,7 @@ internal sealed class BackgroundEstimationEngine
 
     public Task PreBakeBackgroundAsync(string videoPath, int sampleCount, ProcessingOptions options, CancellationToken cancellationToken)
     {
-        return _sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, options.ProcessMaxWidth, cancellationToken);
+        return sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, options.ProcessMaxWidth, cancellationToken);
     }
 
     private static async Task<Mat> CreateMedianBackgroundForUsbCameraAsync(
@@ -394,6 +398,7 @@ internal sealed class BackgroundEstimationEngine
         Mat motionMask,
         Mat hsv,
         IReadOnlyList<Rect> movingRects,
+        IReadOnlyList<ColorCalibrationProfile> colorCalibrations,
         int minColorPixels)
     {
         foreach (var rect in movingRects)
@@ -402,63 +407,81 @@ internal sealed class BackgroundEstimationEngine
             using var motionRoi = new Mat(motionMask, rect);
             Cv2.CvtColor(colorRoi, hsv, ColorConversionCodes.BGR2HSV);
 
-            var (label, color) = ClassifyDominantColor(hsv, motionRoi, minColorPixels);
+            var (label, color) = ClassifyDominantColor(hsv, motionRoi, colorCalibrations, minColorPixels);
 
             Cv2.Rectangle(destination, rect, color, 2);
             Cv2.PutText(destination, label, new Point(rect.X, Math.Max(16, rect.Y - 4)), HersheyFonts.HersheySimplex, 0.55, color, 2);
         }
     }
 
-    private static (string Label, Scalar Color) ClassifyDominantColor(Mat hsvRoi, Mat motionRoiMask, int minColorPixels)
+    private static (string Label, Scalar Color) ClassifyDominantColor(
+        Mat hsvRoi,
+        Mat motionRoiMask,
+        IReadOnlyList<ColorCalibrationProfile> colorCalibrations,
+        int minColorPixels)
     {
-        using var redMask1 = new Mat();
-        using var redMask2 = new Mat();
-        using var redMask = new Mat();
-        using var greenMask = new Mat();
-        using var blueMask = new Mat();
-        using var yellowMask = new Mat();
-
-        Cv2.InRange(hsvRoi, new Scalar(0, 90, 70), new Scalar(10, 255, 255), redMask1);
-        Cv2.InRange(hsvRoi, new Scalar(170, 90, 70), new Scalar(180, 255, 255), redMask2);
-        Cv2.BitwiseOr(redMask1, redMask2, redMask);
-
-        Cv2.InRange(hsvRoi, new Scalar(40, 70, 60), new Scalar(85, 255, 255), greenMask);
-        Cv2.InRange(hsvRoi, new Scalar(95, 90, 70), new Scalar(130, 255, 255), blueMask);
-        Cv2.InRange(hsvRoi, new Scalar(15, 90, 80), new Scalar(38, 255, 255), yellowMask);
-
-        // Restrict color voting to pixels that are currently moving.
-        Cv2.BitwiseAnd(redMask, motionRoiMask, redMask);
-        Cv2.BitwiseAnd(greenMask, motionRoiMask, greenMask);
-        Cv2.BitwiseAnd(blueMask, motionRoiMask, blueMask);
-        Cv2.BitwiseAnd(yellowMask, motionRoiMask, yellowMask);
-
-        var red = Cv2.CountNonZero(redMask);
-        var green = Cv2.CountNonZero(greenMask);
-        var blue = Cv2.CountNonZero(blueMask);
-        var yellow = Cv2.CountNonZero(yellowMask);
-
-        var best = Math.Max(Math.Max(red, green), Math.Max(blue, yellow));
-        if (best < minColorPixels)
+        if (colorCalibrations.Count == 0)
         {
             return ("Unknown", new Scalar(180, 180, 180));
         }
 
-        if (best == red)
+        var bestCount = 0;
+        ColorCalibrationProfile? bestProfile = null;
+
+        foreach (var profile in colorCalibrations)
         {
-            return ("Red", new Scalar(60, 60, 255));
+            using var mask = BuildMask(hsvRoi, profile);
+            Cv2.BitwiseAnd(mask, motionRoiMask, mask);
+
+            var count = Cv2.CountNonZero(mask);
+            if (count > bestCount)
+            {
+                bestCount = count;
+                bestProfile = profile;
+            }
         }
 
-        if (best == green)
+        if (bestProfile is null || bestCount < minColorPixels)
         {
-            return ("Green", new Scalar(60, 220, 60));
+            return ("Unknown", new Scalar(180, 180, 180));
         }
 
-        if (best == blue)
+        return (bestProfile.Value.Name, GetOverlayColor(bestProfile.Value.Name));
+    }
+
+    private static Mat BuildMask(Mat hsv, ColorCalibrationProfile profile)
+    {
+        if (profile.HueLower <= profile.HueUpper)
         {
-            return ("Blue", new Scalar(255, 120, 50));
+            var mask = new Mat();
+            Cv2.InRange(hsv, new Scalar(profile.HueLower, profile.SaturationLower, profile.ValueLower), new Scalar(profile.HueUpper, profile.SaturationUpper, profile.ValueUpper), mask);
+            return mask;
         }
 
-        return ("Yellow", new Scalar(40, 220, 240));
+        var primary = new Mat();
+        var secondary = new Mat();
+        var combined = new Mat();
+
+        Cv2.InRange(hsv, new Scalar(profile.HueLower, profile.SaturationLower, profile.ValueLower), new Scalar(180, profile.SaturationUpper, profile.ValueUpper), primary);
+        Cv2.InRange(hsv, new Scalar(0, profile.SaturationLower, profile.ValueLower), new Scalar(profile.HueUpper, profile.SaturationUpper, profile.ValueUpper), secondary);
+        Cv2.BitwiseOr(primary, secondary, combined);
+
+        primary.Dispose();
+        secondary.Dispose();
+        return combined;
+    }
+
+    private static Scalar GetOverlayColor(string name)
+    {
+        return name.ToLowerInvariant() switch
+        {
+            "red" => new Scalar(60, 60, 255),
+            "green" => new Scalar(60, 220, 60),
+            "blue" => new Scalar(255, 120, 50),
+            "yellow" => new Scalar(40, 220, 240),
+            "white" => new Scalar(255, 255, 255),
+            _ => new Scalar(180, 180, 180)
+        };
     }
 
     private static void RenderMotionOverlay(
@@ -561,51 +584,6 @@ internal sealed class BackgroundEstimationEngine
         return bestId;
     }
 
-    private static Mat EstimateMedianBackground(
-        VideoCapture capture,
-        int frameCount,
-        int sampleCount,
-        Size processSize,
-        CancellationToken cancellationToken,
-        Action<int, int>? reportProgress = null)
-    {
-        var validFrameCount = Math.Max(1, frameCount);
-        var ids = Enumerable.Range(0, sampleCount)
-            .Select(_ => Random.Shared.Next(0, validFrameCount))
-            .ToArray();
-
-        var sampledFrames = new List<Mat>(sampleCount);
-        using var sampledFrame = new Mat();
-        using var sampledGray = new Mat();
-
-        var completedSamples = 0;
-        foreach (var frameId in ids)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            capture.PosFrames = frameId;
-            if (!capture.Read(sampledFrame) || sampledFrame.Empty())
-            {
-                continue;
-            }
-
-            Cv2.CvtColor(sampledFrame, sampledGray, ColorConversionCodes.BGR2GRAY);
-            var resized = new Mat();
-            Cv2.Resize(sampledGray, resized, processSize, interpolation: InterpolationFlags.Area);
-            sampledFrames.Add(resized);
-
-            completedSamples++;
-            reportProgress?.Invoke(completedSamples, ids.Length);
-        }
-
-        if (sampledFrames.Count == 0)
-        {
-            throw new InvalidOperationException("No frames available to estimate background.");
-        }
-
-        return BuildMedianBackground(sampledFrames, processSize);
-    }
-
     private static Mat EstimateMedianBackgroundFromLiveCapture(
         VideoCapture capture,
         int sampleCount,
@@ -646,7 +624,6 @@ internal sealed class BackgroundEstimationEngine
 
     private static Mat BuildMedianBackground(List<Mat> sampledFrames, Size processSize)
     {
-
         var pixelCount = processSize.Width * processSize.Height;
         var samples = sampledFrames.Select(ToByteArray).ToArray();
         var median = new byte[pixelCount];
@@ -703,31 +680,36 @@ internal sealed class BackgroundEstimationEngine
         }
 
         public bool Success { get; }
+
         public string Message { get; }
+
         public bool StoppedEarly { get; }
 
-        public static VideoProcessResult Ok() => new(true, string.Empty, false);
+        public static VideoProcessResult Ok() => new (true, string.Empty, false);
 
-        public static VideoProcessResult Stopped() => new(true, string.Empty, true);
+        public static VideoProcessResult Stopped() => new (true, string.Empty, true);
 
-        public static VideoProcessResult Fail(string message) => new(false, message, false);
+        public static VideoProcessResult Fail(string message) => new (false, message, false);
     }
 
     internal readonly record struct ProcessingOptions(
         int ProcessMaxWidth,
         int MinMotionArea,
         int MinColorPixels,
-        int MorphKernelSize)
+        int MorphKernelSize,
+        IReadOnlyList<ColorCalibrationProfile> ColorCalibrations)
     {
-        public static ProcessingOptions Default => new(640, 220, 40, 3);
+        public static ProcessingOptions Default => new (640, 220, 40, 3, MainWindow.CreateDefaultColorCalibrations());
     }
 
     internal readonly record struct LiveTuning(
         int Threshold,
         int MinMotionArea,
         int MinColorPixels,
-        int MorphKernelSize);
+        int MorphKernelSize,
+        IReadOnlyList<ColorCalibrationProfile> ColorCalibrations);
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct MotionTrackState(Point2f Center, Rect Rect, double TimestampSec);
 
     internal readonly struct PreviewFrameSet
@@ -741,8 +723,11 @@ internal sealed class BackgroundEstimationEngine
         }
 
         public byte[] BackgroundMaskJpeg { get; }
+
         public byte[] MovingColorJpeg { get; }
+
         public byte[] ColorDetectionJpeg { get; }
+
         public byte[] MotionJpeg { get; }
     }
 
@@ -800,5 +785,4 @@ internal sealed class BackgroundEstimationEngine
 
         return new PreviewFrameSet(backgroundMaskJpeg, movingColorJpeg, colorDetectionJpeg, motionJpeg);
     }
-
 }

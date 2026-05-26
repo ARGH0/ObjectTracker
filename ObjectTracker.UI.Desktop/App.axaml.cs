@@ -6,7 +6,7 @@ using FluentAvalonia.Styling;
 
 namespace ObjectTracker.UI.Desktop;
 
-public partial class App : Application
+public class App : Application
 {
     public override void Initialize()
     {

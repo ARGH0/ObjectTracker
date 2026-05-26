@@ -303,6 +303,79 @@
                                                      Text="640"
                                                      Watermark="640" />
                                         </StackPanel>
+
+                                        <Border Classes="surfaceAlt"
+                                                Padding="8">
+                                            <StackPanel Spacing="8">
+                                                <TextBlock Text="Color Calibration"
+                                                           Classes="sectionTitle" />
+
+                                                <Grid ColumnDefinitions="*,8,*"
+                                                      RowDefinitions="Auto,8,Auto,8,Auto,8,Auto">
+                                                    <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Spacing="4">
+                                                        <TextBlock Text="Color"
+                                                                   Classes="eyebrow" />
+                                                        <ComboBox x:Name="CalibrationColorComboBox"
+                                                                  SelectedIndex="0">
+                                                            <ComboBoxItem Content="red" />
+                                                            <ComboBoxItem Content="green" />
+                                                            <ComboBoxItem Content="blue" />
+                                                            <ComboBoxItem Content="yellow" />
+                                                            <ComboBoxItem Content="white" />
+                                                            <ComboBoxItem Content="black" />
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
+                                                        <TextBlock Text="Hue Min"
+                                                                   Classes="eyebrow" />
+                                                        <TextBox x:Name="HueLowerTextBox"
+                                                                 Text="0"
+                                                                 Watermark="0" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Row="2" Grid.Column="2" Spacing="4">
+                                                        <TextBlock Text="Hue Max"
+                                                                   Classes="eyebrow" />
+                                                        <TextBox x:Name="HueUpperTextBox"
+                                                                 Text="180"
+                                                                 Watermark="180" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Row="4" Grid.Column="0" Spacing="4">
+                                                        <TextBlock Text="Sat Min"
+                                                                   Classes="eyebrow" />
+                                                        <TextBox x:Name="SaturationLowerTextBox"
+                                                                 Text="0"
+                                                                 Watermark="0" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4">
+                                                        <TextBlock Text="Sat Max"
+                                                                   Classes="eyebrow" />
+                                                        <TextBox x:Name="SaturationUpperTextBox"
+                                                                 Text="255"
+                                                                 Watermark="255" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Row="6" Grid.Column="0" Spacing="4">
+                                                        <TextBlock Text="Val Min"
+                                                                   Classes="eyebrow" />
+                                                        <TextBox x:Name="ValueLowerTextBox"
+                                                                 Text="0"
+                                                                 Watermark="0" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Row="6" Grid.Column="2" Spacing="4">
+                                                        <TextBlock Text="Val Max"
+                                                                   Classes="eyebrow" />
+                                                        <TextBox x:Name="ValueUpperTextBox"
+                                                                 Text="255"
+                                                                 Watermark="255" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
                                     </StackPanel>
                                 </ScrollViewer>
 

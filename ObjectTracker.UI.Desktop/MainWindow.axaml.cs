@@ -1,9 +1,10 @@
 using System;
-using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -12,6 +13,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Windowing;
+using ObjectTracker.Core.Domain;
 using VideoCapture = OpenCvSharp.VideoCapture;
 using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
 using VideoCaptureProperties = OpenCvSharp.VideoCaptureProperties;
@@ -24,21 +26,22 @@ public partial class MainWindow : AppWindow
     private const int PreviewIntervalMs = 33;
     private const int MaxUsbCameraProbeIndex = 5;
 
-    private readonly object _cameraSync = new();
-    private readonly object _settingsSync = new();
-    private readonly List<CameraProfile> _cameras = new();
-    private readonly Dictionary<string, RuntimeProcessingSettings> _cameraSettings = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ObservableCollection<string> _logEntries = new();
+    private readonly Lock cameraSync = new ();
+    private readonly Lock settingsSync = new ();
+    private readonly List<CameraProfile> cameras = new ();
+    private readonly Dictionary<string, RuntimeProcessingSettings> cameraSettings = new (StringComparer.OrdinalIgnoreCase);
+    private readonly ObservableCollection<string> logEntries = new ();
 
-    private readonly BackgroundEstimationEngine _engine = new();
-    private readonly CameraSettingsStore _cameraSettingsStore = new();
+    private readonly BackgroundEstimationEngine engine = new ();
+    private readonly CameraSettingsStore cameraSettingsStore = new ();
 
-    private CancellationTokenSource? _runCts;
-    private Task? _runTask;
-    private long _lastPreviewRenderTick;
-    private int _previewRenderBusy;
-    private int _selectedCameraIndex = -1;
-    private int _requestedCameraIndex = -1;
+    private CancellationTokenSource? runCts;
+    private Task? runTask;
+    private long lastPreviewRenderTick;
+    private int previewRenderBusy;
+    private int selectedCameraIndex = -1;
+    private int requestedCameraIndex = -1;
+    private string selectedCalibrationColor = "red";
 
     public MainWindow()
     {
@@ -50,11 +53,11 @@ public partial class MainWindow : AppWindow
             TitleBar.Height = 40;
         }
 
-        LogListBox.ItemsSource = _logEntries;
+        LogListBox.ItemsSource = logEntries;
 
-        foreach (var (cameraId, settings) in _cameraSettingsStore.Load())
+        foreach (var (cameraId, settings) in cameraSettingsStore.Load())
         {
-            _cameraSettings[cameraId] = settings;
+            cameraSettings[cameraId] = settings;
         }
 
         HookEvents();
@@ -89,6 +92,14 @@ public partial class MainWindow : AppWindow
         ColorMinPixelsTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         MorphKernelSizeTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         ProcessWidthTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
+
+        CalibrationColorComboBox.SelectionChanged += CalibrationColorComboBoxOnSelectionChanged;
+        HueLowerTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
+        HueUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
+        SaturationLowerTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
+        SaturationUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
+        ValueLowerTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
+        ValueUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
     }
 
     private async void AddCamerasButtonOnClick(object? sender, RoutedEventArgs e)
@@ -124,36 +135,36 @@ public partial class MainWindow : AppWindow
             AllowMultiple = true,
             FileTypeFilter = new List<FilePickerFileType>
             {
-                new("Video files") { Patterns = new[] { "*.mp4", "*.avi", "*.mov", "*.mkv", "*.wmv", "*.m4v" } }
+                new ("Video files") { Patterns = new[] { "*.mp4", "*.avi", "*.mov", "*.mkv", "*.wmv", "*.m4v" } }
             }
         });
 
         var added = 0;
-        lock (_cameraSync)
+        lock (cameraSync)
         {
             foreach (var file in files)
             {
                 var path = file.TryGetLocalPath();
-                if (string.IsNullOrWhiteSpace(path) || _cameras.Any(c => string.Equals(c.Id, path, StringComparison.OrdinalIgnoreCase)))
+                if (string.IsNullOrWhiteSpace(path) || cameras.Any(c => string.Equals(c.Id, path, StringComparison.OrdinalIgnoreCase)))
                 {
                     continue;
                 }
 
                 var cameraId = path;
-                var displayName = BuildCameraName(path, _cameras.Count + 1);
-                _cameras.Add(CameraProfile.CreateVideo(cameraId, displayName, new List<string> { path }));
+                var displayName = BuildCameraName(path, cameras.Count + 1);
+                cameras.Add(CameraProfile.CreateVideo(cameraId, displayName, new List<string> { path }));
 
-                if (!_cameraSettings.ContainsKey(cameraId))
+                if (!cameraSettings.ContainsKey(cameraId))
                 {
-                    _cameraSettings[cameraId] = RuntimeProcessingSettings.Default;
+                    cameraSettings[cameraId] = RuntimeProcessingSettings.Default;
                 }
 
                 added++;
             }
 
-            if (_selectedCameraIndex < 0 && _cameras.Count > 0)
+            if (selectedCameraIndex < 0 && cameras.Count > 0)
             {
-                _selectedCameraIndex = 0;
+                selectedCameraIndex = 0;
             }
         }
 
@@ -163,9 +174,9 @@ public partial class MainWindow : AppWindow
             ? "Status: no new video cameras added."
             : $"Status: added {added} video camera(s).");
 
-        if (_runTask is not null)
+        if (runTask is not null)
         {
-            StartBakeForAllCameras(_runCts?.Token ?? CancellationToken.None);
+            StartBakeForAllCameras(runCts?.Token ?? CancellationToken.None);
         }
     }
 
@@ -189,20 +200,20 @@ public partial class MainWindow : AppWindow
         var option = selectedOption.Value;
         var added = false;
 
-        lock (_cameraSync)
+        lock (cameraSync)
         {
-            if (!_cameras.Any(camera => string.Equals(camera.Id, option.Id, StringComparison.OrdinalIgnoreCase)))
+            if (!cameras.Any(camera => string.Equals(camera.Id, option.Id, StringComparison.OrdinalIgnoreCase)))
             {
-                _cameras.Add(CameraProfile.CreateUsb(option.Id, option.DisplayName, option.CameraIndex, option.Api));
+                cameras.Add(CameraProfile.CreateUsb(option.Id, option.DisplayName, option.CameraIndex, option.Api));
 
-                if (!_cameraSettings.ContainsKey(option.Id))
+                if (!cameraSettings.ContainsKey(option.Id))
                 {
-                    _cameraSettings[option.Id] = RuntimeProcessingSettings.Default;
+                    cameraSettings[option.Id] = RuntimeProcessingSettings.Default;
                 }
 
-                if (_selectedCameraIndex < 0)
+                if (selectedCameraIndex < 0)
                 {
-                    _selectedCameraIndex = 0;
+                    selectedCameraIndex = 0;
                 }
 
                 added = true;
@@ -247,7 +258,7 @@ public partial class MainWindow : AppWindow
             AllowMultiple = false,
             FileTypeFilter = new List<FilePickerFileType>
             {
-                new("Image files") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tif", "*.tiff", "*.webp" } }
+                new ("Image files") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tif", "*.tiff", "*.webp" } }
             }
         });
 
@@ -283,34 +294,34 @@ public partial class MainWindow : AppWindow
     {
         CameraProfile? removed = null;
 
-        lock (_cameraSync)
+        lock (cameraSync)
         {
             var index = PlaylistListBox.SelectedIndex;
-            if (index < 0 || index >= _cameras.Count)
+            if (index < 0 || index >= cameras.Count)
             {
                 return;
             }
 
-            removed = _cameras[index];
-            _cameras.RemoveAt(index);
-            _cameraSettings.Remove(removed.Value.Id);
+            removed = cameras[index];
+            cameras.RemoveAt(index);
+            cameraSettings.Remove(removed.Value.Id);
 
-            if (_cameras.Count == 0)
+            if (cameras.Count == 0)
             {
-                _selectedCameraIndex = -1;
+                selectedCameraIndex = -1;
             }
             else
             {
-                _selectedCameraIndex = Math.Clamp(index, 0, _cameras.Count - 1);
+                selectedCameraIndex = Math.Clamp(index, 0, cameras.Count - 1);
             }
         }
 
         PersistCameraSettings();
         RefreshCameraUi();
 
-        if (_runTask is not null && _selectedCameraIndex >= 0)
+        if (runTask is not null && selectedCameraIndex >= 0)
         {
-            Interlocked.Exchange(ref _requestedCameraIndex, _selectedCameraIndex);
+            Interlocked.Exchange(ref requestedCameraIndex, selectedCameraIndex);
         }
 
         SetStatus($"Status: removed camera {removed?.DisplayName ?? "-"}.");
@@ -318,11 +329,11 @@ public partial class MainWindow : AppWindow
 
     private void ClearCamerasButtonOnClick(object? sender, RoutedEventArgs e)
     {
-        lock (_cameraSync)
+        lock (cameraSync)
         {
-            _cameras.Clear();
-            _cameraSettings.Clear();
-            _selectedCameraIndex = -1;
+            cameras.Clear();
+            cameraSettings.Clear();
+            selectedCameraIndex = -1;
         }
 
         PersistCameraSettings();
@@ -345,15 +356,15 @@ public partial class MainWindow : AppWindow
         var index = PlaylistListBox.SelectedIndex;
         CameraProfile? camera = null;
 
-        lock (_cameraSync)
+        lock (cameraSync)
         {
-            if (index < 0 || index >= _cameras.Count)
+            if (index < 0 || index >= cameras.Count)
             {
                 return;
             }
 
-            _selectedCameraIndex = index;
-            camera = _cameras[index];
+            selectedCameraIndex = index;
+            camera = cameras[index];
         }
 
         if (camera is not null)
@@ -363,16 +374,16 @@ public partial class MainWindow : AppWindow
             OpenBakedMaskButton.IsEnabled = camera.Value.CanOpenBakedMask;
         }
 
-        if (_runTask is not null && index >= 0)
+        if (runTask is not null && index >= 0)
         {
-            Interlocked.Exchange(ref _requestedCameraIndex, index);
+            Interlocked.Exchange(ref requestedCameraIndex, index);
             SetStatus($"Status: switching to camera {camera?.DisplayName}...");
         }
     }
 
     private async void StartStopButtonOnClick(object? sender, RoutedEventArgs e)
     {
-        if (_runTask is not null)
+        if (runTask is not null)
         {
             await StopProcessingAsync();
             return;
@@ -386,19 +397,19 @@ public partial class MainWindow : AppWindow
 
         UpdateSelectedCameraSettingsFromUi(logChange: false);
 
-        var startIndex = _selectedCameraIndex >= 0 ? _selectedCameraIndex : 0;
+        var startIndex = selectedCameraIndex >= 0 ? selectedCameraIndex : 0;
         var loopCameraVideos = LoopPlaylistCheckBox.IsChecked == true;
 
-        _runCts = new CancellationTokenSource();
-        var token = _runCts.Token;
+        runCts = new CancellationTokenSource();
+        var token = runCts.Token;
 
         SetRunState(isRunning: true);
         StartBakeForAllCameras(token);
-        _runTask = Task.Run(() => RunCameraSelectionAsync(startIndex, loopCameraVideos, token), token);
+        runTask = Task.Run(() => RunCameraSelectionAsync(startIndex, loopCameraVideos, token), token);
 
         try
         {
-            await _runTask;
+            await runTask;
         }
         catch (OperationCanceledException)
         {
@@ -410,9 +421,9 @@ public partial class MainWindow : AppWindow
         }
         finally
         {
-            _runTask = null;
-            _runCts?.Dispose();
-            _runCts = null;
+            runTask = null;
+            runCts?.Dispose();
+            runCts = null;
             SetRunState(isRunning: false);
         }
     }
@@ -438,12 +449,13 @@ public partial class MainWindow : AppWindow
             settings.ProcessMaxWidth,
             settings.MotionArea,
             settings.ColorMinPixels,
-            settings.MorphKernelSize);
+            settings.MorphKernelSize,
+            settings.ColorCalibrations);
 
         string? bakedPath;
         try
         {
-            bakedPath = await _engine.EnsureBakedBackgroundAsync(
+            bakedPath = await engine.EnsureBakedBackgroundAsync(
                 camera.Value.PrimaryVideoPath,
                 settings.SampleCount,
                 options,
@@ -475,13 +487,13 @@ public partial class MainWindow : AppWindow
 
     private async Task StopProcessingAsync()
     {
-        var task = _runTask;
+        var task = runTask;
         if (task is null)
         {
             return;
         }
 
-        _runCts?.Cancel();
+        runCts?.Cancel();
 
         try
         {
@@ -509,8 +521,8 @@ public partial class MainWindow : AppWindow
                 break;
             }
 
-            _selectedCameraIndex = cameraIndex;
-            Interlocked.Exchange(ref _selectedCameraIndex, cameraIndex);
+            selectedCameraIndex = cameraIndex;
+            Interlocked.Exchange(ref selectedCameraIndex, cameraIndex);
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -534,7 +546,7 @@ public partial class MainWindow : AppWindow
             }
 
             // Stay on the currently selected camera loop unless explicitly switched.
-            cameraIndex = Math.Clamp(_selectedCameraIndex, 0, Math.Max(0, GetCameraCount() - 1));
+            cameraIndex = Math.Clamp(selectedCameraIndex, 0, Math.Max(0, GetCameraCount() - 1));
         }
     }
 
@@ -547,9 +559,10 @@ public partial class MainWindow : AppWindow
                 settings.ProcessMaxWidth,
                 settings.MotionArea,
                 settings.ColorMinPixels,
-                settings.MorphKernelSize);
+                settings.MorphKernelSize,
+                settings.ColorCalibrations);
 
-            var result = await _engine.ProcessUsbCameraAsync(
+            var result = await engine.ProcessUsbCameraAsync(
                 usbCamera.CameraIndex,
                 usbCamera.Api,
                 camera.DisplayName,
@@ -575,9 +588,7 @@ public partial class MainWindow : AppWindow
             return;
         }
 
-        var videoIndex = 0;
-
-        while (!cancellationToken.IsCancellationRequested)
+        for (var videoIndex = 0; !cancellationToken.IsCancellationRequested; videoIndex++)
         {
             if (TryConsumeCameraSwitchRequest(out var _))
             {
@@ -589,7 +600,8 @@ public partial class MainWindow : AppWindow
                 settings.ProcessMaxWidth,
                 settings.MotionArea,
                 settings.ColorMinPixels,
-                settings.MorphKernelSize);
+                settings.MorphKernelSize,
+                settings.ColorCalibrations);
 
             if (videoIndex >= camera.VideoPaths.Count)
             {
@@ -602,12 +614,9 @@ public partial class MainWindow : AppWindow
             }
 
             var videoPath = camera.VideoPaths[videoIndex];
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                CurrentVideoText.Text = BuildCurrentSourceText(camera, Path.GetFileName(videoPath));
-            });
+            await Dispatcher.UIThread.InvokeAsync(() => CurrentVideoText.Text = BuildCurrentSourceText(camera, Path.GetFileName(videoPath)));
 
-            var result = await _engine.ProcessVideoAsync(
+            var result = await engine.ProcessVideoAsync(
                 videoPath,
                 settings.SampleCount,
                 settings.Threshold,
@@ -632,17 +641,15 @@ public partial class MainWindow : AppWindow
             {
                 return;
             }
-
-            videoIndex++;
         }
     }
 
     private void StartBakeForAllCameras(CancellationToken cancellationToken)
     {
         List<CameraProfile> snapshot;
-        lock (_cameraSync)
+        lock (cameraSync)
         {
-            snapshot = _cameras.ToList();
+            snapshot = cameras.ToList();
         }
 
         foreach (var camera in snapshot)
@@ -657,7 +664,8 @@ public partial class MainWindow : AppWindow
                 settings.ProcessMaxWidth,
                 settings.MotionArea,
                 settings.ColorMinPixels,
-                settings.MorphKernelSize);
+                settings.MorphKernelSize,
+                settings.ColorCalibrations);
 
             foreach (var videoPath in camera.VideoPaths)
             {
@@ -665,7 +673,7 @@ public partial class MainWindow : AppWindow
                 {
                     try
                     {
-                        await _engine.EnsureBakedBackgroundAsync(
+                        await engine.EnsureBakedBackgroundAsync(
                             videoPath,
                             settings.SampleCount,
                             options,
@@ -693,13 +701,13 @@ public partial class MainWindow : AppWindow
         }
 
         var now = Environment.TickCount64;
-        var last = Interlocked.Read(ref _lastPreviewRenderTick);
+        var last = Interlocked.Read(ref lastPreviewRenderTick);
         if (now - last < PreviewIntervalMs)
         {
             return;
         }
 
-        if (Interlocked.CompareExchange(ref _previewRenderBusy, 1, 0) != 0)
+        if (Interlocked.CompareExchange(ref previewRenderBusy, 1, 0) != 0)
         {
             return;
         }
@@ -714,7 +722,7 @@ public partial class MainWindow : AppWindow
                 }
 
                 await Dispatcher.UIThread.InvokeAsync(() => RenderFrameSet(frameSet));
-                Interlocked.Exchange(ref _lastPreviewRenderTick, Environment.TickCount64);
+                Interlocked.Exchange(ref lastPreviewRenderTick, Environment.TickCount64);
             }
             catch
             {
@@ -722,7 +730,7 @@ public partial class MainWindow : AppWindow
             }
             finally
             {
-                Interlocked.Exchange(ref _previewRenderBusy, 0);
+                Interlocked.Exchange(ref previewRenderBusy, 0);
             }
         }, cancellationToken);
     }
@@ -748,12 +756,12 @@ public partial class MainWindow : AppWindow
     private void RefreshCameraUi()
     {
         List<CameraProfile> snapshot;
-        lock (_cameraSync)
+        lock (cameraSync)
         {
-            snapshot = _cameras.ToList();
+            snapshot = cameras.ToList();
         }
 
-        PlaylistListBox.ItemsSource = snapshot.Select(camera => camera.DisplayName).ToList();
+        PlaylistListBox.ItemsSource = snapshot.ConvertAll(camera => camera.DisplayName);
 
         var canNavigate = snapshot.Count > 1;
         PreviousVideoButton.IsEnabled = canNavigate;
@@ -767,10 +775,10 @@ public partial class MainWindow : AppWindow
             return;
         }
 
-        _selectedCameraIndex = Math.Clamp(_selectedCameraIndex, 0, snapshot.Count - 1);
-        PlaylistListBox.SelectedIndex = _selectedCameraIndex;
+        selectedCameraIndex = Math.Clamp(selectedCameraIndex, 0, snapshot.Count - 1);
+        PlaylistListBox.SelectedIndex = selectedCameraIndex;
 
-        var selected = snapshot[_selectedCameraIndex];
+        var selected = snapshot[selectedCameraIndex];
         ApplySettingsToUi(GetSettingsForCamera(selected.Id));
         CurrentVideoText.Text = BuildCurrentSourceText(selected);
         OpenBakedMaskButton.IsEnabled = selected.CanOpenBakedMask;
@@ -786,13 +794,36 @@ public partial class MainWindow : AppWindow
 
         if (!isRunning)
         {
-            Interlocked.Exchange(ref _requestedCameraIndex, -1);
+            Interlocked.Exchange(ref requestedCameraIndex, -1);
         }
     }
 
     private void RuntimeSettingControlOnLostFocus(object? sender, RoutedEventArgs e)
     {
         UpdateSelectedCameraSettingsFromUi(logChange: true);
+    }
+
+    private void CalibrationColorComboBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        var selectedName = GetCalibrationSelectionName();
+        if (string.IsNullOrWhiteSpace(selectedName))
+        {
+            return;
+        }
+
+        selectedCalibrationColor = selectedName;
+
+        var camera = GetSelectedCamera();
+        var settings = camera is null
+            ? RuntimeProcessingSettings.Default
+            : GetSettingsForCamera(camera.Value.Id);
+
+        LoadCalibrationEditor(settings.ColorCalibrations, selectedName);
+    }
+
+    private void ColorCalibrationControlOnLostFocus(object? sender, RoutedEventArgs e)
+    {
+        UpdateSelectedColorCalibrationFromUi(logChange: true);
     }
 
     private void UpdateSelectedCameraSettingsFromUi(bool logChange)
@@ -820,9 +851,12 @@ public partial class MainWindow : AppWindow
         ProcessWidthTextBox.Text = processMaxWidth.ToString();
         BakeImagePathTextBox.Text = bakeImagePath;
 
-        lock (_settingsSync)
+        var existing = GetSettingsForCamera(camera.Value.Id);
+        var colorCalibrations = BuildCalibrationsFromEditor(existing.ColorCalibrations);
+
+        lock (settingsSync)
         {
-            _cameraSettings[camera.Value.Id] = new RuntimeProcessingSettings(
+            cameraSettings[camera.Value.Id] = new RuntimeProcessingSettings(
                 sampleCount,
                 threshold,
                 motionArea,
@@ -830,11 +864,12 @@ public partial class MainWindow : AppWindow
                 morphKernelSize,
                 processMaxWidth,
                 bakeSourceMode,
-                bakeImagePath);
+                bakeImagePath,
+                colorCalibrations);
         }
 
         PersistCameraSettings();
-        UpdateOpenBakedMaskButtonState(camera.Value, _cameraSettings[camera.Value.Id]);
+        UpdateOpenBakedMaskButtonState(camera.Value, cameraSettings[camera.Value.Id]);
 
         if (logChange)
         {
@@ -853,13 +888,17 @@ public partial class MainWindow : AppWindow
         BakeSourceComboBox.SelectedIndex = (int)settings.BakeSourceMode;
         BakeImagePathTextBox.Text = settings.BakeImagePath;
         ApplyBakeSourceUiState();
+
+        var selectedColor = GetCalibrationSelectionName() ?? selectedCalibrationColor;
+        selectedCalibrationColor = selectedColor;
+        LoadCalibrationEditor(settings.ColorCalibrations, selectedColor);
     }
 
     private RuntimeProcessingSettings GetSettingsForCamera(string cameraId)
     {
-        lock (_settingsSync)
+        lock (settingsSync)
         {
-            if (_cameraSettings.TryGetValue(cameraId, out var settings))
+            if (cameraSettings.TryGetValue(cameraId, out var settings))
             {
                 return settings;
             }
@@ -875,52 +914,53 @@ public partial class MainWindow : AppWindow
             settings.Threshold,
             settings.MotionArea,
             settings.ColorMinPixels,
-            settings.MorphKernelSize);
+            settings.MorphKernelSize,
+            settings.ColorCalibrations);
     }
 
     private void PersistCameraSettings()
     {
         Dictionary<string, RuntimeProcessingSettings> snapshot;
-        lock (_settingsSync)
+        lock (settingsSync)
         {
-            snapshot = _cameraSettings.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+            snapshot = cameraSettings.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
         }
 
-        _cameraSettingsStore.Save(snapshot);
+        cameraSettingsStore.Save(snapshot);
     }
 
     private CameraProfile? GetSelectedCamera()
     {
-        lock (_cameraSync)
+        lock (cameraSync)
         {
-            if (_selectedCameraIndex < 0 || _selectedCameraIndex >= _cameras.Count)
+            if (selectedCameraIndex < 0 || selectedCameraIndex >= cameras.Count)
             {
                 return null;
             }
 
-            return _cameras[_selectedCameraIndex];
+            return cameras[selectedCameraIndex];
         }
     }
 
     private int GetCameraCount()
     {
-        lock (_cameraSync)
+        lock (cameraSync)
         {
-            return _cameras.Count;
+            return cameras.Count;
         }
     }
 
     private bool TryGetCamera(int index, out CameraProfile camera)
     {
-        lock (_cameraSync)
+        lock (cameraSync)
         {
-            if (index < 0 || index >= _cameras.Count)
+            if (index < 0 || index >= cameras.Count)
             {
                 camera = default;
                 return false;
             }
 
-            camera = _cameras[index];
+            camera = cameras[index];
             return true;
         }
     }
@@ -933,7 +973,7 @@ public partial class MainWindow : AppWindow
             return;
         }
 
-        var current = _selectedCameraIndex;
+        var current = selectedCameraIndex;
         if (current < 0 || current >= count)
         {
             current = Math.Clamp(PlaylistListBox.SelectedIndex, 0, count - 1);
@@ -949,12 +989,12 @@ public partial class MainWindow : AppWindow
             target = 0;
         }
 
-        _selectedCameraIndex = target;
+        selectedCameraIndex = target;
         PlaylistListBox.SelectedIndex = target;
 
-        if (_runTask is not null)
+        if (runTask is not null)
         {
-            Interlocked.Exchange(ref _requestedCameraIndex, target);
+            Interlocked.Exchange(ref requestedCameraIndex, target);
             SetStatus($"Status: switching to camera #{target + 1}...");
             return;
         }
@@ -1050,12 +1090,12 @@ public partial class MainWindow : AppWindow
 
     private bool HasPendingCameraSwitchRequest()
     {
-        return Interlocked.CompareExchange(ref _requestedCameraIndex, -1, -1) >= 0;
+        return Interlocked.CompareExchange(ref requestedCameraIndex, -1, -1) >= 0;
     }
 
     private bool TryConsumeCameraSwitchRequest(out int requestedIndex)
     {
-        requestedIndex = Interlocked.Exchange(ref _requestedCameraIndex, -1);
+        requestedIndex = Interlocked.Exchange(ref requestedCameraIndex, -1);
         return requestedIndex >= 0;
     }
 
@@ -1070,17 +1110,143 @@ public partial class MainWindow : AppWindow
         var timestamp = DateTime.Now.ToString("HH:mm:ss");
         var line = $"[{timestamp}] {message}";
 
-        _logEntries.Add(line);
-        while (_logEntries.Count > MaxLogEntries)
+        logEntries.Add(line);
+        while (logEntries.Count > MaxLogEntries)
         {
-            _logEntries.RemoveAt(0);
+            logEntries.RemoveAt(0);
         }
 
-        LogListBox.SelectedIndex = _logEntries.Count - 1;
+        LogListBox.SelectedIndex = logEntries.Count - 1;
         if (LogListBox.SelectedItem is not null)
         {
             LogListBox.ScrollIntoView(LogListBox.SelectedItem);
         }
+    }
+
+    private void UpdateSelectedColorCalibrationFromUi(bool logChange)
+    {
+        var camera = GetSelectedCamera();
+        if (camera is null)
+        {
+            return;
+        }
+
+        var settings = GetSettingsForCamera(camera.Value.Id);
+        var updatedCalibrations = BuildCalibrationsFromEditor(settings.ColorCalibrations);
+
+        lock (settingsSync)
+        {
+            cameraSettings[camera.Value.Id] = settings with { ColorCalibrations = updatedCalibrations };
+        }
+
+        PersistCameraSettings();
+
+        if (logChange)
+        {
+            SetStatus($"Status: {camera.Value.DisplayName} color calibration updated for {selectedCalibrationColor}.");
+        }
+    }
+
+    private IReadOnlyList<ColorCalibrationProfile> BuildCalibrationsFromEditor(IReadOnlyList<ColorCalibrationProfile> source)
+    {
+        var selectedColor = GetCalibrationSelectionName() ?? selectedCalibrationColor;
+        selectedCalibrationColor = selectedColor;
+
+        var fallback = source.FirstOrDefault(profile => profile.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(fallback.Name))
+        {
+            fallback = CreateDefaultColorCalibrations().First(profile => profile.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var updated = NormalizeColorCalibration(new ColorCalibrationProfile(
+            selectedColor,
+            ParseInt(HueLowerTextBox.Text, fallback.HueLower, 0, 180),
+            ParseInt(HueUpperTextBox.Text, fallback.HueUpper, 0, 180),
+            ParseInt(SaturationLowerTextBox.Text, fallback.SaturationLower, 0, 255),
+            ParseInt(SaturationUpperTextBox.Text, fallback.SaturationUpper, 0, 255),
+            ParseInt(ValueLowerTextBox.Text, fallback.ValueLower, 0, 255),
+            ParseInt(ValueUpperTextBox.Text, fallback.ValueUpper, 0, 255)));
+
+        HueLowerTextBox.Text = updated.HueLower.ToString();
+        HueUpperTextBox.Text = updated.HueUpper.ToString();
+        SaturationLowerTextBox.Text = updated.SaturationLower.ToString();
+        SaturationUpperTextBox.Text = updated.SaturationUpper.ToString();
+        ValueLowerTextBox.Text = updated.ValueLower.ToString();
+        ValueUpperTextBox.Text = updated.ValueUpper.ToString();
+
+        var result = source
+            .Where(profile => !string.IsNullOrWhiteSpace(profile.Name))
+            .Select(NormalizeColorCalibration)
+            .Where(profile => !profile.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(profile => profile.Name, profile => profile, StringComparer.OrdinalIgnoreCase);
+
+        result[selectedColor] = updated;
+
+        foreach (var defaults in CreateDefaultColorCalibrations())
+        {
+            if (!result.ContainsKey(defaults.Name))
+            {
+                result[defaults.Name] = defaults;
+            }
+        }
+
+        return result.Values
+            .OrderBy(profile => profile.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void LoadCalibrationEditor(IReadOnlyList<ColorCalibrationProfile> calibrations, string selectedColor)
+    {
+        selectedCalibrationColor = selectedColor;
+        var profile = calibrations.FirstOrDefault(item => item.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(profile.Name))
+        {
+            profile = CreateDefaultColorCalibrations().First(item => item.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase));
+        }
+
+        HueLowerTextBox.Text = profile.HueLower.ToString();
+        HueUpperTextBox.Text = profile.HueUpper.ToString();
+        SaturationLowerTextBox.Text = profile.SaturationLower.ToString();
+        SaturationUpperTextBox.Text = profile.SaturationUpper.ToString();
+        ValueLowerTextBox.Text = profile.ValueLower.ToString();
+        ValueUpperTextBox.Text = profile.ValueUpper.ToString();
+    }
+
+    private string? GetCalibrationSelectionName()
+    {
+        if (CalibrationColorComboBox.SelectedItem is ComboBoxItem item
+            && item.Content is string selected
+            && !string.IsNullOrWhiteSpace(selected))
+        {
+            return selected.Trim().ToLowerInvariant();
+        }
+
+        return null;
+    }
+
+    private static ColorCalibrationProfile NormalizeColorCalibration(ColorCalibrationProfile profile)
+    {
+        return new ColorCalibrationProfile(
+            profile.Name.Trim().ToLowerInvariant(),
+            Math.Clamp(profile.HueLower, 0, 180),
+            Math.Clamp(profile.HueUpper, 0, 180),
+            Math.Clamp(profile.SaturationLower, 0, 255),
+            Math.Clamp(profile.SaturationUpper, 0, 255),
+            Math.Clamp(profile.ValueLower, 0, 255),
+            Math.Clamp(profile.ValueUpper, 0, 255));
+    }
+
+    internal static IReadOnlyList<ColorCalibrationProfile> CreateDefaultColorCalibrations()
+    {
+        return new List<ColorCalibrationProfile>
+        {
+            new ("red", 170, 10, 120, 255, 70, 255),
+            new ("green", 35, 85, 80, 255, 60, 255),
+            new ("blue", 90, 130, 100, 255, 60, 255),
+            new ("yellow", 20, 35, 110, 255, 80, 255),
+            new ("white", 0, 180, 0, 50, 190, 255),
+            new ("black", 0, 180, 0, 255, 0, 45)
+        };
     }
 
     private static int ParseInt(string? text, int fallback, int min, int max)
@@ -1122,6 +1288,7 @@ public partial class MainWindow : AppWindow
         ImageFile = 1
     }
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct UsbCameraSource(int CameraIndex, VideoCaptureAPIs Api);
 
     private readonly record struct CameraProfile(
@@ -1142,10 +1309,10 @@ public partial class MainWindow : AppWindow
             : (string.IsNullOrWhiteSpace(PrimaryVideoPath) ? DisplayName : Path.GetFileName(PrimaryVideoPath));
 
         public static CameraProfile CreateVideo(string id, string displayName, List<string> videoPaths)
-            => new(id, displayName, CameraSourceKind.VideoFiles, videoPaths, null);
+            => new (id, displayName, CameraSourceKind.VideoFiles, videoPaths, null);
 
         public static CameraProfile CreateUsb(string id, string displayName, int cameraIndex, VideoCaptureAPIs api)
-            => new(id, displayName, CameraSourceKind.UsbCamera, new List<string>(), new UsbCameraSource(cameraIndex, api));
+            => new (id, displayName, CameraSourceKind.UsbCamera, new List<string>(), new UsbCameraSource(cameraIndex, api));
     }
 
     internal readonly record struct RuntimeProcessingSettings(
@@ -1156,8 +1323,9 @@ public partial class MainWindow : AppWindow
         int MorphKernelSize,
         int ProcessMaxWidth,
         BakeSourceMode BakeSourceMode,
-        string BakeImagePath)
+        string BakeImagePath,
+        IReadOnlyList<ColorCalibrationProfile> ColorCalibrations)
     {
-        public static RuntimeProcessingSettings Default => new(20, 100, 220, 40, 3, 640, BakeSourceMode.Samples, string.Empty);
+        public static RuntimeProcessingSettings Default => new (20, 100, 220, 40, 3, 640, BakeSourceMode.Samples, string.Empty, CreateDefaultColorCalibrations());
     }
 }

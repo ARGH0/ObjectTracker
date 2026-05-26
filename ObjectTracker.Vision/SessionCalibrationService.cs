@@ -7,8 +7,8 @@ namespace ObjectTracker.Vision;
 
 public sealed class SessionCalibrationService
 {
-    private readonly object _bakeSync = new();
-    private readonly Dictionary<string, Task<string>> _bakeJobs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Lock bakeSync = new ();
+    private readonly Dictionary<string, Task<string>> bakeJobs = new (StringComparer.OrdinalIgnoreCase);
 
     public Task PreBakeBackgroundAsync(string videoPath, int sampleCount, int processMaxWidth, CancellationToken cancellationToken)
     {
@@ -34,8 +34,8 @@ public sealed class SessionCalibrationService
             throw new InvalidOperationException($"Unable to open video: {Path.GetFileName(videoPath)}");
         }
 
-        var frameWidth = (int)capture.FrameWidth;
-        var frameHeight = (int)capture.FrameHeight;
+        var frameWidth = capture.FrameWidth;
+        var frameHeight = capture.FrameHeight;
         if (frameWidth <= 0 || frameHeight <= 0)
         {
             throw new InvalidOperationException("Video has invalid dimensions.");
@@ -73,8 +73,8 @@ public sealed class SessionCalibrationService
             return;
         }
 
-        var frameWidth = (int)capture.FrameWidth;
-        var frameHeight = (int)capture.FrameHeight;
+        var frameWidth = capture.FrameWidth;
+        var frameHeight = capture.FrameHeight;
         if (frameWidth <= 0 || frameHeight <= 0)
         {
             return;
@@ -98,20 +98,20 @@ public sealed class SessionCalibrationService
             return Task.FromResult(bakedPath);
         }
 
-        lock (_bakeSync)
+        lock (bakeSync)
         {
-            if (_bakeJobs.TryGetValue(bakedPath, out var running))
+            if (bakeJobs.TryGetValue(bakedPath, out var running))
             {
                 return running;
             }
 
             var bakeTask = BakeBackgroundCoreAsync(videoPath, sampleCount, processSize, bakedPath, cancellationToken, onStatus);
-            _bakeJobs[bakedPath] = bakeTask;
+            bakeJobs[bakedPath] = bakeTask;
             _ = bakeTask.ContinueWith(_ =>
             {
-                lock (_bakeSync)
+                lock (bakeSync)
                 {
-                    _bakeJobs.Remove(bakedPath);
+                    bakeJobs.Remove(bakedPath);
                 }
             }, TaskScheduler.Default);
 

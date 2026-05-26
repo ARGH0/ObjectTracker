@@ -1,5 +1,5 @@
-using OpenCvSharp;
 using ObjectTracker.Core.Ports;
+using OpenCvSharp;
 
 namespace ObjectTracker.Vision.Source;
 

@@ -6,29 +6,31 @@ namespace ObjectTracker.Vision.Source;
 
 public sealed class MockFrameSource : IFrameSource
 {
-    private int _tick;
-    private bool _running;
+    private int tick;
+    private bool running;
 
     public string Id => "mock";
+
     public string DisplayName => "Mock Source";
+
     public string Diagnostics => "mock source | synthetic frames | orientation=n/a";
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _running = true;
-        _tick = 0;
+        running = true;
+        tick = 0;
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        _running = false;
+        running = false;
         return Task.CompletedTask;
     }
 
     public async Task<FramePacket?> ReadFrameAsync(CancellationToken cancellationToken)
     {
-        if (!_running)
+        if (!running)
         {
             return null;
         }
@@ -40,19 +42,19 @@ public sealed class MockFrameSource : IFrameSource
 
         await Task.Delay(33, cancellationToken);
 
-        if (!_running || cancellationToken.IsCancellationRequested)
+        if (!running || cancellationToken.IsCancellationRequested)
         {
             return null;
         }
 
         using var image = new Mat(new Size(640, 480), MatType.CV_8UC3, new Scalar(30, 30, 30));
-        var x = 50 + (_tick % 540);
-        var y = 240 + (int)(Math.Sin(_tick / 25.0) * 120);
+        var x = 50 + (tick % 540);
+        var y = 240 + (int)(Math.Sin(tick / 25.0) * 120);
         Cv2.Circle(image, new Point(x, y), 25, Scalar.Red, -1);
         Cv2.PutText(image, "MOCK", new Point(20, 40), HersheyFonts.HersheySimplex, 1.0, Scalar.White, 2);
-        _tick += 4;
+        tick += 4;
 
-        Cv2.ImEncode(".jpg", image, out var bytes, [new ImageEncodingParam(ImwriteFlags.JpegQuality, 80)]);
+        Cv2.ImEncode(".jpg", image, out var bytes,[new ImageEncodingParam(ImwriteFlags.JpegQuality, 80)]);
 
         return new FramePacket(
             Id,

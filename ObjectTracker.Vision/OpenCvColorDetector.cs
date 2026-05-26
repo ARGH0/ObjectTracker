@@ -7,49 +7,95 @@ namespace ObjectTracker.Vision;
 public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterControl
 {
     public DetectorMode Mode => DetectorMode.Color;
+
     public string Name => "OpenCV Color";
-    private readonly object _filterLock = new();
 
-    private static readonly ColorRange[] Ranges =
-    [
-        new("red", new Scalar(0, 120, 70), new Scalar(10, 255, 255), new Scalar(170, 120, 70), new Scalar(180, 255, 255)),
-        new("orange", new Scalar(10, 120, 80), new Scalar(20, 255, 255)),
-        new("pink", new Scalar(145, 70, 80), new Scalar(169, 255, 255)),
-        new("purple", new Scalar(130, 70, 60), new Scalar(150, 255, 255)),
-        new("green", new Scalar(35, 80, 60), new Scalar(85, 255, 255)),
-        new("blue", new Scalar(90, 100, 60), new Scalar(130, 255, 255)),
-        new("cyan", new Scalar(80, 70, 70), new Scalar(95, 255, 255)),
-        new("yellow", new Scalar(20, 110, 80), new Scalar(35, 255, 255)),
-        new("white", new Scalar(0, 0, 190), new Scalar(180, 50, 255)),
-        new("black", new Scalar(0, 0, 0), new Scalar(180, 255, 45))
-    ];
+    private readonly Lock filterLock = new ();
 
-    private HashSet<string> _enabledColors = Ranges.Select(range => range.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, ColorRange> rangesByName = CreateDefaultRanges();
+    private HashSet<string> enabledColors = CreateDefaultProfiles()
+        .Select(profile => profile.Name)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    public IReadOnlyList<string> AvailableColors => Ranges.Select(range => range.Name).ToList();
+    public IReadOnlyList<string> AvailableColors
+    {
+        get
+        {
+            lock (filterLock)
+            {
+                return rangesByName.Keys.Order().ToList();
+            }
+        }
+    }
 
     public IReadOnlyList<string> EnabledColors
     {
         get
         {
-            lock (_filterLock)
+            lock (filterLock)
             {
-                return _enabledColors.OrderBy(name => name).ToList();
+                return enabledColors.Order().ToList();
+            }
+        }
+    }
+
+    public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations
+    {
+        get
+        {
+            lock (filterLock)
+            {
+                return rangesByName.Values
+                    .Select(ToProfile)
+                    .OrderBy(profile => profile.Name)
+                    .ToList();
             }
         }
     }
 
     public void SetEnabledColors(IEnumerable<string> colors)
     {
-        var valid = colors
-            .Where(color => !string.IsNullOrWhiteSpace(color))
-            .Select(color => color.Trim())
-            .Where(color => Ranges.Any(range => range.Name.Equals(color, StringComparison.OrdinalIgnoreCase)))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        lock (_filterLock)
+        lock (filterLock)
         {
-            _enabledColors = valid;
+            var valid = colors
+                .Where(color => !string.IsNullOrWhiteSpace(color))
+                .Select(color => color.Trim())
+                .Where(color => rangesByName.ContainsKey(color))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            enabledColors = valid;
+        }
+    }
+
+    public void SetColorCalibrations(IEnumerable<ColorCalibrationProfile> calibrations)
+    {
+        var normalized = calibrations
+            .Where(calibration => !string.IsNullOrWhiteSpace(calibration.Name))
+            .Select(Normalize)
+            .GroupBy(calibration => calibration.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Last())
+            .ToList();
+
+        if (normalized.Count == 0)
+        {
+            return;
+        }
+
+        lock (filterLock)
+        {
+            rangesByName = normalized.ToDictionary(
+                calibration => calibration.Name,
+                calibration => ToColorRange(calibration),
+                StringComparer.OrdinalIgnoreCase);
+
+            enabledColors = enabledColors
+                .Where(name => rangesByName.ContainsKey(name))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (enabledColors.Count == 0)
+            {
+                enabledColors = rangesByName.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
         }
     }
 
@@ -72,12 +118,14 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
         var detections = new List<Detection>();
 
         HashSet<string> enabled;
-        lock (_filterLock)
+        IReadOnlyList<ColorRange> ranges;
+        lock (filterLock)
         {
-            enabled = _enabledColors.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            enabled = enabledColors.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            ranges = rangesByName.Values.ToList();
         }
 
-        foreach (var range in Ranges)
+        foreach (var range in ranges)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -97,7 +145,7 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var area = Cv2.ContourArea(contour);
-                var minArea = range.Name is "black" or "white" ? 240 : 120;
+                var minArea = GetMinArea(range.Name);
                 if (area < minArea)
                 {
                     continue;
@@ -131,6 +179,94 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
         }
 
         return Task.FromResult<IReadOnlyList<Detection>>(detections);
+    }
+
+    private static int GetMinArea(string colorName)
+    {
+        return colorName is "black" or "white" ? 240 : 120;
+    }
+
+    private static Dictionary<string, ColorRange> CreateDefaultRanges()
+    {
+        return CreateDefaultProfiles().ToDictionary(
+            profile => profile.Name,
+            profile => ToColorRange(profile),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<ColorCalibrationProfile> CreateDefaultProfiles()
+    {
+        return new List<ColorCalibrationProfile>
+        {
+            new ("red", 170, 10, 120, 255, 70, 255),
+            new ("orange", 10, 20, 120, 255, 80, 255),
+            new ("pink", 145, 169, 70, 255, 80, 255),
+            new ("purple", 130, 150, 70, 255, 60, 255),
+            new ("green", 35, 85, 80, 255, 60, 255),
+            new ("blue", 90, 130, 100, 255, 60, 255),
+            new ("cyan", 80, 95, 70, 255, 70, 255),
+            new ("yellow", 20, 35, 110, 255, 80, 255),
+            new ("white", 0, 180, 0, 50, 190, 255),
+            new ("black", 0, 180, 0, 255, 0, 45)
+        };
+    }
+
+    private static ColorCalibrationProfile Normalize(ColorCalibrationProfile profile)
+    {
+        var normalizedName = profile.Name.Trim().ToLowerInvariant();
+        return new ColorCalibrationProfile(
+            normalizedName,
+            Math.Clamp(profile.HueLower, 0, 180),
+            Math.Clamp(profile.HueUpper, 0, 180),
+            Math.Clamp(profile.SaturationLower, 0, 255),
+            Math.Clamp(profile.SaturationUpper, 0, 255),
+            Math.Clamp(profile.ValueLower, 0, 255),
+            Math.Clamp(profile.ValueUpper, 0, 255));
+    }
+
+    private static ColorRange ToColorRange(ColorCalibrationProfile profile)
+    {
+        var normalized = Normalize(profile);
+        var lower = new Scalar(normalized.HueLower, normalized.SaturationLower, normalized.ValueLower);
+        var upper = new Scalar(normalized.HueUpper, normalized.SaturationUpper, normalized.ValueUpper);
+
+        if (normalized.HueLower <= normalized.HueUpper)
+        {
+            return new ColorRange(normalized.Name, lower, upper);
+        }
+
+        var secondaryLower = new Scalar(0, normalized.SaturationLower, normalized.ValueLower);
+        var secondaryUpper = new Scalar(normalized.HueUpper, normalized.SaturationUpper, normalized.ValueUpper);
+        return new ColorRange(
+            normalized.Name,
+            lower,
+            new Scalar(180, normalized.SaturationUpper, normalized.ValueUpper),
+            secondaryLower,
+            secondaryUpper);
+    }
+
+    private static ColorCalibrationProfile ToProfile(ColorRange range)
+    {
+        if (!range.HasSecondary)
+        {
+            return new ColorCalibrationProfile(
+                range.Name,
+                (int)range.Lower.Val0,
+                (int)range.Upper.Val0,
+                (int)range.Lower.Val1,
+                (int)range.Upper.Val1,
+                (int)range.Lower.Val2,
+                (int)range.Upper.Val2);
+        }
+
+        return new ColorCalibrationProfile(
+            range.Name,
+            (int)range.Lower.Val0,
+            (int)range.SecondaryUpper!.Value.Val0,
+            (int)range.Lower.Val1,
+            (int)range.Upper.Val1,
+            (int)range.Lower.Val2,
+            (int)range.Upper.Val2);
     }
 
     private static Mat BuildMask(Mat hsv, ColorRange range)

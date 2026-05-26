@@ -6,11 +6,11 @@ namespace ObjectTracker.UI.Desktop;
 
 internal partial class UsbCameraSelectionDialog : Window
 {
-    private readonly IReadOnlyList<UsbCameraOption> _options;
+    private readonly IReadOnlyList<UsbCameraOption> options;
 
     public UsbCameraSelectionDialog(IReadOnlyList<UsbCameraOption> options)
     {
-        _options = options;
+        this.options = options;
         InitializeComponent();
 
         HeaderText.Text = options.Count == 0
@@ -21,14 +21,18 @@ internal partial class UsbCameraSelectionDialog : Window
         CameraListBox.SelectedIndex = options.Count > 0 ? 0 : -1;
         AddButton.IsEnabled = options.Count > 0;
 
-        AddButton.Click  += (_, _) => ConfirmSelection();
+        AddButton.Click += (_, _) => ConfirmSelection();
         CancelButton.Click += (_, _) => Close();
     }
 
     private void ConfirmSelection()
     {
         var idx = CameraListBox.SelectedIndex;
-        if (idx < 0 || idx >= _options.Count) return;
-        Close(_options[idx]);
+        if (idx < 0 || idx >= options.Count)
+        {
+            return;
+        }
+
+        Close(options[idx]);
     }
 }

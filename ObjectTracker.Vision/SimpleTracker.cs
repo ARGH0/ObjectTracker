@@ -10,16 +10,16 @@ public sealed class SimpleTracker : ITracker
     private const long UncertainTimeoutMs = 3000;
     private const long RemovalTimeoutMs = 10000;
 
-    private readonly Dictionary<string, TrackedTrain> _tracks = new(StringComparer.OrdinalIgnoreCase);
-    private int _nextTrackNumber = 1;
+    private readonly Dictionary<string, TrackedTrain> tracks = new (StringComparer.OrdinalIgnoreCase);
+    private int nextTrackNumber = 1;
 
     public IReadOnlyList<TrainState> Update(IReadOnlyList<Detection> detections, long frameTimestampUtcMs)
     {
-        var results = new List<TrainState>(_tracks.Count + detections.Count);
+        var results = new List<TrainState>(tracks.Count + detections.Count);
         var matches = new Dictionary<string, Detection>(StringComparer.OrdinalIgnoreCase);
         var usedDetections = new HashSet<int>();
 
-        foreach (var track in _tracks.Values.OrderBy(track => track.State.LocalTrainId, StringComparer.OrdinalIgnoreCase))
+        foreach (var track in tracks.Values.OrderBy(track => track.State.LocalTrainId, StringComparer.OrdinalIgnoreCase))
         {
             var bestIndex = -1;
             var bestDistance = float.MaxValue;
@@ -56,7 +56,7 @@ public sealed class SimpleTracker : ITracker
             }
         }
 
-        foreach (var track in _tracks.Values)
+        foreach (var track in tracks.Values)
         {
             if (matches.TryGetValue(track.State.LocalTrainId, out var detection))
             {
@@ -79,7 +79,7 @@ public sealed class SimpleTracker : ITracker
 
             var detection = detections[index];
             var track = CreateTrack(detection);
-            _tracks[track.State.LocalTrainId] = track;
+            tracks[track.State.LocalTrainId] = track;
             results.Add(track.State);
         }
 
@@ -92,8 +92,8 @@ public sealed class SimpleTracker : ITracker
 
     public void Reset()
     {
-        _tracks.Clear();
-        _nextTrackNumber = 1;
+        tracks.Clear();
+        nextTrackNumber = 1;
     }
 
     private static bool IsCompatible(TrackedTrain track, Detection detection)
@@ -120,7 +120,7 @@ public sealed class SimpleTracker : ITracker
 
     private TrackedTrain CreateTrack(Detection detection)
     {
-        var localTrainId = $"train-{_nextTrackNumber++:000}";
+        var localTrainId = $"train-{nextTrackNumber++ :000}";
         var state = new TrainState(
             localTrainId,
             detection.Kind,
@@ -188,7 +188,7 @@ public sealed class SimpleTracker : ITracker
 
     private void CleanupStaleTracks(long frameTimestampUtcMs)
     {
-        var staleTracks = _tracks
+        var staleTracks = tracks
             .Where(pair => pair.Value.State.MotionState == TrainMotionState.GoneFromTrack &&
                            frameTimestampUtcMs - pair.Value.LastDetectionTimestampUtcMs > RemovalTimeoutMs)
             .Select(pair => pair.Key)
@@ -196,7 +196,7 @@ public sealed class SimpleTracker : ITracker
 
         foreach (var trackId in staleTracks)
         {
-            _tracks.Remove(trackId);
+            tracks.Remove(trackId);
         }
     }
 
@@ -209,7 +209,9 @@ public sealed class SimpleTracker : ITracker
         }
 
         public TrainState State { get; set; }
+
         public long LastDetectionTimestampUtcMs { get; set; }
+
         public int MissedFrameCount { get; set; }
     }
 }

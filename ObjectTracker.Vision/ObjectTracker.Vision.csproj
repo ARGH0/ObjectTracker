@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <OpenCvSharpVersion>4.13.0.20260308</OpenCvSharpVersion>
+    <OpenCvSharpVersion>4.13.0.20260427</OpenCvSharpVersion>
     <OpenCvSharpRuntimeWinVersion>4.13.0.20260302</OpenCvSharpRuntimeWinVersion>
     <OpenCvSharpRuntimeLinuxVersion>4.13.0.20260329</OpenCvSharpRuntimeLinuxVersion>
     <OpenCvSharpRuntimePackage Condition="'$(RuntimeIdentifier)' == 'win-x64'">OpenCvSharp4.runtime.win</OpenCvSharpRuntimePackage>

@@ -1,34 +1,36 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
+using ObjectTracker.Core.Domain;
 
 namespace ObjectTracker.UI.Desktop;
 
 internal sealed class CameraSettingsStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions = new ()
     {
         WriteIndented = true
     };
 
-    private readonly string _filePath;
+    private readonly string filePath;
 
     public CameraSettingsStore()
     {
         var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var settingsFolder = Path.Combine(appDataPath, "ObjectTracker");
-        _filePath = Path.Combine(settingsFolder, "camera-settings.json");
+        filePath = Path.Combine(settingsFolder, "camera-settings.json");
     }
 
     public Dictionary<string, MainWindow.RuntimeProcessingSettings> Load()
     {
-        if (!File.Exists(_filePath))
+        if (!File.Exists(filePath))
         {
             return new Dictionary<string, MainWindow.RuntimeProcessingSettings>(StringComparer.OrdinalIgnoreCase);
         }
 
-        var json = File.ReadAllText(_filePath);
+        var json = File.ReadAllText(filePath);
         var dto = JsonSerializer.Deserialize<CameraSettingsFileDto>(json, JsonOptions);
         if (dto?.Items is null)
         {
@@ -51,7 +53,8 @@ internal sealed class CameraSettingsStore
                 MorphKernelSize: EnsureOdd(Math.Clamp(item.MorphKernelSize, 1, 31)),
                 ProcessMaxWidth: Math.Clamp(item.ProcessMaxWidth, 160, 1920),
                 BakeSourceMode: ParseBakeSourceMode(item.BakeSourceMode),
-                BakeImagePath: item.BakeImagePath ?? string.Empty);
+                BakeImagePath: item.BakeImagePath ?? string.Empty,
+                ColorCalibrations: ReadColorCalibrations(item.ColorCalibrations));
         }
 
         return result;
@@ -76,18 +79,30 @@ internal sealed class CameraSettingsStore
                 MorphKernelSize = settings.MorphKernelSize,
                 ProcessMaxWidth = settings.ProcessMaxWidth,
                 BakeSourceMode = settings.BakeSourceMode.ToString(),
-                BakeImagePath = settings.BakeImagePath
+                BakeImagePath = settings.BakeImagePath,
+                ColorCalibrations = settings.ColorCalibrations
+                    .Select(calibration => new ColorCalibrationDto
+                    {
+                        Name = calibration.Name,
+                        HueLower = calibration.HueLower,
+                        HueUpper = calibration.HueUpper,
+                        SaturationLower = calibration.SaturationLower,
+                        SaturationUpper = calibration.SaturationUpper,
+                        ValueLower = calibration.ValueLower,
+                        ValueUpper = calibration.ValueUpper
+                    })
+                    .ToList()
             });
         }
 
-        var directory = Path.GetDirectoryName(_filePath);
+        var directory = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrWhiteSpace(directory))
         {
             Directory.CreateDirectory(directory);
         }
 
         var json = JsonSerializer.Serialize(dto, JsonOptions);
-        File.WriteAllText(_filePath, json);
+        File.WriteAllText(filePath, json);
     }
 
     private static int EnsureOdd(int value)
@@ -102,21 +117,77 @@ internal sealed class CameraSettingsStore
             : MainWindow.BakeSourceMode.Samples;
     }
 
+    private static IReadOnlyList<ColorCalibrationProfile> ReadColorCalibrations(List<ColorCalibrationDto>? dtos)
+    {
+        var defaults = MainWindow.CreateDefaultColorCalibrations()
+            .ToDictionary(profile => profile.Name, profile => profile, StringComparer.OrdinalIgnoreCase);
+
+        if (dtos is not null)
+        {
+            foreach (var dto in dtos)
+            {
+                if (string.IsNullOrWhiteSpace(dto.Name))
+                {
+                    continue;
+                }
+
+                var normalizedName = dto.Name.Trim().ToLowerInvariant();
+                defaults[normalizedName] = new ColorCalibrationProfile(
+                    normalizedName,
+                    Math.Clamp(dto.HueLower, 0, 180),
+                    Math.Clamp(dto.HueUpper, 0, 180),
+                    Math.Clamp(dto.SaturationLower, 0, 255),
+                    Math.Clamp(dto.SaturationUpper, 0, 255),
+                    Math.Clamp(dto.ValueLower, 0, 255),
+                    Math.Clamp(dto.ValueUpper, 0, 255));
+            }
+        }
+
+        return defaults.Values.OrderBy(profile => profile.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     private sealed class CameraSettingsFileDto
     {
-        public List<CameraSettingsItemDto> Items { get; set; } = new();
+        public List<CameraSettingsItemDto> Items { get; set; } = new ();
     }
 
     private sealed class CameraSettingsItemDto
     {
         public string CameraId { get; set; } = string.Empty;
+
         public int SampleCount { get; set; } = 20;
+
         public int Threshold { get; set; } = 100;
+
         public int MotionArea { get; set; } = 220;
+
         public int ColorMinPixels { get; set; } = 40;
+
         public int MorphKernelSize { get; set; } = 3;
+
         public int ProcessMaxWidth { get; set; } = 640;
+
         public string BakeSourceMode { get; set; } = nameof(MainWindow.BakeSourceMode.Samples);
+
         public string BakeImagePath { get; set; } = string.Empty;
+
+        public List<ColorCalibrationDto> ColorCalibrations { get; set; } = new ();
+    }
+
+    private sealed class ColorCalibrationDto
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public int HueLower { get; set; }
+
+        public int HueUpper { get; set; }
+
+        public int SaturationLower { get; set; }
+
+        public int SaturationUpper { get; set; }
+
+        public int ValueLower { get; set; }
+
+        public int ValueUpper { get; set; }
     }
 }

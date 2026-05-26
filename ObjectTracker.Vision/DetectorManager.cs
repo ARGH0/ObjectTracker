@@ -5,78 +5,96 @@ namespace ObjectTracker.Vision;
 
 public sealed class DetectorManager : IDetectorManager
 {
-    private readonly Dictionary<DetectorMode, IDetectionAlgorithm> _algorithms;
-    private readonly List<IColorFilterControl> _colorFilterControls;
-    private readonly object _modeLock = new();
-    private DetectorMode _activeMode;
+    private readonly Dictionary<DetectorMode, IDetectionAlgorithm> algorithms;
+    private readonly List<IColorFilterControl> colorFilterControls;
+    private readonly Lock modeLock = new ();
+    private DetectorMode activeMode;
 
     public DetectorManager(IEnumerable<IDetectionAlgorithm> algorithms, DetectorMode defaultMode = DetectorMode.Hybrid)
     {
         var algorithmList = algorithms.ToList();
-        _algorithms = algorithmList.ToDictionary(algorithm => algorithm.Mode);
-        _colorFilterControls = algorithmList.OfType<IColorFilterControl>().ToList();
-        if (!_algorithms.ContainsKey(defaultMode))
+        this.algorithms = algorithmList.ToDictionary(algorithm => algorithm.Mode);
+        colorFilterControls = algorithmList.OfType<IColorFilterControl>().ToList();
+        if (!this.algorithms.ContainsKey(defaultMode))
         {
             throw new InvalidOperationException($"Default detector mode '{defaultMode}' is not registered.");
         }
 
-        _activeMode = defaultMode;
+        activeMode = defaultMode;
     }
 
     public DetectorMode ActiveMode
     {
         get
         {
-            lock (_modeLock)
+            lock (modeLock)
             {
-                return _activeMode;
+                return activeMode;
             }
         }
     }
 
-    public IReadOnlyList<DetectorMode> SupportedModes => _algorithms.Keys.OrderBy(mode => mode).ToList();
-    public IReadOnlyList<string> AvailableColorFilters => _colorFilterControls.SelectMany(control => control.AvailableColors).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(name => name).ToList();
-    public IReadOnlyList<string> EnabledColorFilters => _colorFilterControls.SelectMany(control => control.EnabledColors).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(name => name).ToList();
+    public IReadOnlyList<DetectorMode> SupportedModes => algorithms.Keys.Order().ToList();
+
+    public IReadOnlyList<string> AvailableColorFilters => colorFilterControls.SelectMany(control => control.AvailableColors).Distinct(StringComparer.OrdinalIgnoreCase).Order().ToList();
+
+    public IReadOnlyList<string> EnabledColorFilters => colorFilterControls.SelectMany(control => control.EnabledColors).Distinct(StringComparer.OrdinalIgnoreCase).Order().ToList();
+
+    public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations => colorFilterControls
+        .SelectMany(control => control.ColorCalibrations)
+        .GroupBy(profile => profile.Name, StringComparer.OrdinalIgnoreCase)
+        .Select(group => group.First())
+        .OrderBy(profile => profile.Name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     public void SwitchMode(DetectorMode mode)
     {
-        lock (_modeLock)
+        lock (modeLock)
         {
-            if (!_algorithms.ContainsKey(mode))
+            if (!algorithms.ContainsKey(mode))
             {
                 throw new InvalidOperationException($"Detector mode '{mode}' is not registered.");
             }
 
-            _activeMode = mode;
+            activeMode = mode;
         }
     }
 
     public void SetEnabledColorFilters(IEnumerable<string> colors)
     {
-        foreach (var control in _colorFilterControls)
+        foreach (var control in colorFilterControls)
         {
             control.SetEnabledColors(colors);
+        }
+    }
+
+    public void SetColorCalibrations(IEnumerable<ColorCalibrationProfile> calibrations)
+    {
+        var snapshot = calibrations.ToList();
+        foreach (var control in colorFilterControls)
+        {
+            control.SetColorCalibrations(snapshot);
         }
     }
 
     public async Task<IReadOnlyList<Detection>> DetectAsync(FramePacket frame, CancellationToken cancellationToken)
     {
         DetectorMode mode;
-        lock (_modeLock)
+        lock (modeLock)
         {
-            mode = _activeMode;
+            mode = activeMode;
         }
 
         if (mode == DetectorMode.Hybrid)
         {
             var merged = new List<Detection>();
 
-            if (_algorithms.TryGetValue(DetectorMode.Aruco, out var aruco))
+            if (algorithms.TryGetValue(DetectorMode.Aruco, out var aruco))
             {
                 merged.AddRange(await aruco.DetectAsync(frame, cancellationToken));
             }
 
-            if (_algorithms.TryGetValue(DetectorMode.Color, out var color))
+            if (algorithms.TryGetValue(DetectorMode.Color, out var color))
             {
                 merged.AddRange(await color.DetectAsync(frame, cancellationToken));
             }
@@ -84,7 +102,7 @@ public sealed class DetectorManager : IDetectorManager
             return merged;
         }
 
-        if (!_algorithms.TryGetValue(mode, out var algorithm))
+        if (!algorithms.TryGetValue(mode, out var algorithm))
         {
             return [];
         }

@@ -1,27 +1,27 @@
 using System.Diagnostics;
-using Cv = OpenCvSharp;
 using ObjectTracker.Core.Domain;
 using ObjectTracker.Core.Ports;
+using Cv = OpenCvSharp;
 
 namespace ObjectTracker.Vision;
 
 public sealed class PipelineController : IPipelineController, IAsyncDisposable
 {
-    private readonly IFrameSourceFactory _frameSourceFactory;
-    private readonly IDetectorManager _detectorManager;
-    private readonly ITracker _tracker;
-    private readonly IReadOnlyList<IOutputPort> _outputs;
-    private readonly IClock _clock;
-    private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
-    private readonly object _overlaySettingsLock = new();
-    private readonly Dictionary<string, RgbColor> _overlayColors = new(StringComparer.OrdinalIgnoreCase);
+    private readonly IFrameSourceFactory frameSourceFactory;
+    private readonly IDetectorManager detectorManager;
+    private readonly ITracker tracker;
+    private readonly IReadOnlyList<IOutputPort> outputs;
+    private readonly IClock clock;
+    private readonly SemaphoreSlim lifecycleLock = new (1, 1);
+    private readonly Lock overlaySettingsLock = new ();
+    private readonly Dictionary<string, RgbColor> overlayColors = new (StringComparer.OrdinalIgnoreCase);
 
-    private IFrameSource? _activeSource;
-    private CancellationTokenSource? _loopCts;
-    private Task? _loopTask;
-    private int _framesInWindow;
-    private long _windowStartMs;
-    private int _overlayLineThickness = 2;
+    private IFrameSource? activeSource;
+    private CancellationTokenSource? loopCts;
+    private Task? loopTask;
+    private int framesInWindow;
+    private long windowStartMs;
+    private int overlayLineThickness = 2;
 
     public PipelineController(
         IFrameSourceFactory frameSourceFactory,
@@ -30,27 +30,34 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         IEnumerable<IOutputPort> outputs,
         IClock clock)
     {
-        _frameSourceFactory = frameSourceFactory;
-        _detectorManager = detectorManager;
-        _tracker = tracker;
-        _outputs = outputs.ToList();
-        _clock = clock;
-        _windowStartMs = _clock.UtcNowMs();
+        this.frameSourceFactory = frameSourceFactory;
+        this.detectorManager = detectorManager;
+        this.tracker = tracker;
+        this.outputs = outputs.ToList();
+        this.clock = clock;
+        windowStartMs = this.clock.UtcNowMs();
         ResetOverlaySettings();
     }
 
-    public bool IsRunning => _loopTask is { IsCompleted: false };
-    public IReadOnlyList<FrameSourceInfo> AvailableSources => _frameSourceFactory.GetAvailableSources();
-    public IReadOnlyList<DetectorMode> AvailableDetectors => _detectorManager.SupportedModes;
-    public IReadOnlyList<string> AvailableColorFilters => _detectorManager.AvailableColorFilters;
-    public IReadOnlyList<string> EnabledColorFilters => _detectorManager.EnabledColorFilters;
+    public bool IsRunning => loopTask is { IsCompleted: false };
+
+    public IReadOnlyList<FrameSourceInfo> AvailableSources => frameSourceFactory.GetAvailableSources();
+
+    public IReadOnlyList<DetectorMode> AvailableDetectors => detectorManager.SupportedModes;
+
+    public IReadOnlyList<string> AvailableColorFilters => detectorManager.AvailableColorFilters;
+
+    public IReadOnlyList<string> EnabledColorFilters => detectorManager.EnabledColorFilters;
+
+    public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations => detectorManager.ColorCalibrations;
+
     public int OverlayLineThickness
     {
         get
         {
-            lock (_overlaySettingsLock)
+            lock (overlaySettingsLock)
             {
-                return _overlayLineThickness;
+                return overlayLineThickness;
             }
         }
     }
@@ -59,18 +66,18 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     {
         get
         {
-            lock (_overlaySettingsLock)
+            lock (overlaySettingsLock)
             {
-                return new Dictionary<string, RgbColor>(_overlayColors, StringComparer.OrdinalIgnoreCase);
+                return new Dictionary<string, RgbColor>(overlayColors, StringComparer.OrdinalIgnoreCase);
             }
         }
     }
 
-    public DetectorMode ActiveDetector => _detectorManager.ActiveMode;
+    public DetectorMode ActiveDetector => detectorManager.ActiveMode;
 
     public async Task StartAsync(string sourceId, CancellationToken cancellationToken)
     {
-        await _lifecycleLock.WaitAsync(cancellationToken);
+        await lifecycleLock.WaitAsync(cancellationToken);
         try
         {
             if (IsRunning)
@@ -78,23 +85,23 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 return;
             }
 
-            _activeSource = _frameSourceFactory.Create(sourceId);
-            await _activeSource.StartAsync(cancellationToken);
+            activeSource = frameSourceFactory.Create(sourceId);
+            await activeSource.StartAsync(cancellationToken);
 
-            _loopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            _loopTask = Task.Run(() => RunLoopAsync(_loopCts.Token), _loopCts.Token);
-            await PublishStatusAsync($"Pipeline gestart met bron '{_activeSource.DisplayName}'.", cancellationToken);
-            await PublishStatusAsync($"Capture diagnostics: {_activeSource.Diagnostics}", cancellationToken);
+            loopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            loopTask = Task.Run(() => RunLoopAsync(loopCts.Token), loopCts.Token);
+            await PublishStatusAsync($"Pipeline gestart met bron '{activeSource.DisplayName}'.", cancellationToken);
+            await PublishStatusAsync($"Capture diagnostics: {activeSource.Diagnostics}", cancellationToken);
         }
         finally
         {
-            _lifecycleLock.Release();
+            lifecycleLock.Release();
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        await _lifecycleLock.WaitAsync(cancellationToken);
+        await lifecycleLock.WaitAsync(cancellationToken);
         try
         {
             if (!IsRunning)
@@ -102,34 +109,34 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 return;
             }
 
-            _loopCts?.Cancel();
-            if (_loopTask is not null)
+            loopCts?.Cancel();
+            if (loopTask is not null)
             {
                 try
                 {
-                    await _loopTask;
+                    await loopTask;
                 }
                 catch (OperationCanceledException)
                 {
                 }
             }
 
-            if (_activeSource is not null)
+            if (activeSource is not null)
             {
-                await _activeSource.StopAsync(cancellationToken);
-                await _activeSource.DisposeAsync();
-                _activeSource = null;
+                await activeSource.StopAsync(cancellationToken);
+                await activeSource.DisposeAsync();
+                activeSource = null;
             }
 
-            _tracker.Reset();
+            tracker.Reset();
             await PublishStatusAsync("Pipeline gestopt.", cancellationToken);
         }
         finally
         {
-            _loopTask = null;
-            _loopCts?.Dispose();
-            _loopCts = null;
-            _lifecycleLock.Release();
+            loopTask = null;
+            loopCts?.Dispose();
+            loopCts = null;
+            lifecycleLock.Release();
         }
     }
 
@@ -141,23 +148,30 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
     public void SwitchDetector(DetectorMode mode)
     {
-        _detectorManager.SwitchMode(mode);
+        detectorManager.SwitchMode(mode);
         _ = PublishStatusAsync($"Detector gewijzigd naar '{mode}'.", CancellationToken.None);
     }
 
     public void SetEnabledColorFilters(IEnumerable<string> colors)
     {
         var selected = colors.ToList();
-        _detectorManager.SetEnabledColorFilters(selected);
+        detectorManager.SetEnabledColorFilters(selected);
         var joined = selected.Count == 0 ? "(geen)" : string.Join(", ", selected);
         _ = PublishStatusAsync($"Kleurfilters bijgewerkt: {joined}", CancellationToken.None);
     }
 
+    public void SetColorCalibrations(IEnumerable<ColorCalibrationProfile> calibrations)
+    {
+        var snapshot = calibrations.ToList();
+        detectorManager.SetColorCalibrations(snapshot);
+        _ = PublishStatusAsync($"Kleurkalibraties bijgewerkt: {snapshot.Count}", CancellationToken.None);
+    }
+
     public void SetOverlayLineThickness(int thickness)
     {
-        lock (_overlaySettingsLock)
+        lock (overlaySettingsLock)
         {
-            _overlayLineThickness = Math.Clamp(thickness, 1, 10);
+            overlayLineThickness = Math.Clamp(thickness, 1, 10);
         }
     }
 
@@ -168,21 +182,21 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
             return;
         }
 
-        lock (_overlaySettingsLock)
+        lock (overlaySettingsLock)
         {
-            _overlayColors[kind.Trim().ToLowerInvariant()] = new RgbColor(r, g, b);
+            overlayColors[kind.Trim().ToLowerInvariant()] = new RgbColor(r, g, b);
         }
     }
 
     public void ResetOverlaySettings()
     {
-        lock (_overlaySettingsLock)
+        lock (overlaySettingsLock)
         {
-            _overlayLineThickness = 2;
-            _overlayColors.Clear();
+            overlayLineThickness = 2;
+            overlayColors.Clear();
             foreach (var (kind, color) in CreateDefaultOverlayColors())
             {
-                _overlayColors[kind] = color;
+                overlayColors[kind] = color;
             }
         }
     }
@@ -190,20 +204,20 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopAsync(CancellationToken.None);
-        _lifecycleLock.Dispose();
+        lifecycleLock.Dispose();
     }
 
     private async Task RunLoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            if (_activeSource is null)
+            if (activeSource is null)
             {
                 await Task.Delay(30, cancellationToken);
                 continue;
             }
 
-            var frame = await _activeSource.ReadFrameAsync(cancellationToken);
+            var frame = await activeSource.ReadFrameAsync(cancellationToken);
             if (frame is null)
             {
                 await Task.Delay(10, cancellationToken);
@@ -211,20 +225,20 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
             }
 
             var sw = Stopwatch.StartNew();
-            var detections = await _detectorManager.DetectAsync(frame, cancellationToken);
-            var trainStates = _tracker.Update(detections, frame.TimestampUtcMs);
+            var detections = await detectorManager.DetectAsync(frame, cancellationToken);
+            var trainStates = tracker.Update(detections, frame.TimestampUtcMs);
             sw.Stop();
 
             var fps = CalculateFps(frame.TimestampUtcMs);
             var renderedFrame = RenderDetections(frame, detections);
-            var snapshot = new PipelineSnapshot(renderedFrame, detections, trainStates, _detectorManager.ActiveMode, fps, sw.Elapsed.TotalMilliseconds);
+            var snapshot = new PipelineSnapshot(renderedFrame, detections, trainStates, detectorManager.ActiveMode, fps, sw.Elapsed.TotalMilliseconds);
 
-            foreach (var output in _outputs)
+            foreach (var output in outputs)
             {
                 await output.PublishSnapshotAsync(snapshot, cancellationToken);
             }
 
-            var sourceDiagnosticEvent = _activeSource.ConsumeDiagnosticEvent();
+            var sourceDiagnosticEvent = activeSource.ConsumeDiagnosticEvent();
             if (!string.IsNullOrWhiteSpace(sourceDiagnosticEvent))
             {
                 await PublishStatusAsync(sourceDiagnosticEvent, cancellationToken);
@@ -234,7 +248,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
     private async Task PublishStatusAsync(string status, CancellationToken cancellationToken)
     {
-        foreach (var output in _outputs)
+        foreach (var output in outputs)
         {
             await output.PublishStatusAsync(status, cancellationToken);
         }
@@ -249,10 +263,10 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
         int lineThickness;
         Dictionary<string, RgbColor> colors;
-        lock (_overlaySettingsLock)
+        lock (overlaySettingsLock)
         {
-            lineThickness = _overlayLineThickness;
-            colors = new Dictionary<string, RgbColor>(_overlayColors, StringComparer.OrdinalIgnoreCase);
+            lineThickness = overlayLineThickness;
+            colors = new Dictionary<string, RgbColor>(overlayColors, StringComparer.OrdinalIgnoreCase);
         }
 
         using var image = Cv.Cv2.ImDecode(frame.EncodedJpeg, Cv.ImreadModes.Color);
@@ -283,7 +297,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 Cv.LineTypes.AntiAlias);
         }
 
-        Cv.Cv2.ImEncode(".jpg", image, out var encoded, [new Cv.ImageEncodingParam(Cv.ImwriteFlags.JpegQuality, 90)]);
+        Cv.Cv2.ImEncode(".jpg", image, out var encoded,[new Cv.ImageEncodingParam(Cv.ImwriteFlags.JpegQuality, 90)]);
         return new FramePacket(
             frame.SourceId,
             frame.TimestampUtcMs,
@@ -336,17 +350,17 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
     private int CalculateFps(long nowMs)
     {
-        _framesInWindow++;
-        var elapsed = Math.Max(1, nowMs - _windowStartMs);
+        framesInWindow++;
+        var elapsed = Math.Max(1, nowMs - windowStartMs);
 
         if (elapsed >= 1000)
         {
-            var fps = (int)(_framesInWindow * 1000 / elapsed);
-            _framesInWindow = 0;
-            _windowStartMs = nowMs;
+            var fps = (int)(framesInWindow * 1000 / elapsed);
+            framesInWindow = 0;
+            windowStartMs = nowMs;
             return fps;
         }
 
-        return (int)(_framesInWindow * 1000 / elapsed);
+        return (int)(framesInWindow * 1000 / elapsed);
     }
 }

@@ -406,7 +406,7 @@
             <Border Grid.Column="2"
                     Classes="surface"
                     Padding="10">
-                    <Grid RowDefinitions="Auto,8,*">
+                    <Grid RowDefinitions="Auto,8,Auto,8,*">
                     <Border Grid.Row="0"
                             Classes="surfaceAlt"
                             Padding="8">
@@ -426,8 +426,8 @@
                                        VerticalAlignment="Center"
                                        TextWrapping="Wrap" />
 
-                            <Grid Grid.Column="3"
-                                  ColumnDefinitions="Auto,6,Auto">
+                                <Grid Grid.Column="3"
+                                  ColumnDefinitions="Auto,6,Auto,6,Auto">
                                 <Button Grid.Column="0"
                                         x:Name="PreviousVideoButton"
                                         Classes="ghost"
@@ -436,11 +436,49 @@
                                         x:Name="NextVideoButton"
                                         Classes="ghost"
                                         Content="Next" />
+                                <Button Grid.Column="4"
+                                    x:Name="MarkAmbiguityButton"
+                                    Classes="destructive"
+                                    Content="Mark Ambiguity" />
                             </Grid>
                         </Grid>
                     </Border>
 
-                      <Grid Grid.Row="2"
+                            <Border Grid.Row="2"
+                                x:Name="AmbiguityBanner"
+                                Background="#4A1E25"
+                                BorderBrush="#D17A86"
+                                BorderThickness="1"
+                                Padding="8"
+                                IsVisible="False">
+                            <Grid ColumnDefinitions="*,8,Auto,6,Auto,6,Auto,6,Auto">
+                                <TextBlock x:Name="AmbiguityText"
+                                       Grid.Column="0"
+                                       Text="Ambiguity detected. Resolve before automatic processing continues."
+                                       Foreground="#FFEDEE"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap" />
+                                <Button x:Name="ResolveRemovedButton"
+                                    Grid.Column="2"
+                                    Classes="ghost"
+                                    Content="Removed" />
+                                <Button x:Name="ResolveRelinkButton"
+                                    Grid.Column="4"
+                                    Classes="ghost"
+                                    Content="Relinked" />
+                                <Button x:Name="ResolveFalseButton"
+                                    Grid.Column="6"
+                                    Classes="ghost"
+                                    Content="False" />
+                                <Button x:Name="ResolveOtherButton"
+                                    Grid.Column="8"
+                                    Classes="ghost"
+                                    Content="Other" />
+                            </Grid>
+                            </Border>
+
+                              <Grid Grid.Row="4"
                           RowDefinitions="*,*"
                           ColumnDefinitions="*,*">
                         <Border Grid.Row="0" Grid.Column="0"

@@ -43,6 +43,8 @@ public partial class MainWindow : AppWindow
     private int selectedCameraIndex = -1;
     private int requestedCameraIndex = -1;
     private string selectedCalibrationColor = "red";
+    private bool ambiguityActive;
+    private string ambiguityMessage = "Ambiguity detected. Resolve before automatic processing continues.";
 
     public MainWindow()
     {
@@ -87,6 +89,11 @@ public partial class MainWindow : AppWindow
         BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
         SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
         ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
+        MarkAmbiguityButton.Click += MarkAmbiguityButtonOnClick;
+        ResolveRemovedButton.Click += ResolveRemovedButtonOnClick;
+        ResolveRelinkButton.Click += ResolveRelinkButtonOnClick;
+        ResolveFalseButton.Click += ResolveFalseButtonOnClick;
+        ResolveOtherButton.Click += ResolveOtherButtonOnClick;
 
         SampleCountTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         ThresholdTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
@@ -102,6 +109,8 @@ public partial class MainWindow : AppWindow
         SaturationUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
         ValueLowerTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
         ValueUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
+
+        UpdateAmbiguityUi();
     }
 
     private async void AddCamerasButtonOnClick(object? sender, RoutedEventArgs e)
@@ -397,6 +406,12 @@ public partial class MainWindow : AppWindow
         if (runTask is not null)
         {
             await StopProcessingAsync();
+            return;
+        }
+
+        if (ambiguityActive)
+        {
+            SetStatus("Status: ambiguity is active. Resolve alert before starting automatic processing.");
             return;
         }
 
@@ -834,15 +849,96 @@ public partial class MainWindow : AppWindow
     private void SetRunState(bool isRunning)
     {
         StartStopButton.Content = isRunning ? "Stop" : "Start";
-        AddVideosButton.IsEnabled = !isRunning;
-        RemoveSelectedButton.IsEnabled = !isRunning;
-        ClearPlaylistButton.IsEnabled = !isRunning;
-        LoopPlaylistCheckBox.IsEnabled = !isRunning;
+        StartStopButton.IsEnabled = isRunning || !ambiguityActive;
+        AddVideosButton.IsEnabled = !isRunning && !ambiguityActive;
+        RemoveSelectedButton.IsEnabled = !isRunning && !ambiguityActive;
+        ClearPlaylistButton.IsEnabled = !isRunning && !ambiguityActive;
+        LoopPlaylistCheckBox.IsEnabled = !isRunning && !ambiguityActive;
+        MarkAmbiguityButton.IsEnabled = !ambiguityActive;
 
         if (!isRunning)
         {
             Interlocked.Exchange(ref requestedCameraIndex, -1);
         }
+    }
+
+    private async void MarkAmbiguityButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (ambiguityActive)
+        {
+            return;
+        }
+
+        if (runTask is not null)
+        {
+            await StopProcessingAsync();
+        }
+
+        RaiseAmbiguity("Operator marked identity ambiguity and halted automatic processing.");
+    }
+
+    private void ResolveRemovedButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        ResolveAmbiguity("removed-from-track");
+    }
+
+    private void ResolveRelinkButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        ResolveAmbiguity("relinked-to-correct-id");
+    }
+
+    private void ResolveFalseButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        ResolveAmbiguity("false-ambiguity");
+    }
+
+    private void ResolveOtherButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        ResolveAmbiguity("other");
+    }
+
+    private void RaiseAmbiguity(string reason)
+    {
+        ambiguityActive = true;
+        ambiguityMessage = reason;
+        UpdateAmbiguityUi();
+        SetRunState(isRunning: runTask is not null);
+        SetStatus("Status: ambiguity raised. Automatic processing blocked until operator resolution.");
+
+        sessionAuditLogger.AppendEvent(
+            SessionAuditLogger.EventAmbiguityRaised,
+            reason,
+            ("cameraId", GetSelectedCamera()?.Id ?? string.Empty),
+            ("cameraName", GetSelectedCamera()?.DisplayName ?? string.Empty));
+    }
+
+    private void ResolveAmbiguity(string outcome)
+    {
+        if (!ambiguityActive)
+        {
+            return;
+        }
+
+        ambiguityActive = false;
+        var previousMessage = ambiguityMessage;
+        ambiguityMessage = "Ambiguity detected. Resolve before automatic processing continues.";
+        UpdateAmbiguityUi();
+        SetRunState(isRunning: runTask is not null);
+        SetStatus($"Status: ambiguity resolved ({outcome}). You can resume automatic processing.");
+
+        sessionAuditLogger.AppendEvent(
+            SessionAuditLogger.EventAmbiguityResolved,
+            $"Resolved ambiguity: {outcome}.",
+            ("outcome", outcome),
+            ("originalReason", previousMessage),
+            ("cameraId", GetSelectedCamera()?.Id ?? string.Empty),
+            ("cameraName", GetSelectedCamera()?.DisplayName ?? string.Empty));
+    }
+
+    private void UpdateAmbiguityUi()
+    {
+        AmbiguityBanner.IsVisible = ambiguityActive;
+        AmbiguityText.Text = ambiguityMessage;
     }
 
     private void RuntimeSettingControlOnLostFocus(object? sender, RoutedEventArgs e)

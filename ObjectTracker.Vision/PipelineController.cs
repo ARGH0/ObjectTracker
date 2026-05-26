@@ -212,12 +212,12 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
             var sw = Stopwatch.StartNew();
             var detections = await _detectorManager.DetectAsync(frame, cancellationToken);
-            var tracks = _tracker.Update(detections);
+            var trainStates = _tracker.Update(detections, frame.TimestampUtcMs);
             sw.Stop();
 
             var fps = CalculateFps(frame.TimestampUtcMs);
             var renderedFrame = RenderDetections(frame, detections);
-            var snapshot = new PipelineSnapshot(renderedFrame, detections, tracks, _detectorManager.ActiveMode, fps, sw.Elapsed.TotalMilliseconds);
+            var snapshot = new PipelineSnapshot(renderedFrame, detections, trainStates, _detectorManager.ActiveMode, fps, sw.Elapsed.TotalMilliseconds);
 
             foreach (var output in _outputs)
             {
@@ -348,6 +348,5 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         }
 
         return (int)(_framesInWindow * 1000 / elapsed);
-    }
     }
 }

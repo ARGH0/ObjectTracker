@@ -7,14 +7,14 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ObjectTracker.Vision;
 using OpenCvSharp;
 
 namespace ObjectTracker.UI.Desktop;
 
 internal sealed class BackgroundEstimationEngine
 {
-    private readonly object _bakeSync = new();
-    private readonly Dictionary<string, Task<string>> _bakeJobs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SessionCalibrationService _sessionCalibration = new();
 
     public async Task<VideoProcessResult> ProcessVideoAsync(
         string videoPath,
@@ -277,7 +277,7 @@ internal sealed class BackgroundEstimationEngine
 
     public Task PreBakeBackgroundAsync(string videoPath, int sampleCount, CancellationToken cancellationToken)
     {
-        return PreBakeBackgroundInternalAsync(videoPath, sampleCount, ProcessingOptions.Default, cancellationToken);
+        return _sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, ProcessingOptions.Default.ProcessMaxWidth, cancellationToken);
     }
 
     public async Task<string> EnsureBakedBackgroundAsync(
@@ -288,73 +288,21 @@ internal sealed class BackgroundEstimationEngine
         CancellationToken cancellationToken,
         Func<string, Task>? onStatus = null)
     {
-        if (!File.Exists(videoPath))
-        {
-            throw new FileNotFoundException("Video file not found.", videoPath);
-        }
-
-        using var capture = new VideoCapture(videoPath);
-        if (!capture.IsOpened())
-        {
-            throw new InvalidOperationException($"Unable to open video: {Path.GetFileName(videoPath)}");
-        }
-
-        var frameWidth = (int)capture.FrameWidth;
-        var frameHeight = (int)capture.FrameHeight;
-        if (frameWidth <= 0 || frameHeight <= 0)
-        {
-            throw new InvalidOperationException("Video has invalid dimensions.");
-        }
-
-        var processSize = BuildProcessSize(frameWidth, frameHeight, options.ProcessMaxWidth);
-        if (!string.IsNullOrWhiteSpace(bakeImagePath))
-        {
-            if (onStatus is not null)
-            {
-                await onStatus($"preparing baked background from image {Path.GetFileName(bakeImagePath)}...");
-            }
-
-            return await BuildBackgroundFromImageAsync(bakeImagePath, processSize, cancellationToken);
-        }
-
-        if (onStatus is not null)
-        {
-            await onStatus($"baking background for {Path.GetFileName(videoPath)}...");
-        }
-
-        return await BakeBackgroundAsync(videoPath, sampleCount, processSize, cancellationToken, onStatus);
+        return await _sessionCalibration.EnsureBakedBackgroundAsync(
+            videoPath,
+            sampleCount,
+            options.ProcessMaxWidth,
+            bakeImagePath,
+            cancellationToken,
+            onStatus);
     }
 
     public Task PreBakeBackgroundAsync(string videoPath, int sampleCount, ProcessingOptions options, CancellationToken cancellationToken)
     {
-        return PreBakeBackgroundInternalAsync(videoPath, sampleCount, options, cancellationToken);
+        return _sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, options.ProcessMaxWidth, cancellationToken);
     }
 
-    private async Task PreBakeBackgroundInternalAsync(string videoPath, int sampleCount, ProcessingOptions options, CancellationToken cancellationToken)
-    {
-        if (!File.Exists(videoPath))
-        {
-            return;
-        }
-
-        using var capture = new VideoCapture(videoPath);
-        if (!capture.IsOpened())
-        {
-            return;
-        }
-
-        var frameWidth = (int)capture.FrameWidth;
-        var frameHeight = (int)capture.FrameHeight;
-        if (frameWidth <= 0 || frameHeight <= 0)
-        {
-            return;
-        }
-
-        var processSize = BuildProcessSize(frameWidth, frameHeight, options.ProcessMaxWidth);
-        await BakeBackgroundAsync(videoPath, sampleCount, processSize, cancellationToken);
-    }
-
-    private async Task<Mat> CreateMedianBackgroundForUsbCameraAsync(
+    private static async Task<Mat> CreateMedianBackgroundForUsbCameraAsync(
         VideoCapture capture,
         string sourceLabel,
         int sampleCount,
@@ -392,123 +340,6 @@ internal sealed class BackgroundEstimationEngine
         return medianBackground;
     }
 
-    private Task<string> BakeBackgroundAsync(
-        string videoPath,
-        int sampleCount,
-        Size processSize,
-        CancellationToken cancellationToken,
-        Func<string, Task>? onStatus = null)
-    {
-        var bakedPath = BuildBackgroundFilePath(videoPath, sampleCount, processSize);
-
-        if (File.Exists(bakedPath))
-        {
-            return Task.FromResult(bakedPath);
-        }
-
-        lock (_bakeSync)
-        {
-            if (_bakeJobs.TryGetValue(bakedPath, out var running))
-            {
-                return running;
-            }
-
-            var bakeTask = BakeBackgroundCoreAsync(videoPath, sampleCount, processSize, bakedPath, cancellationToken, onStatus);
-            _bakeJobs[bakedPath] = bakeTask;
-            _ = bakeTask.ContinueWith(_ =>
-            {
-                lock (_bakeSync)
-                {
-                    _bakeJobs.Remove(bakedPath);
-                }
-            }, TaskScheduler.Default);
-
-            return bakeTask;
-        }
-    }
-
-    private static async Task<string> BakeBackgroundCoreAsync(
-        string videoPath,
-        int sampleCount,
-        Size processSize,
-        string bakedPath,
-        CancellationToken cancellationToken,
-        Func<string, Task>? onStatus)
-    {
-        await Task.Yield();
-
-        using var capture = new VideoCapture(videoPath);
-        if (!capture.IsOpened())
-        {
-            throw new InvalidOperationException($"Unable to open video for baking: {Path.GetFileName(videoPath)}");
-        }
-
-        var frameCount = (int)Math.Max(0, capture.Get(VideoCaptureProperties.FrameCount));
-        var progressStep = Math.Max(1, sampleCount / 10);
-        var fileName = Path.GetFileName(videoPath);
-
-        using var medianBackground = EstimateMedianBackground(
-            capture,
-            frameCount,
-            sampleCount,
-            processSize,
-            cancellationToken,
-            reportProgress: (completed, total) =>
-            {
-                if (onStatus is null)
-                {
-                    return;
-                }
-
-                if (completed % progressStep != 0 && completed != total)
-                {
-                    return;
-                }
-
-                onStatus($"baking {fileName}: sample {completed}/{total}").GetAwaiter().GetResult();
-            });
-
-        var directory = Path.GetDirectoryName(bakedPath);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        Cv2.ImWrite(bakedPath, medianBackground);
-        return bakedPath;
-    }
-
-    private async Task<string> BuildBackgroundFromImageAsync(
-        string imagePath,
-        Size processSize,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (!File.Exists(imagePath))
-        {
-            throw new FileNotFoundException("Bake image not found.", imagePath);
-        }
-
-        var bakedPath = BuildBackgroundImageFilePath(imagePath, processSize);
-        if (File.Exists(bakedPath))
-        {
-            return bakedPath;
-        }
-
-        await Task.Yield();
-
-        using var background = LoadBackgroundImageMat(imagePath, processSize);
-        var directory = Path.GetDirectoryName(bakedPath);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        Cv2.ImWrite(bakedPath, background);
-        return bakedPath;
-    }
-
     private static Mat LoadBackgroundImageMat(string imagePath, Size processSize)
     {
         if (!File.Exists(imagePath))
@@ -527,92 +358,6 @@ internal sealed class BackgroundEstimationEngine
         var resized = new Mat();
         Cv2.Resize(gray, resized, processSize, interpolation: InterpolationFlags.Area);
         return resized;
-    }
-
-    private static string BuildBackgroundFilePath(string videoPath, int sampleCount, Size processSize)
-    {
-        var info = new FileInfo(videoPath);
-        var keyRaw = $"{videoPath}|{info.Length}|{info.LastWriteTimeUtc.Ticks}|{sampleCount}|{processSize.Width}|{processSize.Height}";
-        var key = ComputeSha256Hex(keyRaw);
-        return Path.Combine(GetBackgroundCacheRoot(), $"{key}.png");
-    }
-
-    private static string BuildBackgroundImageFilePath(string imagePath, Size processSize)
-    {
-        var info = new FileInfo(imagePath);
-        var keyRaw = $"image|{imagePath}|{info.Length}|{info.LastWriteTimeUtc.Ticks}|{processSize.Width}|{processSize.Height}";
-        var key = ComputeSha256Hex(keyRaw);
-        return Path.Combine(GetBackgroundCacheRoot(), $"{key}.png");
-    }
-
-    private static string GetBackgroundCacheRoot()
-    {
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ObjectTracker",
-            "background-cache");
-    }
-
-    private static string ComputeSha256Hex(string input)
-    {
-        var bytes = Encoding.UTF8.GetBytes(input);
-        var hash = SHA256.HashData(bytes);
-        return Convert.ToHexString(hash).ToLowerInvariant();
-    }
-
-    private static double GetPacingFps(double sourceFps)
-    {
-        if (double.IsNaN(sourceFps) || double.IsInfinity(sourceFps) || sourceFps <= 0)
-        {
-            return 30.0;
-        }
-
-        return Math.Clamp(sourceFps, 1.0, 240.0);
-    }
-
-    private static async Task WaitForPlaybackScheduleAsync(
-        int frameIndex,
-        double pacingFps,
-        Stopwatch playbackClock,
-        Func<bool>? shouldStopEarly,
-        CancellationToken cancellationToken)
-    {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
-
-        var targetTicks = (long)Math.Round(frameIndex * TimeSpan.TicksPerSecond / pacingFps);
-        var targetTime = new TimeSpan(targetTicks);
-        while (true)
-        {
-            if (cancellationToken.IsCancellationRequested || (shouldStopEarly?.Invoke() == true))
-            {
-                return;
-            }
-
-            var remaining = targetTime - playbackClock.Elapsed;
-            if (remaining <= TimeSpan.Zero)
-            {
-                return;
-            }
-
-            var slice = remaining > TimeSpan.FromMilliseconds(20)
-                ? TimeSpan.FromMilliseconds(20)
-                : remaining;
-
-            await Task.Delay(slice);
-        }
-    }
-
-    private static PreviewFrameSet BuildPreviewFrameSet(Mat backgroundMask, Mat movingColor, Mat colorDetections, Mat motionView)
-    {
-        Cv2.ImEncode(".jpg", backgroundMask, out var backgroundMaskJpeg, new[] { (int)ImwriteFlags.JpegQuality, 80 });
-        Cv2.ImEncode(".jpg", movingColor, out var movingColorJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
-        Cv2.ImEncode(".jpg", colorDetections, out var colorDetectionJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
-        Cv2.ImEncode(".jpg", motionView, out var motionJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
-
-        return new PreviewFrameSet(backgroundMaskJpeg, movingColorJpeg, colorDetectionJpeg, motionJpeg);
     }
 
     private static List<Rect> GetMovingObjectRectangles(Mat motionMask, int minMotionArea)
@@ -1000,4 +745,60 @@ internal sealed class BackgroundEstimationEngine
         public byte[] ColorDetectionJpeg { get; }
         public byte[] MotionJpeg { get; }
     }
+
+    private static double GetPacingFps(double sourceFps)
+    {
+        if (double.IsNaN(sourceFps) || double.IsInfinity(sourceFps) || sourceFps <= 0)
+        {
+            return 30.0;
+        }
+
+        return Math.Clamp(sourceFps, 1.0, 240.0);
+    }
+
+    private static async Task WaitForPlaybackScheduleAsync(
+        int frameIndex,
+        double pacingFps,
+        Stopwatch playbackClock,
+        Func<bool>? shouldStopEarly,
+        CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        var targetTicks = (long)Math.Round(frameIndex * TimeSpan.TicksPerSecond / pacingFps);
+        var targetTime = new TimeSpan(targetTicks);
+        while (true)
+        {
+            if (cancellationToken.IsCancellationRequested || (shouldStopEarly?.Invoke() == true))
+            {
+                return;
+            }
+
+            var remaining = targetTime - playbackClock.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return;
+            }
+
+            var slice = remaining > TimeSpan.FromMilliseconds(20)
+                ? TimeSpan.FromMilliseconds(20)
+                : remaining;
+
+            await Task.Delay(slice, cancellationToken);
+        }
+    }
+
+    private static PreviewFrameSet BuildPreviewFrameSet(Mat backgroundMask, Mat movingColor, Mat colorDetections, Mat motionView)
+    {
+        Cv2.ImEncode(".jpg", backgroundMask, out var backgroundMaskJpeg, new[] { (int)ImwriteFlags.JpegQuality, 80 });
+        Cv2.ImEncode(".jpg", movingColor, out var movingColorJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
+        Cv2.ImEncode(".jpg", colorDetections, out var colorDetectionJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
+        Cv2.ImEncode(".jpg", motionView, out var motionJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
+
+        return new PreviewFrameSet(backgroundMaskJpeg, movingColorJpeg, colorDetectionJpeg, motionJpeg);
+    }
+
 }

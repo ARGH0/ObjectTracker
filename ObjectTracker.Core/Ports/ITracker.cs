@@ -4,6 +4,6 @@ namespace ObjectTracker.Core.Ports;
 
 public interface ITracker
 {
-    IReadOnlyList<TrackState> Update(IReadOnlyList<Detection> detections);
+    IReadOnlyList<TrainState> Update(IReadOnlyList<Detection> detections, long frameTimestampUtcMs);
     void Reset();
 }

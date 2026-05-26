@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Avalonia.Controls;
+using ObjectTracker.Vision.Source;
 
 namespace ObjectTracker.UI.Desktop;
 

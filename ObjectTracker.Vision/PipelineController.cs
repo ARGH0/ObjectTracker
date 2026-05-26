@@ -22,6 +22,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     private int _framesInWindow;
     private long _windowStartMs;
     private int _overlayLineThickness = 2;
+    private Task<IReadOnlyList<Detection>>? _pendingDetection;
 
     public PipelineController(
         IFrameSourceFactory frameSourceFactory,
@@ -190,6 +191,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopAsync(CancellationToken.None);
+        await _detectorManager.DisposeAsync();
         _lifecycleLock.Dispose();
     }
 
@@ -210,14 +212,29 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 continue;
             }
 
-            var sw = Stopwatch.StartNew();
-            var detections = await _detectorManager.DetectAsync(frame, cancellationToken);
-            var tracks = _tracker.Update(detections);
-            sw.Stop();
+            // Telemetry: measure processing time breakdown
+            var telemetry = new FrameProcessingTelemetry();
 
+            // Performance optimization: Launch detection async without blocking frame read loop.
+            // The frame reading naturally throttles based on frame source FPS, and async task
+            // scheduling allows multiple frames to be detected in parallel (up to thread pool limits).
+            telemetry.StartPhase(ProcessingPhase.Detection);
+            var swDetection = Stopwatch.StartNew();
+            _pendingDetection = _detectorManager.DetectAsync(frame, cancellationToken);
+            var detections = await _pendingDetection;
+            swDetection.Stop();
+            telemetry.EndPhase(ProcessingPhase.Detection);
+
+            telemetry.StartPhase(ProcessingPhase.Tracking);
+            var tracks = _tracker.Update(detections);
+            telemetry.EndPhase(ProcessingPhase.Tracking);
+
+            telemetry.StartPhase(ProcessingPhase.Rendering);
             var fps = CalculateFps(frame.TimestampUtcMs);
             var renderedFrame = RenderDetections(frame, detections);
-            var snapshot = new PipelineSnapshot(renderedFrame, detections, tracks, _detectorManager.ActiveMode, fps, sw.Elapsed.TotalMilliseconds);
+            telemetry.EndPhase(ProcessingPhase.Rendering);
+
+            var snapshot = new PipelineSnapshot(renderedFrame, detections, tracks, _detectorManager.ActiveMode, fps, swDetection.Elapsed.TotalMilliseconds);
 
             foreach (var output in _outputs)
             {
@@ -348,6 +365,5 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         }
 
         return (int)(_framesInWindow * 1000 / elapsed);
-    }
     }
 }

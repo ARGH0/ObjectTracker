@@ -7,20 +7,137 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using OpenCvSharp;
 
-namespace ObjectTracker.UI.Desktop;
+namespace ObjectTracker.Vision;
 
-internal sealed class BackgroundEstimationEngine
+public sealed class BackgroundEstimationEngine
 {
+    // COCO 80-class names used by YOLO11/v8 detection models
+    private static readonly string[] CocoNames =
+    {
+        "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
+        "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
+        "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
+        "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball",
+        "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket",
+        "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+        "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake",
+        "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop",
+        "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
+        "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
+    };
+
+    // Palette: one vivid BGR color per class (cycling if >80 classes)
+    private static readonly Scalar[] ClassColors = GenerateClassColors();
+
+    private static Scalar[] GenerateClassColors()
+    {
+        var palette = new[]
+        {
+            new Scalar(56, 220, 100), new Scalar(255, 100, 56), new Scalar(56, 100, 255),
+            new Scalar(255, 200, 56), new Scalar(200, 56, 255), new Scalar(56, 255, 200),
+            new Scalar(255, 56, 180), new Scalar(180, 255, 56), new Scalar(56, 180, 255),
+            new Scalar(255, 150, 80), new Scalar(80, 255, 150), new Scalar(150, 80, 255),
+        };
+        var colors = new Scalar[80];
+        for (var i = 0; i < 80; i++)
+        {
+            colors[i] = palette[i % palette.Length];
+        }
+
+        return colors;
+    }
+
+    private static Scalar ColorForClass(int classId) =>
+        ClassColors[Math.Abs(classId) % ClassColors.Length];
+
+    private static string NameForClass(int classId) =>
+        classId >= 0 && classId < CocoNames.Length ? CocoNames[classId] : $"cls-{classId}";
+
+    // Per-session YOLO cross-frame tracker (track id → last rect + class + missed frames)
+    private readonly object _yoloTrackerSync = new();
+    private readonly Dictionary<int, YoloTrackEntry> _yoloTracks = new();
+    private int _yoloNextTrackId = 1;
+    private const int YoloTrackMaxMissed = 8;
+    private const float YoloTrackIoUThreshold = 0.3f;
+
+    private sealed class YoloTrackEntry
+    {
+        public Rect Rect;
+        public int ClassId;
+        public int MissedFrames;
+    }
+
     private readonly object _bakeSync = new();
     private readonly Dictionary<string, Task<string>> _bakeJobs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _yoloSync = new();
+    private InferenceSession? _yoloSession;
+    private string? _yoloModelPath;
+    private string _yoloStatus = "YOLO not initialized.";
+
+    public bool ConfigureYoloModel(string? modelPath, out string message)
+    {
+        if (string.IsNullOrWhiteSpace(modelPath))
+        {
+            message = "no model file found";
+            _yoloStatus = message;
+            return false;
+        }
+
+        if (!File.Exists(modelPath))
+        {
+            message = $"model file not found: {modelPath}";
+            _yoloStatus = message;
+            return false;
+        }
+
+        try
+        {
+            var session = new InferenceSession(modelPath);
+            lock (_yoloSync)
+            {
+                _yoloSession?.Dispose();
+                _yoloSession = session;
+                _yoloModelPath = Path.GetFullPath(modelPath);
+            }
+
+            message = _yoloModelPath!;
+            _yoloStatus = $"model loaded: {_yoloModelPath}";
+
+            // Reset tracker when model changes
+            lock (_yoloTrackerSync)
+            {
+                _yoloTracks.Clear();
+                _yoloNextTrackId = 1;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+            _yoloStatus = $"failed to load model '{modelPath}': {ex.Message}";
+            return false;
+        }
+    }
+
+    public string GetYoloStatus()
+    {
+        lock (_yoloSync)
+        {
+            return _yoloStatus;
+        }
+    }
 
     public async Task<VideoProcessResult> ProcessVideoAsync(
         string videoPath,
         int sampleCount,
         int threshold,
         ProcessingOptions options,
+        DetectionOptions detectionOptions,
         string? bakeImagePath,
         Func<PreviewFrameSet, Task> onFrame,
         Func<string, Task> onStatus,
@@ -72,6 +189,7 @@ internal sealed class BackgroundEstimationEngine
             medianBackground,
             threshold,
             options,
+            detectionOptions,
             onFrame,
             onStatus,
             getLiveTuning,
@@ -82,11 +200,12 @@ internal sealed class BackgroundEstimationEngine
 
     public async Task<VideoProcessResult> ProcessUsbCameraAsync(
         int cameraIndex,
-        VideoCaptureAPIs api,
+        string apiId,
         string sourceLabel,
         int sampleCount,
         int threshold,
         ProcessingOptions options,
+        DetectionOptions detectionOptions,
         string? bakeImagePath,
         Func<PreviewFrameSet, Task> onFrame,
         Func<string, Task> onStatus,
@@ -94,6 +213,7 @@ internal sealed class BackgroundEstimationEngine
         Func<bool>? shouldStopEarly,
         CancellationToken cancellationToken)
     {
+        var api = ResolveCaptureApi(apiId);
         using var capture = new VideoCapture(cameraIndex, api);
         capture.Set(VideoCaptureProperties.FrameWidth, 640);
         capture.Set(VideoCaptureProperties.FrameHeight, 480);
@@ -136,6 +256,7 @@ internal sealed class BackgroundEstimationEngine
             medianBackground,
             threshold,
             options,
+            detectionOptions,
             onFrame,
             onStatus,
             getLiveTuning,
@@ -144,13 +265,26 @@ internal sealed class BackgroundEstimationEngine
             pacePlayback: false);
     }
 
-    private static async Task<VideoProcessResult> ProcessCaptureFramesAsync(
+    private static VideoCaptureAPIs ResolveCaptureApi(string? apiId)
+    {
+        if (string.IsNullOrWhiteSpace(apiId))
+        {
+            return VideoCaptureAPIs.ANY;
+        }
+
+        return Enum.TryParse<VideoCaptureAPIs>(apiId, ignoreCase: true, out var parsed)
+            ? parsed
+            : VideoCaptureAPIs.ANY;
+    }
+
+    private async Task<VideoProcessResult> ProcessCaptureFramesAsync(
         VideoCapture capture,
         string sourceLabel,
         double fps,
         Mat medianBackground,
         int threshold,
         ProcessingOptions options,
+        DetectionOptions detectionOptions,
         Func<PreviewFrameSet, Task> onFrame,
         Func<string, Task> onStatus,
         Func<LiveTuning>? getLiveTuning,
@@ -184,6 +318,7 @@ internal sealed class BackgroundEstimationEngine
 
         var previousTracks = new Dictionary<int, MotionTrackState>();
         var nextTrackId = 1;
+        var yoloMissingReported = false;
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -232,7 +367,24 @@ internal sealed class BackgroundEstimationEngine
                 DrawMovingObjectBoxes(movingColor, movingRects);
 
                 colorResized.CopyTo(colorDetections);
-                RenderColorDetections(colorDetections, colorResized, cleanMask, hsv, movingRects, activeMinColorPixels);
+                if (detectionOptions.UseYolo)
+                {
+                    var yoloRendered = TryRenderYoloDetections(colorDetections, colorResized, detectionOptions, out var yoloReason);
+                    if (!yoloRendered)
+                    {
+                        if (!yoloMissingReported)
+                        {
+                            yoloMissingReported = true;
+                            await onStatus($"YOLO selected but model is unavailable ({yoloReason}). Falling back to motion+color detection.");
+                        }
+
+                        RenderColorDetections(colorDetections, colorResized, cleanMask, hsv, movingRects, activeMinColorPixels);
+                    }
+                }
+                else
+                {
+                    RenderColorDetections(colorDetections, colorResized, cleanMask, hsv, movingRects, activeMinColorPixels);
+                }
 
                 colorResized.CopyTo(motionView);
                 var timestampSec = capture.PosMsec / 1000.0;
@@ -605,6 +757,232 @@ internal sealed class BackgroundEstimationEngine
         }
     }
 
+    private bool TryRenderYoloDetections(Mat destination, Mat sourceColor, DetectionOptions options, out string reason)
+    {
+        InferenceSession? session;
+        string? activeModelPath;
+        lock (_yoloSync)
+        {
+            session = _yoloSession;
+            activeModelPath = _yoloModelPath;
+        }
+
+        if (session is null)
+        {
+            var modelPath = DetectorRegistry.FindYoloModel();
+            if (ConfigureYoloModel(modelPath, out var configureMessage))
+            {
+                lock (_yoloSync)
+                {
+                    session = _yoloSession;
+                }
+            }
+
+            if (session is null)
+            {
+                reason = configureMessage;
+                return false;
+            }
+        }
+
+        var inputSize = Math.Clamp(options.ImageSize, 320, 1280);
+        var confidenceThreshold = Math.Clamp(options.ConfidencePercent, 1, 99) / 100f;
+        var nmsThreshold = Math.Clamp(options.NmsIouPercent, 1, 99) / 100f;
+
+        try
+        {
+            // Preprocess: resize to input, normalize to [0,1], convert BGR→RGB, layout to NCHW
+            using var resized = new Mat();
+            Cv2.Resize(sourceColor, resized, new Size(inputSize, inputSize));
+
+            var tensor = new DenseTensor<float>(new[] { 1, 3, inputSize, inputSize });
+            for (var py = 0; py < inputSize; py++)
+            {
+                for (var px = 0; px < inputSize; px++)
+                {
+                    var pixel = resized.At<Vec3b>(py, px);
+                    tensor[0, 0, py, px] = pixel.Item2 / 255f; // R
+                    tensor[0, 1, py, px] = pixel.Item1 / 255f; // G
+                    tensor[0, 2, py, px] = pixel.Item0 / 255f; // B
+                }
+            }
+
+            var inputName = session.InputMetadata.Keys.First();
+            var inputs = new[] { NamedOnnxValue.CreateFromTensor(inputName, tensor) };
+
+            using var results = session.Run(inputs);
+            var output = results.First().AsTensor<float>();
+            var dims = output.Dimensions;
+
+            // YOLO11/v8 standard output: [1, 4+classes, anchors] e.g. [1, 84, 8400]
+            // Some variants may be transposed:              [1, anchors, 4+classes] e.g. [1, 8400, 84]
+            var transposed = dims.Length >= 3 && dims[1] > dims[2];
+            var anchors = transposed ? dims[1] : dims[2];
+            var channels = transposed ? dims[2] : dims[1];
+
+            var scaleX = (float)sourceColor.Width / inputSize;
+            var scaleY = (float)sourceColor.Height / inputSize;
+            var candidates = new List<(Rect Rect, float Score, int ClassId)>();
+
+            for (var i = 0; i < anchors; i++)
+            {
+                var cx = (transposed ? output[0, i, 0] : output[0, 0, i]) * scaleX;
+                var cy = (transposed ? output[0, i, 1] : output[0, 1, i]) * scaleY;
+                var w  = (transposed ? output[0, i, 2] : output[0, 2, i]) * scaleX;
+                var h  = (transposed ? output[0, i, 3] : output[0, 3, i]) * scaleY;
+
+                var bestClass = -1;
+                var bestScore = confidenceThreshold;
+                for (var c = 4; c < channels; c++)
+                {
+                    var score = transposed ? output[0, i, c] : output[0, c, i];
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        bestClass = c - 4;
+                    }
+                }
+
+                if (bestClass < 0)
+                {
+                    continue;
+                }
+
+                var x = Math.Max(0, (int)Math.Round(cx - (w / 2f)));
+                var y = Math.Max(0, (int)Math.Round(cy - (h / 2f)));
+                var rw = Math.Max(1, Math.Min(sourceColor.Width - x, (int)Math.Round(w)));
+                var rh = Math.Max(1, Math.Min(sourceColor.Height - y, (int)Math.Round(h)));
+                candidates.Add((new Rect(x, y, rw, rh), bestScore, bestClass));
+            }
+
+            candidates.Sort((a, b) => b.Score.CompareTo(a.Score));
+            var kept = new List<int>();
+            for (var i = 0; i < candidates.Count; i++)
+            {
+                var keep = true;
+                foreach (var keptIndex in kept)
+                {
+                    if (ComputeIoU(candidates[i].Rect, candidates[keptIndex].Rect) > nmsThreshold)
+                    {
+                        keep = false;
+                        break;
+                    }
+                }
+
+                if (keep)
+                {
+                    kept.Add(i);
+                }
+            }
+
+            // --- Cross-frame IoU tracking ---
+            // Match kept candidates against existing tracks, assign stable IDs
+            var detectedRects = kept.Select(i => candidates[i]).ToList();
+            var trackAssignments = new Dictionary<int, int>(); // trackId → candidate index
+            var usedCandidateIndices = new HashSet<int>();
+
+            lock (_yoloTrackerSync)
+            {
+                // Greedy match: for each existing track find best IoU candidate
+                foreach (var (trackId, entry) in _yoloTracks)
+                {
+                    var bestIdx = -1;
+                    var bestIou = YoloTrackIoUThreshold;
+                    for (var ci = 0; ci < detectedRects.Count; ci++)
+                    {
+                        if (usedCandidateIndices.Contains(ci)) continue;
+                        var iou = ComputeIoU(entry.Rect, detectedRects[ci].Rect);
+                        if (iou > bestIou)
+                        {
+                            bestIou = iou;
+                            bestIdx = ci;
+                        }
+                    }
+
+                    if (bestIdx >= 0)
+                    {
+                        trackAssignments[trackId] = bestIdx;
+                        usedCandidateIndices.Add(bestIdx);
+                        entry.Rect = detectedRects[bestIdx].Rect;
+                        entry.ClassId = detectedRects[bestIdx].ClassId;
+                        entry.MissedFrames = 0;
+                    }
+                    else
+                    {
+                        entry.MissedFrames++;
+                    }
+                }
+
+                // Create new tracks for unmatched candidates
+                var newTrackMap = new Dictionary<int, int>(); // candidateIdx → newTrackId
+                for (var ci = 0; ci < detectedRects.Count; ci++)
+                {
+                    if (usedCandidateIndices.Contains(ci)) continue;
+                    var newId = _yoloNextTrackId++;
+                    _yoloTracks[newId] = new YoloTrackEntry
+                    {
+                        Rect = detectedRects[ci].Rect,
+                        ClassId = detectedRects[ci].ClassId,
+                        MissedFrames = 0,
+                    };
+                    newTrackMap[ci] = newId;
+                }
+
+                // Age out stale tracks
+                foreach (var stale in _yoloTracks.Where(kv => kv.Value.MissedFrames > YoloTrackMaxMissed).Select(kv => kv.Key).ToList())
+                {
+                    _yoloTracks.Remove(stale);
+                }
+
+                // Draw all active (non-stale) tracks
+                foreach (var (trackId, entry) in _yoloTracks)
+                {
+                    if (entry.MissedFrames > 0) continue; // Only draw tracks seen this frame
+                    var color = ColorForClass(entry.ClassId);
+                    var label = $"#{trackId} {NameForClass(entry.ClassId)}";
+                    Cv2.Rectangle(destination, entry.Rect, color, 2);
+
+                    // Background pill behind text
+                    var textSize = Cv2.GetTextSize(label, HersheyFonts.HersheySimplex, 0.48, 1, out var baseline);
+                    var textOrigin = new Point(entry.Rect.X, Math.Max(textSize.Height + 2, entry.Rect.Y - 4));
+                    var pillTl = new Point(textOrigin.X, textOrigin.Y - textSize.Height - baseline);
+                    var pillBr = new Point(textOrigin.X + textSize.Width, textOrigin.Y + baseline);
+                    Cv2.Rectangle(destination, pillTl, pillBr, color, -1);
+                    Cv2.PutText(destination, label, textOrigin, HersheyFonts.HersheySimplex, 0.48, new Scalar(10, 10, 10), 1);
+                }
+            }
+
+            reason = "ok";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            lock (_yoloSync)
+            {
+                _yoloSession?.Dispose();
+                _yoloSession = null;
+                _yoloModelPath = null;
+                _yoloStatus = $"inference error: {ex.Message}";
+            }
+
+            reason = ex.Message;
+            return false;
+        }
+    }
+
+    private static float ComputeIoU(Rect a, Rect b)
+    {
+        var x1 = Math.Max(a.X, b.X);
+        var y1 = Math.Max(a.Y, b.Y);
+        var x2 = Math.Min(a.Right, b.Right);
+        var y2 = Math.Min(a.Bottom, b.Bottom);
+        var interW = Math.Max(0, x2 - x1);
+        var interH = Math.Max(0, y2 - y1);
+        var inter = interW * interH;
+        var union = a.Width * a.Height + b.Width * b.Height - inter;
+        return union > 0 ? (float)inter / union : 0f;
+    }
+
     private static PreviewFrameSet BuildPreviewFrameSet(Mat backgroundMask, Mat movingColor, Mat colorDetections, Mat motionView)
     {
         Cv2.ImEncode(".jpg", backgroundMask, out var backgroundMaskJpeg, new[] { (int)ImwriteFlags.JpegQuality, 80 });
@@ -948,7 +1326,7 @@ internal sealed class BackgroundEstimationEngine
         return bytes;
     }
 
-    internal readonly struct VideoProcessResult
+    public readonly struct VideoProcessResult
     {
         private VideoProcessResult(bool success, string message, bool stoppedEarly)
         {
@@ -968,7 +1346,7 @@ internal sealed class BackgroundEstimationEngine
         public static VideoProcessResult Fail(string message) => new(false, message, false);
     }
 
-    internal readonly record struct ProcessingOptions(
+    public readonly record struct ProcessingOptions(
         int ProcessMaxWidth,
         int MinMotionArea,
         int MinColorPixels,
@@ -977,7 +1355,16 @@ internal sealed class BackgroundEstimationEngine
         public static ProcessingOptions Default => new(640, 220, 40, 3);
     }
 
-    internal readonly record struct LiveTuning(
+    public readonly record struct DetectionOptions(
+        bool UseYolo,
+        int ConfidencePercent,
+        int NmsIouPercent,
+        int ImageSize)
+    {
+        public static DetectionOptions Default => new(false, 50, 45, 640);
+    }
+
+    public readonly record struct LiveTuning(
         int Threshold,
         int MinMotionArea,
         int MinColorPixels,
@@ -985,7 +1372,7 @@ internal sealed class BackgroundEstimationEngine
 
     private readonly record struct MotionTrackState(Point2f Center, Rect Rect, double TimestampSec);
 
-    internal readonly struct PreviewFrameSet
+    public readonly struct PreviewFrameSet
     {
         public PreviewFrameSet(byte[] backgroundMaskJpeg, byte[] movingColorJpeg, byte[] colorDetectionJpeg, byte[] motionJpeg)
         {

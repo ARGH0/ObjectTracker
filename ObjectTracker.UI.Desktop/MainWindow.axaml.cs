@@ -12,9 +12,8 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Windowing;
-using VideoCapture = OpenCvSharp.VideoCapture;
-using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
-using VideoCaptureProperties = OpenCvSharp.VideoCaptureProperties;
+using ObjectTracker.Vision;
+using ObjectTracker.Vision.Source;
 
 namespace ObjectTracker.UI.Desktop;
 
@@ -39,6 +38,7 @@ public partial class MainWindow : AppWindow
     private int _previewRenderBusy;
     private int _selectedCameraIndex = -1;
     private int _requestedCameraIndex = -1;
+    private volatile bool _isYoloViewVisible;
 
     public MainWindow()
     {
@@ -55,6 +55,18 @@ public partial class MainWindow : AppWindow
         foreach (var (cameraId, settings) in _cameraSettingsStore.Load())
         {
             _cameraSettings[cameraId] = settings;
+        }
+
+        var yoloModelPath = DetectorRegistry.FindYoloModel();
+        if (_engine.ConfigureYoloModel(yoloModelPath, out var yoloStatus))
+        {
+            AppendLog($"YOLO initialized: {Path.GetFileName(yoloModelPath)}");
+            YoloModelStatusText.Text = $"Model: {Path.GetFileName(yoloModelPath)}";
+        }
+        else
+        {
+            AppendLog($"YOLO unavailable: {yoloStatus}");
+            YoloModelStatusText.Text = $"Model unavailable: {yoloStatus}";
         }
 
         HookEvents();
@@ -89,6 +101,11 @@ public partial class MainWindow : AppWindow
         ColorMinPixelsTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         MorphKernelSizeTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         ProcessWidthTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
+        DetectionConfidenceTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
+        NmsIouThresholdTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
+        DetectionImgSizeComboBox.SelectionChanged += RuntimeSettingControlOnLostFocus;
+        DetectorModeComboBox.SelectionChanged += RuntimeSettingControlOnLostFocus;
+        DetectorModeComboBox.SelectionChanged += (_, _) => SyncDetectorView();
     }
 
     private async void AddCamerasButtonOnClick(object? sender, RoutedEventArgs e)
@@ -172,7 +189,7 @@ public partial class MainWindow : AppWindow
     private async Task AddUsbCameraAsync()
     {
         SetStatus("Status: scanning USB cameras...");
-        var usbOptions = await Task.Run(DiscoverUsbCameraOptions);
+        var usbOptions = await Task.Run(() => OpenCvUsbCameraDiscovery.DiscoverOptions(MaxUsbCameraProbeIndex));
         if (usbOptions.Count == 0)
         {
             SetStatus("Status: no USB cameras detected.");
@@ -193,7 +210,7 @@ public partial class MainWindow : AppWindow
         {
             if (!_cameras.Any(camera => string.Equals(camera.Id, option.Id, StringComparison.OrdinalIgnoreCase)))
             {
-                _cameras.Add(CameraProfile.CreateUsb(option.Id, option.DisplayName, option.CameraIndex, option.Api));
+                _cameras.Add(CameraProfile.CreateUsb(option.Id, option.DisplayName, option.CameraIndex, option.ApiId));
 
                 if (!_cameraSettings.ContainsKey(option.Id))
                 {
@@ -281,53 +298,67 @@ public partial class MainWindow : AppWindow
 
     private void RemoveCameraButtonOnClick(object? sender, RoutedEventArgs e)
     {
-        CameraProfile? removed = null;
-
-        lock (_cameraSync)
+        try
         {
-            var index = PlaylistListBox.SelectedIndex;
-            if (index < 0 || index >= _cameras.Count)
+            CameraProfile? removed = null;
+
+            lock (_cameraSync)
             {
-                return;
+                var index = PlaylistListBox.SelectedIndex;
+                if (index < 0 || index >= _cameras.Count)
+                {
+                    return;
+                }
+
+                removed = _cameras[index];
+                _cameras.RemoveAt(index);
+                _cameraSettings.Remove(removed.Value.Id);
+
+                if (_cameras.Count == 0)
+                {
+                    _selectedCameraIndex = -1;
+                }
+                else
+                {
+                    _selectedCameraIndex = Math.Clamp(index, 0, _cameras.Count - 1);
+                }
             }
 
-            removed = _cameras[index];
-            _cameras.RemoveAt(index);
-            _cameraSettings.Remove(removed.Value.Id);
+            PersistCameraSettings();
+            RefreshCameraUi();
 
-            if (_cameras.Count == 0)
+            if (_runTask is not null && _selectedCameraIndex >= 0)
             {
-                _selectedCameraIndex = -1;
+                Interlocked.Exchange(ref _requestedCameraIndex, _selectedCameraIndex);
             }
-            else
-            {
-                _selectedCameraIndex = Math.Clamp(index, 0, _cameras.Count - 1);
-            }
+
+            SetStatus($"Status: removed camera {removed?.DisplayName ?? "-"}.");
         }
-
-        PersistCameraSettings();
-        RefreshCameraUi();
-
-        if (_runTask is not null && _selectedCameraIndex >= 0)
+        catch (Exception ex)
         {
-            Interlocked.Exchange(ref _requestedCameraIndex, _selectedCameraIndex);
+            ReportException("Status: remove camera failed", ex);
         }
-
-        SetStatus($"Status: removed camera {removed?.DisplayName ?? "-"}.");
     }
 
     private void ClearCamerasButtonOnClick(object? sender, RoutedEventArgs e)
     {
-        lock (_cameraSync)
+        try
         {
-            _cameras.Clear();
-            _cameraSettings.Clear();
-            _selectedCameraIndex = -1;
-        }
+            lock (_cameraSync)
+            {
+                _cameras.Clear();
+                _cameraSettings.Clear();
+                _selectedCameraIndex = -1;
+            }
 
-        PersistCameraSettings();
-        RefreshCameraUi();
-        SetStatus("Status: all cameras cleared.");
+            PersistCameraSettings();
+            RefreshCameraUi();
+            SetStatus("Status: all cameras cleared.");
+        }
+        catch (Exception ex)
+        {
+            ReportException("Status: clear cameras failed", ex);
+        }
     }
 
     private void PreviousCameraButtonOnClick(object? sender, RoutedEventArgs e)
@@ -372,41 +403,48 @@ public partial class MainWindow : AppWindow
 
     private async void StartStopButtonOnClick(object? sender, RoutedEventArgs e)
     {
-        if (_runTask is not null)
-        {
-            await StopProcessingAsync();
-            return;
-        }
-
-        if (GetCameraCount() == 0)
-        {
-            SetStatus("Status: add at least one camera.");
-            return;
-        }
-
-        UpdateSelectedCameraSettingsFromUi(logChange: false);
-
-        var startIndex = _selectedCameraIndex >= 0 ? _selectedCameraIndex : 0;
-        var loopCameraVideos = LoopPlaylistCheckBox.IsChecked == true;
-
-        _runCts = new CancellationTokenSource();
-        var token = _runCts.Token;
-
-        SetRunState(isRunning: true);
-        StartBakeForAllCameras(token);
-        _runTask = Task.Run(() => RunCameraSelectionAsync(startIndex, loopCameraVideos, token), token);
-
         try
         {
-            await _runTask;
-        }
-        catch (OperationCanceledException)
-        {
-            SetStatus("Status: processing stopped.");
+            if (_runTask is not null)
+            {
+                await StopProcessingAsync();
+                return;
+            }
+
+            if (GetCameraCount() == 0)
+            {
+                SetStatus("Status: add at least one camera.");
+                return;
+            }
+
+            UpdateSelectedCameraSettingsFromUi(logChange: false);
+
+            var startIndex = _selectedCameraIndex >= 0 ? _selectedCameraIndex : 0;
+            var loopCameraVideos = LoopPlaylistCheckBox.IsChecked == true;
+
+            _runCts = new CancellationTokenSource();
+            var token = _runCts.Token;
+
+            SetRunState(isRunning: true);
+            StartBakeForAllCameras(token);
+            _runTask = Task.Run(() => RunCameraSelectionAsync(startIndex, loopCameraVideos, token), token);
+
+            try
+            {
+                await _runTask;
+            }
+            catch (OperationCanceledException)
+            {
+                SetStatus("Status: processing stopped.");
+            }
+            catch (Exception ex)
+            {
+                ReportException("Status: processing failed", ex);
+            }
         }
         catch (Exception ex)
         {
-            SetStatus($"Status: error - {ex.Message}");
+            ReportException("Status: start/stop failed", ex);
         }
         finally
         {
@@ -453,7 +491,7 @@ public partial class MainWindow : AppWindow
         }
         catch (Exception ex)
         {
-            SetStatus($"Status: failed to prepare baked mask - {ex.Message}");
+            ReportException("Status: failed to prepare baked mask", ex);
             return;
         }
 
@@ -469,7 +507,7 @@ public partial class MainWindow : AppWindow
         }
         catch (Exception ex)
         {
-            SetStatus($"Status: failed to open baked mask - {ex.Message}");
+            ReportException("Status: failed to open baked mask", ex);
         }
     }
 
@@ -548,14 +586,20 @@ public partial class MainWindow : AppWindow
                 settings.MotionArea,
                 settings.ColorMinPixels,
                 settings.MorphKernelSize);
+            var detectionOptions = new BackgroundEstimationEngine.DetectionOptions(
+                settings.DetectionMethod == DetectionMethod.Yolo,
+                settings.DetectionConfidence,
+                settings.NmsIouThreshold,
+                settings.DetectionImgSize);
 
             var result = await _engine.ProcessUsbCameraAsync(
                 usbCamera.CameraIndex,
-                usbCamera.Api,
+                usbCamera.ApiId,
                 camera.DisplayName,
                 settings.SampleCount,
                 settings.Threshold,
                 options,
+                detectionOptions,
                 GetBakeImagePath(settings),
                 onFrame: frameSet =>
                 {
@@ -590,6 +634,11 @@ public partial class MainWindow : AppWindow
                 settings.MotionArea,
                 settings.ColorMinPixels,
                 settings.MorphKernelSize);
+            var detectionOptions = new BackgroundEstimationEngine.DetectionOptions(
+                settings.DetectionMethod == DetectionMethod.Yolo,
+                settings.DetectionConfidence,
+                settings.NmsIouThreshold,
+                settings.DetectionImgSize);
 
             if (videoIndex >= camera.VideoPaths.Count)
             {
@@ -612,6 +661,7 @@ public partial class MainWindow : AppWindow
                 settings.SampleCount,
                 settings.Threshold,
                 options,
+                detectionOptions,
                 GetBakeImagePath(settings),
                 onFrame: frameSet =>
                 {
@@ -713,7 +763,23 @@ public partial class MainWindow : AppWindow
                     return;
                 }
 
-                await Dispatcher.UIThread.InvokeAsync(() => RenderFrameSet(frameSet));
+                // Performance optimization: Pre-decode bitmaps on thread pool before dispatching to UI thread.
+                // This avoids expensive Bitmap creation blocking the UI thread.
+                var bitmaps = new Dictionary<Image, Bitmap>();
+                
+                bitmaps[PreviewBackgroundMaskImage] = CreateBitmapFromJpeg(frameSet.BackgroundMaskJpeg);
+                bitmaps[PreviewMovingColorImage] = CreateBitmapFromJpeg(frameSet.MovingColorJpeg);
+                bitmaps[PreviewColorDetectionImage] = CreateBitmapFromJpeg(frameSet.ColorDetectionJpeg);
+                bitmaps[PreviewMotionImage] = CreateBitmapFromJpeg(frameSet.MotionJpeg);
+
+                if (_isYoloViewVisible)
+                {
+                    bitmaps[PreviewYoloDetectionImage] = CreateBitmapFromJpeg(frameSet.ColorDetectionJpeg);
+                    bitmaps[PreviewYoloMaskImage] = CreateBitmapFromJpeg(frameSet.BackgroundMaskJpeg);
+                }
+
+                // Dispatch only the UI update work to the UI thread
+                await Dispatcher.UIThread.InvokeAsync(() => ApplyBitmapsToImages(bitmaps));
                 Interlocked.Exchange(ref _lastPreviewRenderTick, Environment.TickCount64);
             }
             catch
@@ -733,61 +799,167 @@ public partial class MainWindow : AppWindow
         UpdatePreviewImage(PreviewMovingColorImage, frameSet.MovingColorJpeg);
         UpdatePreviewImage(PreviewColorDetectionImage, frameSet.ColorDetectionJpeg);
         UpdatePreviewImage(PreviewMotionImage, frameSet.MotionJpeg);
+
+        if (YoloViewPanel.IsVisible)
+        {
+            UpdatePreviewImage(PreviewYoloDetectionImage, frameSet.ColorDetectionJpeg);
+            UpdatePreviewImage(PreviewYoloMaskImage, frameSet.BackgroundMaskJpeg);
+        }
+    }
+
+    /// <summary>
+    /// Creates a Bitmap from JPEG bytes. Called on thread pool thread for performance.
+    /// NOTE: MemoryStream is kept alive to prevent Avalonia's lazy bitmap loading from failing.
+    /// </summary>
+    private static Bitmap CreateBitmapFromJpeg(byte[] jpegBytes)
+    {
+        // Create a MemoryStream that owns the buffer and won't be disposed
+        // Avalonia's Bitmap may lazy-load the image, so we must keep the stream alive
+        var ms = new MemoryStream(jpegBytes, writable: false);
+        try
+        {
+            return new Bitmap(ms);
+        }
+        catch
+        {
+            ms?.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Applies pre-created bitmaps to Image controls. Called on UI thread.
+    /// </summary>
+    private void ApplyBitmapsToImages(Dictionary<Image, Bitmap> bitmaps)
+    {
+        try
+        {
+            foreach (var (target, bitmap) in bitmaps)
+            {
+                // Ensure the control is still in the visual tree before updating
+                if (target is null || !target.IsVisible)
+                {
+                    bitmap?.Dispose();
+                    continue;
+                }
+
+                try
+                {
+                    var previous = target.Source as Bitmap;
+                    target.Source = bitmap;
+                    previous?.Dispose();
+                }
+                catch
+                {
+                    // If updating this specific image fails, dispose the new bitmap and continue
+                    bitmap?.Dispose();
+                }
+            }
+        }
+        catch
+        {
+            // If the entire batch fails, dispose all bitmaps
+            foreach (var bitmap in bitmaps.Values)
+            {
+                bitmap?.Dispose();
+            }
+        }
+    }
+
+    private void SyncDetectorView()
+    {
+        var isYolo = DetectorModeComboBox.SelectedIndex == 1;
+        MotionViewPanel.IsVisible = !isYolo;
+        YoloViewPanel.IsVisible = isYolo;
+        _isYoloViewVisible = isYolo;
+
+        if (isYolo)
+        {
+            UpdateYoloSettingsSummary();
+        }
+    }
+
+    private void UpdateYoloSettingsSummary()
+    {
+        var camera = GetSelectedCamera();
+        if (camera is null)
+        {
+            YoloSettingsSummaryText.Text = "No camera selected.";
+            return;
+        }
+
+        var s = GetSettingsForCamera(camera.Value.Id);
+        YoloSettingsSummaryText.Text =
+            $"Confidence: {s.DetectionConfidence}%  \u00b7  NMS IoU: {s.NmsIouThreshold}%  \u00b7  Input size: {s.DetectionImgSize}px";
     }
 
     private static void UpdatePreviewImage(Image target, byte[] imageBytes)
     {
-        using var ms = new MemoryStream(imageBytes);
-        var bitmap = new Bitmap(ms);
+        try
+        {
+            // Create MemoryStream without disposing it - Avalonia may lazy-load the bitmap
+            var ms = new MemoryStream(imageBytes, writable: false);
+            var bitmap = new Bitmap(ms);
 
-        var previous = target.Source as Bitmap;
-        target.Source = bitmap;
-        previous?.Dispose();
+            var previous = target.Source as Bitmap;
+            target.Source = bitmap;
+            previous?.Dispose();
+        }
+        catch
+        {
+            // Ignore individual preview update errors to prevent UI blocking
+        }
     }
 
     private void RefreshCameraUi()
     {
-        List<CameraProfile> snapshot;
-        lock (_cameraSync)
+        RunOnUiThread(() =>
         {
-            snapshot = _cameras.ToList();
-        }
+            List<CameraProfile> snapshot;
+            lock (_cameraSync)
+            {
+                snapshot = _cameras.ToList();
+            }
 
-        PlaylistListBox.ItemsSource = snapshot.Select(camera => camera.DisplayName).ToList();
+            PlaylistListBox.ItemsSource = snapshot.Select(camera => camera.DisplayName).ToList();
 
-        var canNavigate = snapshot.Count > 1;
-        PreviousVideoButton.IsEnabled = canNavigate;
-        NextVideoButton.IsEnabled = canNavigate;
+            var canNavigate = snapshot.Count > 1;
+            PreviousVideoButton.IsEnabled = canNavigate;
+            NextVideoButton.IsEnabled = canNavigate;
 
-        if (snapshot.Count == 0)
-        {
-            PlaylistListBox.SelectedIndex = -1;
-            CurrentVideoText.Text = "Current camera/source: -";
-            OpenBakedMaskButton.IsEnabled = false;
-            return;
-        }
+            if (snapshot.Count == 0)
+            {
+                PlaylistListBox.SelectedIndex = -1;
+                CurrentVideoText.Text = "Current camera/source: -";
+                OpenBakedMaskButton.IsEnabled = false;
+                return;
+            }
 
-        _selectedCameraIndex = Math.Clamp(_selectedCameraIndex, 0, snapshot.Count - 1);
-        PlaylistListBox.SelectedIndex = _selectedCameraIndex;
+            _selectedCameraIndex = Math.Clamp(_selectedCameraIndex, 0, snapshot.Count - 1);
+            PlaylistListBox.SelectedIndex = _selectedCameraIndex;
 
-        var selected = snapshot[_selectedCameraIndex];
-        ApplySettingsToUi(GetSettingsForCamera(selected.Id));
-        CurrentVideoText.Text = BuildCurrentSourceText(selected);
-        OpenBakedMaskButton.IsEnabled = selected.CanOpenBakedMask;
+            var selected = snapshot[_selectedCameraIndex];
+            ApplySettingsToUi(GetSettingsForCamera(selected.Id));
+            CurrentVideoText.Text = BuildCurrentSourceText(selected);
+            OpenBakedMaskButton.IsEnabled = selected.CanOpenBakedMask;
+        });
     }
 
     private void SetRunState(bool isRunning)
     {
-        StartStopButton.Content = isRunning ? "Stop" : "Start";
-        AddVideosButton.IsEnabled = !isRunning;
-        RemoveSelectedButton.IsEnabled = !isRunning;
-        ClearPlaylistButton.IsEnabled = !isRunning;
-        LoopPlaylistCheckBox.IsEnabled = !isRunning;
-
-        if (!isRunning)
+        RunOnUiThread(() =>
         {
-            Interlocked.Exchange(ref _requestedCameraIndex, -1);
-        }
+            StartStopButton.Content = isRunning ? "Stop" : "Start";
+            AddVideosButton.IsEnabled = !isRunning;
+            RemoveSelectedButton.IsEnabled = !isRunning;
+            ClearPlaylistButton.IsEnabled = !isRunning;
+            LoopPlaylistCheckBox.IsEnabled = !isRunning;
+
+            if (!isRunning)
+            {
+                Interlocked.Exchange(ref _requestedCameraIndex, -1);
+            }
+        });
     }
 
     private void RuntimeSettingControlOnLostFocus(object? sender, RoutedEventArgs e)
@@ -809,8 +981,12 @@ public partial class MainWindow : AppWindow
         var colorMinPixels = ParseInt(ColorMinPixelsTextBox.Text, 40, 1, 100000);
         var morphKernelSize = ParseOddInt(MorphKernelSizeTextBox.Text, 3, 1, 31);
         var processMaxWidth = ParseInt(ProcessWidthTextBox.Text, 640, 160, 1920);
+        var detectionConfidence = ParseInt(DetectionConfidenceTextBox.Text, 50, 1, 99);
+        var nmsIouThreshold = ParseInt(NmsIouThresholdTextBox.Text, 45, 1, 99);
+        var detectionImgSize = ParseDetectionImgSize();
         var bakeSourceMode = ParseBakeSourceMode();
         var bakeImagePath = (BakeImagePathTextBox.Text ?? string.Empty).Trim();
+        var detectionMethod = (DetectionMethod)ParseInt(DetectorModeComboBox.SelectedIndex.ToString(), 0, 0, 1);
 
         SampleCountTextBox.Text = sampleCount.ToString();
         ThresholdTextBox.Text = threshold.ToString();
@@ -818,6 +994,8 @@ public partial class MainWindow : AppWindow
         ColorMinPixelsTextBox.Text = colorMinPixels.ToString();
         MorphKernelSizeTextBox.Text = morphKernelSize.ToString();
         ProcessWidthTextBox.Text = processMaxWidth.ToString();
+        DetectionConfidenceTextBox.Text = detectionConfidence.ToString();
+        NmsIouThresholdTextBox.Text = nmsIouThreshold.ToString();
         BakeImagePathTextBox.Text = bakeImagePath;
 
         lock (_settingsSync)
@@ -830,7 +1008,11 @@ public partial class MainWindow : AppWindow
                 morphKernelSize,
                 processMaxWidth,
                 bakeSourceMode,
-                bakeImagePath);
+                bakeImagePath,
+                detectionConfidence,
+                nmsIouThreshold,
+                detectionImgSize,
+                detectionMethod);
         }
 
         PersistCameraSettings();
@@ -850,9 +1032,19 @@ public partial class MainWindow : AppWindow
         ColorMinPixelsTextBox.Text = settings.ColorMinPixels.ToString();
         MorphKernelSizeTextBox.Text = settings.MorphKernelSize.ToString();
         ProcessWidthTextBox.Text = settings.ProcessMaxWidth.ToString();
+        DetectionConfidenceTextBox.Text = settings.DetectionConfidence.ToString();
+        NmsIouThresholdTextBox.Text = settings.NmsIouThreshold.ToString();
+        DetectionImgSizeComboBox.SelectedIndex = settings.DetectionImgSize switch
+        {
+            320 => 0,
+            1280 => 2,
+            _ => 1 // 640 default
+        };
+        DetectorModeComboBox.SelectedIndex = (int)settings.DetectionMethod;
         BakeSourceComboBox.SelectedIndex = (int)settings.BakeSourceMode;
         BakeImagePathTextBox.Text = settings.BakeImagePath;
         ApplyBakeSourceUiState();
+        SyncDetectorView();
     }
 
     private RuntimeProcessingSettings GetSettingsForCamera(string cameraId)
@@ -968,43 +1160,6 @@ public partial class MainWindow : AppWindow
         }
     }
 
-    private static IReadOnlyList<UsbCameraOption> DiscoverUsbCameraOptions()
-    {
-        var api = GetDefaultUsbCaptureApi();
-        var options = new List<UsbCameraOption>();
-
-        for (var cameraIndex = 0; cameraIndex <= MaxUsbCameraProbeIndex; cameraIndex++)
-        {
-            using var capture = new VideoCapture(cameraIndex, api);
-            capture.Set(VideoCaptureProperties.BufferSize, 1);
-            if (!capture.IsOpened())
-            {
-                continue;
-            }
-
-            var width = (int)Math.Round(capture.Get(VideoCaptureProperties.FrameWidth));
-            var height = (int)Math.Round(capture.Get(VideoCaptureProperties.FrameHeight));
-            var sizeSuffix = width > 0 && height > 0
-                ? $" ({width}x{height})"
-                : string.Empty;
-
-            options.Add(new UsbCameraOption(
-                $"usb:{cameraIndex}:{api.ToString().ToLowerInvariant()}",
-                $"USB camera {cameraIndex}{sizeSuffix}",
-                cameraIndex,
-                api));
-        }
-
-        return options;
-    }
-
-    private static VideoCaptureAPIs GetDefaultUsbCaptureApi()
-    {
-        return OperatingSystem.IsWindows()
-            ? VideoCaptureAPIs.DSHOW
-            : VideoCaptureAPIs.ANY;
-    }
-
     private static string BuildCurrentSourceText(CameraProfile camera, string? activeSourceLabel = null)
     {
         var sourceLabel = string.IsNullOrWhiteSpace(activeSourceLabel)
@@ -1061,26 +1216,54 @@ public partial class MainWindow : AppWindow
 
     private void SetStatus(string text)
     {
-        StatusText.Text = text;
-        AppendLog(text);
+        RunOnUiThread(() =>
+        {
+            StatusText.Text = text;
+            AppendLog(text);
+        });
+    }
+
+    private void ReportException(string context, Exception ex)
+    {
+        var baseException = ex.GetBaseException();
+        var statusText = $"{context} - {baseException.GetType().Name}: {baseException.Message}";
+        var details = $"{context}\n{ex}";
+
+        SetStatus(statusText);
+        AppendLog(details);
+        Debug.WriteLine(details);
     }
 
     private void AppendLog(string message)
     {
-        var timestamp = DateTime.Now.ToString("HH:mm:ss");
-        var line = $"[{timestamp}] {message}";
-
-        _logEntries.Add(line);
-        while (_logEntries.Count > MaxLogEntries)
+        RunOnUiThread(() =>
         {
-            _logEntries.RemoveAt(0);
+            var timestamp = DateTime.Now.ToString("HH:mm:ss");
+            var line = $"[{timestamp}] {message}";
+
+            _logEntries.Add(line);
+            while (_logEntries.Count > MaxLogEntries)
+            {
+                _logEntries.RemoveAt(0);
+            }
+
+            LogListBox.SelectedIndex = _logEntries.Count - 1;
+            if (LogListBox.SelectedItem is not null)
+            {
+                LogListBox.ScrollIntoView(LogListBox.SelectedItem);
+            }
+        });
+    }
+
+    private void RunOnUiThread(Action action)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            action();
+            return;
         }
 
-        LogListBox.SelectedIndex = _logEntries.Count - 1;
-        if (LogListBox.SelectedItem is not null)
-        {
-            LogListBox.ScrollIntoView(LogListBox.SelectedItem);
-        }
+        Dispatcher.UIThread.Post(action);
     }
 
     private static int ParseInt(string? text, int fallback, int min, int max)
@@ -1097,6 +1280,16 @@ public partial class MainWindow : AppWindow
     {
         var parsed = ParseInt(text, fallback, min, max);
         return parsed % 2 == 0 ? parsed + 1 : parsed;
+    }
+
+    private int ParseDetectionImgSize()
+    {
+        return DetectionImgSizeComboBox.SelectedIndex switch
+        {
+            0 => 320,
+            2 => 1280,
+            _ => 640
+        };
     }
 
     private static string BuildCameraName(string path, int sequence)
@@ -1122,7 +1315,7 @@ public partial class MainWindow : AppWindow
         ImageFile = 1
     }
 
-    private readonly record struct UsbCameraSource(int CameraIndex, VideoCaptureAPIs Api);
+    private readonly record struct UsbCameraSource(int CameraIndex, string ApiId);
 
     private readonly record struct CameraProfile(
         string Id,
@@ -1144,8 +1337,14 @@ public partial class MainWindow : AppWindow
         public static CameraProfile CreateVideo(string id, string displayName, List<string> videoPaths)
             => new(id, displayName, CameraSourceKind.VideoFiles, videoPaths, null);
 
-        public static CameraProfile CreateUsb(string id, string displayName, int cameraIndex, VideoCaptureAPIs api)
-            => new(id, displayName, CameraSourceKind.UsbCamera, new List<string>(), new UsbCameraSource(cameraIndex, api));
+        public static CameraProfile CreateUsb(string id, string displayName, int cameraIndex, string apiId)
+            => new(id, displayName, CameraSourceKind.UsbCamera, new List<string>(), new UsbCameraSource(cameraIndex, apiId));
+    }
+
+    internal enum DetectionMethod
+    {
+        MotionColor = 0,
+        Yolo = 1
     }
 
     internal readonly record struct RuntimeProcessingSettings(
@@ -1156,8 +1355,12 @@ public partial class MainWindow : AppWindow
         int MorphKernelSize,
         int ProcessMaxWidth,
         BakeSourceMode BakeSourceMode,
-        string BakeImagePath)
+        string BakeImagePath,
+        int DetectionConfidence,
+        int NmsIouThreshold,
+        int DetectionImgSize,
+        DetectionMethod DetectionMethod)
     {
-        public static RuntimeProcessingSettings Default => new(20, 100, 220, 40, 3, 640, BakeSourceMode.Samples, string.Empty);
+        public static RuntimeProcessingSettings Default => new(20, 100, 220, 40, 3, 640, BakeSourceMode.Samples, string.Empty, 50, 45, 640, DetectionMethod.MotionColor);
     }
 }

@@ -219,6 +219,30 @@
                                                          Watermark="100" />
                                             </StackPanel>
 
+                                            <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" Spacing="4">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="Detector Mode"
+                                                               Classes="eyebrow" />
+                                                    <Border Background="#26323B"
+                                                            BorderBrush="#3C4F5E"
+                                                            BorderThickness="1"
+                                                            Padding="4,1"
+                                                            ToolTip.Tip="Detection algorithm: Motion+Color uses background subtraction, YOLO uses deep learning neural network."
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="i"
+                                                                   Foreground="#CFE0EC"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold" />
+                                                    </Border>
+                                                </StackPanel>
+                                                <ComboBox x:Name="DetectorModeComboBox"
+                                                          ToolTip.Tip="Select the detection algorithm mode."
+                                                          SelectedIndex="0">
+                                                    <ComboBoxItem Content="Motion + Color" />
+                                                    <ComboBoxItem Content="YOLO" />
+                                                </ComboBox>
+                                            </StackPanel>
+
                                             <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4">
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                                     <TextBlock Text="Motion Area"
@@ -303,6 +327,72 @@
                                                      Text="640"
                                                      Watermark="640" />
                                         </StackPanel>
+
+                                        <StackPanel Spacing="4">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="Detection Confidence"
+                                                           Classes="eyebrow" />
+                                                <Border Background="#26323B"
+                                                        BorderBrush="#3C4F5E"
+                                                        BorderThickness="1"
+                                                        Padding="4,1"
+                                                        ToolTip.Tip="Confidence threshold for neural network detectors (0-99, where 50 = 0.5). Higher values filter weak detections."
+                                                        VerticalAlignment="Center">
+                                                    <TextBlock Text="i"
+                                                               Foreground="#CFE0EC"
+                                                               FontSize="11"
+                                                               FontWeight="Bold" />
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBox x:Name="DetectionConfidenceTextBox"
+                                                     Text="50"
+                                                     Watermark="50" />
+                                        </StackPanel>
+
+                                        <StackPanel Spacing="4">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="NMS IoU Threshold"
+                                                           Classes="eyebrow" />
+                                                <Border Background="#26323B"
+                                                        BorderBrush="#3C4F5E"
+                                                        BorderThickness="1"
+                                                        Padding="4,1"
+                                                        ToolTip.Tip="IoU threshold for Non-Maximum Suppression (0-99, where 45 = 0.45). Lower values suppress more overlapping boxes."
+                                                        VerticalAlignment="Center">
+                                                    <TextBlock Text="i"
+                                                               Foreground="#CFE0EC"
+                                                               FontSize="11"
+                                                               FontWeight="Bold" />
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBox x:Name="NmsIouThresholdTextBox"
+                                                     Text="45"
+                                                     Watermark="45" />
+                                        </StackPanel>
+
+                                        <StackPanel Spacing="4">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="Detection Image Size"
+                                                           Classes="eyebrow" />
+                                                <Border Background="#26323B"
+                                                        BorderBrush="#3C4F5E"
+                                                        BorderThickness="1"
+                                                        Padding="4,1"
+                                                        ToolTip.Tip="Input image size for neural network (320/640/1280). Larger sizes improve accuracy but reduce speed."
+                                                        VerticalAlignment="Center">
+                                                    <TextBlock Text="i"
+                                                               Foreground="#CFE0EC"
+                                                               FontSize="11"
+                                                               FontWeight="Bold" />
+                                                </Border>
+                                            </StackPanel>
+                                            <ComboBox x:Name="DetectionImgSizeComboBox"
+                                                      SelectedIndex="1">
+                                                <ComboBoxItem Content="320" />
+                                                <ComboBoxItem Content="640" />
+                                                <ComboBoxItem Content="1280" />
+                                            </ComboBox>
+                                        </StackPanel>
                                     </StackPanel>
                                 </ScrollViewer>
 
@@ -367,7 +457,8 @@
                         </Grid>
                     </Border>
 
-                      <Grid Grid.Row="2"
+                      <Panel Grid.Row="2">
+                      <Grid x:Name="MotionViewPanel"
                           RowDefinitions="*,*"
                           ColumnDefinitions="*,*">
                         <Border Grid.Row="0" Grid.Column="0"
@@ -422,6 +513,60 @@
                             </Panel>
                         </Border>
                     </Grid>
+
+                      <Grid x:Name="YoloViewPanel"
+                            IsVisible="False"
+                            ColumnDefinitions="2*,*">
+                          <Border Grid.Column="0"
+                                  Background="#070A0E">
+                              <Panel>
+                                  <Image x:Name="PreviewYoloDetectionImage" Stretch="Uniform" />
+                                  <Border VerticalAlignment="Top"
+                                          Background="#99000000"
+                                          Padding="8,5">
+                                      <TextBlock Text="YOLO — Object Detection"
+                                                 Classes="cardTitle" />
+                                  </Border>
+                              </Panel>
+                          </Border>
+                          <Grid Grid.Column="1" RowDefinitions="*,*">
+                              <Border Grid.Row="0"
+                                      Background="#070A0E">
+                                  <Panel>
+                                      <Image x:Name="PreviewYoloMaskImage" Stretch="Uniform" />
+                                      <Border VerticalAlignment="Top"
+                                              Background="#99000000"
+                                              Padding="8,5">
+                                          <TextBlock Text="Motion Mask"
+                                                     Classes="cardTitle" />
+                                      </Border>
+                                  </Panel>
+                              </Border>
+                              <Border Grid.Row="1"
+                                      Background="#0D1117"
+                                      Padding="16">
+                                  <StackPanel Spacing="8" VerticalAlignment="Center">
+                                      <TextBlock Text="YOLO Status"
+                                                 Classes="sectionTitle" />
+                                      <TextBlock x:Name="YoloModelStatusText"
+                                                 Text="Model: —"
+                                                 Foreground="#CFE0EC"
+                                                 TextWrapping="Wrap"
+                                                 FontSize="12" />
+                                      <TextBlock Text="Settings"
+                                                 Classes="eyebrow"
+                                                 Margin="0,6,0,0" />
+                                      <TextBlock x:Name="YoloSettingsSummaryText"
+                                                 Text="—"
+                                                 Classes="muted"
+                                                 FontSize="11"
+                                                 TextWrapping="Wrap" />
+                                  </StackPanel>
+                              </Border>
+                          </Grid>
+                      </Grid>
+
+                      </Panel>
                 </Grid>
             </Border>
         </Grid>

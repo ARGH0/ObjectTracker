@@ -4,7 +4,7 @@ using OpenCvSharp;
 
 namespace ObjectTracker.Vision;
 
-public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterControl
+public sealed class OpenCvColorDetector : ICachedDetectionAlgorithm, IColorFilterControl
 {
     public DetectorMode Mode => DetectorMode.Color;
     public string Name => "OpenCV Color";
@@ -130,6 +130,85 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
             }
         }
 
+        return Task.FromResult<IReadOnlyList<Detection>>(detections);
+    }
+
+    public Task<IReadOnlyList<Detection>> DetectAsync(FramePacket frame, Mat decodedImage, CancellationToken cancellationToken)
+    {
+        // decodedImage is expected to be BGR (Color) Mat
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (decodedImage.Empty())
+        {
+            return Task.FromResult<IReadOnlyList<Detection>>([]);
+        }
+
+        var hsv = new Mat();
+        Cv2.CvtColor(decodedImage, hsv, ColorConversionCodes.BGR2HSV);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var detections = new List<Detection>();
+
+        HashSet<string> enabled;
+        lock (_filterLock)
+        {
+            enabled = _enabledColors.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        foreach (var range in Ranges)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!enabled.Contains(range.Name))
+            {
+                continue;
+            }
+
+            using var mask = BuildMask(hsv, range);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            Cv2.FindContours(mask, out var contours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
+
+            var index = 0;
+            foreach (var contour in contours)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var area = Cv2.ContourArea(contour);
+                var minArea = range.Name is "black" or "white" ? 240 : 120;
+                if (area < minArea)
+                {
+                    continue;
+                }
+
+                var rect = Cv2.BoundingRect(contour);
+                var moments = Cv2.Moments(contour);
+                if (Math.Abs(moments.M00) < double.Epsilon)
+                {
+                    continue;
+                }
+
+                var centerX = (float)(moments.M10 / moments.M00);
+                var centerY = (float)(moments.M01 / moments.M00);
+
+                detections.Add(new Detection(
+                    $"{range.Name}-{index}",
+                    centerX,
+                    centerY,
+                    rect.X,
+                    rect.Y,
+                    rect.Width,
+                    rect.Height,
+                    Math.Min(1f, (float)(area / (frame.Width * frame.Height))),
+                    range.Name,
+                    frame.SourceId,
+                    frame.TimestampUtcMs));
+
+                index++;
+            }
+        }
+
+        hsv.Dispose();
         return Task.FromResult<IReadOnlyList<Detection>>(detections);
     }
 

@@ -2,7 +2,7 @@ using ObjectTracker.Core.Domain;
 
 namespace ObjectTracker.Core.Ports;
 
-public interface IDetectorManager
+public interface IDetectorManager : IAsyncDisposable
 {
     DetectorMode ActiveMode { get; }
     IReadOnlyList<DetectorMode> SupportedModes { get; }

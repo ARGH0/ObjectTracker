@@ -5,5 +5,6 @@ public enum DetectorMode
     Aruco,
     Color,
     Hybrid,
-    Alternative
+    Alternative,
+    Yolo
 }

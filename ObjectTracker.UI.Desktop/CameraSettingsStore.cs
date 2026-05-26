@@ -51,7 +51,11 @@ internal sealed class CameraSettingsStore
                 MorphKernelSize: EnsureOdd(Math.Clamp(item.MorphKernelSize, 1, 31)),
                 ProcessMaxWidth: Math.Clamp(item.ProcessMaxWidth, 160, 1920),
                 BakeSourceMode: ParseBakeSourceMode(item.BakeSourceMode),
-                BakeImagePath: item.BakeImagePath ?? string.Empty);
+                BakeImagePath: item.BakeImagePath ?? string.Empty,
+                DetectionConfidence: Math.Clamp(item.DetectionConfidence, 1, 99),
+                NmsIouThreshold: Math.Clamp(item.NmsIouThreshold, 1, 99),
+                DetectionImgSize: ValidateImgSize(item.DetectionImgSize),
+                DetectionMethod: (MainWindow.DetectionMethod)Math.Clamp(item.DetectionMethod, 0, 1));
         }
 
         return result;
@@ -76,7 +80,11 @@ internal sealed class CameraSettingsStore
                 MorphKernelSize = settings.MorphKernelSize,
                 ProcessMaxWidth = settings.ProcessMaxWidth,
                 BakeSourceMode = settings.BakeSourceMode.ToString(),
-                BakeImagePath = settings.BakeImagePath
+                BakeImagePath = settings.BakeImagePath,
+                DetectionConfidence = settings.DetectionConfidence,
+                NmsIouThreshold = settings.NmsIouThreshold,
+                DetectionImgSize = settings.DetectionImgSize,
+                DetectionMethod = (int)settings.DetectionMethod
             });
         }
 
@@ -93,6 +101,15 @@ internal sealed class CameraSettingsStore
     private static int EnsureOdd(int value)
     {
         return value % 2 == 0 ? value + 1 : value;
+    }
+
+    private static int ValidateImgSize(int value)
+    {
+        return value switch
+        {
+            320 or 640 or 1280 => value,
+            _ => 640 // default
+        };
     }
 
     private static MainWindow.BakeSourceMode ParseBakeSourceMode(string? value)
@@ -118,5 +135,9 @@ internal sealed class CameraSettingsStore
         public int ProcessMaxWidth { get; set; } = 640;
         public string BakeSourceMode { get; set; } = nameof(MainWindow.BakeSourceMode.Samples);
         public string BakeImagePath { get; set; } = string.Empty;
+        public int DetectionConfidence { get; set; } = 50;
+        public int NmsIouThreshold { get; set; } = 45;
+        public int DetectionImgSize { get; set; } = 640;
+        public int DetectionMethod { get; set; } = 0;
     }
 }

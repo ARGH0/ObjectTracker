@@ -24,6 +24,7 @@
   <ItemGroup>
     <PackageReference Include="OpenCvSharp4" Version="$(OpenCvSharpVersion)" />
     <PackageReference Include="$(OpenCvSharpRuntimePackage)" Version="$(OpenCvSharpRuntimePackageVersion)" Condition="'$(OpenCvSharpRuntimePackage)' != ''" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.21.0" />
   </ItemGroup>
 
 </Project>

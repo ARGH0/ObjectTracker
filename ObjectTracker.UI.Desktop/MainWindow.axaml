@@ -78,6 +78,50 @@
                                            Classes="muted"
                                            TextWrapping="Wrap" />
                                 <ComboBox x:Name="CameraZoneComboBox" />
+                                <Button x:Name="ToggleGridEditorButton"
+                                        Classes="ghost"
+                                        Content="Open Grid Region Editor" />
+
+                                <StackPanel x:Name="GridEditorPanel"
+                                            Spacing="6"
+                                            IsVisible="False">
+                                    <TextBlock Text="Grid Region Editor"
+                                               Classes="sectionTitle"
+                                               Margin="0,8,0,0" />
+                                    <ComboBox x:Name="LayerTypeComboBox" />
+                                    <Grid ColumnDefinitions="*,8,*">
+                                        <Button x:Name="AddLayerButton"
+                                                Grid.Column="0"
+                                                Classes="ghost"
+                                                Content="Add Layer" />
+                                        <Button x:Name="DeleteLayerButton"
+                                                Grid.Column="2"
+                                                Classes="ghost"
+                                                Content="Delete Layer" />
+                                    </Grid>
+                                    <ListBox x:Name="LayersListBox"
+                                             MinHeight="70"
+                                             MaxHeight="120" />
+                                    <ListBox x:Name="RegionsListBox"
+                                             MinHeight="70"
+                                             MaxHeight="120" />
+                                    <TextBox x:Name="RegionNameTextBox"
+                                             Watermark="Region name" />
+                                    <TextBox x:Name="RegionCodeTextBox"
+                                             Watermark="Region code (optional)" />
+                                    <TextBox x:Name="RegionCellsTextBox"
+                                             Watermark="Cells: 1,1;2,1" />
+                                    <Grid ColumnDefinitions="*,8,*">
+                                        <Button x:Name="SaveRegionButton"
+                                                Grid.Column="0"
+                                                Classes="primary"
+                                                Content="Save Region" />
+                                        <Button x:Name="DeleteRegionButton"
+                                                Grid.Column="2"
+                                                Classes="ghost"
+                                                Content="Delete Region" />
+                                    </Grid>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 

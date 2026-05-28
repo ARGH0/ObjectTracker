@@ -3,4 +3,5 @@
   <Project Path="ObjectTracker.UI.Desktop/ObjectTracker.UI.Desktop.csproj" />
   <Project Path="ObjectTracker.Vision.Source/ObjectTracker.Vision.Source.csproj" />
   <Project Path="ObjectTracker.Vision/ObjectTracker.Vision.csproj" />
+  <Project Path="ObjectTracker.Vision.Tests/ObjectTracker.Vision.Tests.csproj" />
 </Solution>

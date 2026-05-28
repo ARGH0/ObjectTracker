@@ -17,6 +17,7 @@ namespace ObjectTracker.UI.Desktop;
 internal sealed class BackgroundEstimationEngine
 {
     private readonly SessionCalibrationService sessionCalibration = new();
+    private readonly RailRoiMaskBuilder railRoiMaskBuilder = new();
 
     public async Task<VideoProcessResult> ProcessVideoAsync(
         string videoPath,
@@ -67,11 +68,13 @@ internal sealed class BackgroundEstimationEngine
         await onStatus($"using baked background: {Path.GetFileName(bakedPath)}");
 
         capture.PosFrames = 0;
+        using var railRoiMask = railRoiMaskBuilder.BuildFromBackground(medianBackground);
         return await ProcessCaptureFramesAsync(
             capture,
             Path.GetFileName(videoPath),
             fps,
             medianBackground,
+            railRoiMask,
             threshold,
             options,
             onFrame,
@@ -130,12 +133,14 @@ internal sealed class BackgroundEstimationEngine
             bakeImagePath,
             onStatus,
             cancellationToken);
+        using var railRoiMask = railRoiMaskBuilder.BuildFromBackground(medianBackground);
 
         return await ProcessCaptureFramesAsync(
             capture,
             sourceLabel,
             capture.Fps,
             medianBackground,
+            railRoiMask,
             threshold,
             options,
             onFrame,
@@ -151,6 +156,7 @@ internal sealed class BackgroundEstimationEngine
         string sourceLabel,
         double fps,
         Mat medianBackground,
+        Mat railRoiMask,
         int threshold,
         ProcessingOptions options,
         Func<PreviewFrameSet, Task> onFrame,
@@ -164,6 +170,9 @@ internal sealed class BackgroundEstimationEngine
         var pacingFps = GetPacingFps(fps);
         var playbackClock = Stopwatch.StartNew();
         var processSize = medianBackground.Size();
+        var roiCoverage = ComputeMaskCoverage(railRoiMask);
+
+        await onStatus($"rail ROI active: {roiCoverage * 100:0.0}% of frame");
 
         if (pacePlayback)
         {
@@ -226,6 +235,7 @@ internal sealed class BackgroundEstimationEngine
                 Cv2.Resize(gray, resized, processSize, interpolation: InterpolationFlags.Area);
                 Cv2.Absdiff(medianBackground, resized, diff);
                 Cv2.Threshold(diff, mask, activeThreshold, 255, ThresholdTypes.Binary);
+                Cv2.BitwiseAnd(mask, railRoiMask, mask);
                 Cv2.MorphologyEx(mask, cleanMask, MorphTypes.Open, morphologyKernel);
                 Cv2.MorphologyEx(cleanMask, cleanMask, MorphTypes.Close, morphologyKernel);
 
@@ -739,6 +749,17 @@ internal sealed class BackgroundEstimationEngine
         }
 
         return Math.Clamp(sourceFps, 1.0, 240.0);
+    }
+
+    private static double ComputeMaskCoverage(Mat mask)
+    {
+        var total = mask.Rows * mask.Cols;
+        if (total <= 0)
+        {
+            return 0;
+        }
+
+        return (double)Cv2.CountNonZero(mask) / total;
     }
 
     private static async Task WaitForPlaybackScheduleAsync(

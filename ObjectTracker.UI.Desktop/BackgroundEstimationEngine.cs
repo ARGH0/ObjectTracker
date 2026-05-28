@@ -18,6 +18,7 @@ internal sealed class BackgroundEstimationEngine
 {
     private readonly SessionCalibrationService sessionCalibration = new();
     private readonly RailRoiMaskBuilder railRoiMaskBuilder = new();
+    private readonly MotionMaskRefiner motionMaskRefiner = new();
 
     public async Task<VideoProcessResult> ProcessVideoAsync(
         string videoPath,
@@ -151,7 +152,7 @@ internal sealed class BackgroundEstimationEngine
             pacePlayback: false);
     }
 
-    private static async Task<VideoProcessResult> ProcessCaptureFramesAsync(
+    private async Task<VideoProcessResult> ProcessCaptureFramesAsync(
         VideoCapture capture,
         string sourceLabel,
         double fps,
@@ -185,9 +186,8 @@ internal sealed class BackgroundEstimationEngine
         using var resized = new Mat();
         using var diff = new Mat();
         using var mask = new Mat();
-        using var cleanMask = new Mat();
+        using var refinedMask = new Mat();
         var activeMorphKernelSize = options.MorphKernelSize;
-        var morphologyKernel = Cv2.GetStructuringElement(MorphShapes.Rect, new Size(activeMorphKernelSize, activeMorphKernelSize));
         using var movingColor = new Mat();
         using var colorDetections = new Mat();
         using var motionView = new Mat();
@@ -196,94 +196,81 @@ internal sealed class BackgroundEstimationEngine
 
         var previousTracks = new Dictionary<int, MotionTrackState>();
         var nextTrackId = 1;
-        try
+        while (!cancellationToken.IsCancellationRequested)
         {
-            while (!cancellationToken.IsCancellationRequested)
+            if (shouldStopEarly?.Invoke() == true)
             {
-                if (shouldStopEarly?.Invoke() == true)
-                {
-                    return VideoProcessResult.Stopped();
-                }
+                return VideoProcessResult.Stopped();
+            }
 
-                if (!capture.Read(frame) || frame.Empty())
-                {
-                    break;
-                }
+            if (!capture.Read(frame) || frame.Empty())
+            {
+                break;
+            }
 
-                var activeThreshold = threshold;
-                var activeMinMotionArea = options.MinMotionArea;
-                var activeMinColorPixels = options.MinColorPixels;
+            var activeThreshold = threshold;
+            var activeMinMotionArea = options.MinMotionArea;
+            var activeMinColorPixels = options.MinColorPixels;
 
-                if (getLiveTuning is not null)
-                {
-                    var live = getLiveTuning();
-                    activeThreshold = live.Threshold;
-                    activeMinMotionArea = live.MinMotionArea;
-                    activeMinColorPixels = live.MinColorPixels;
-                    activeColorCalibrations = live.ColorCalibrations;
+            if (getLiveTuning is not null)
+            {
+                var live = getLiveTuning();
+                activeThreshold = live.Threshold;
+                activeMinMotionArea = live.MinMotionArea;
+                activeMinColorPixels = live.MinColorPixels;
+                activeColorCalibrations = live.ColorCalibrations;
+                activeMorphKernelSize = live.MorphKernelSize;
+            }
 
-                    if (live.MorphKernelSize != activeMorphKernelSize)
-                    {
-                        morphologyKernel.Dispose();
-                        activeMorphKernelSize = live.MorphKernelSize;
-                        morphologyKernel = Cv2.GetStructuringElement(MorphShapes.Rect, new Size(activeMorphKernelSize, activeMorphKernelSize));
-                    }
-                }
+            Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
+            Cv2.Resize(frame, colorResized, processSize, interpolation: InterpolationFlags.Area);
+            Cv2.Resize(gray, resized, processSize, interpolation: InterpolationFlags.Area);
+            Cv2.Absdiff(medianBackground, resized, diff);
+            Cv2.Threshold(diff, mask, activeThreshold, 255, ThresholdTypes.Binary);
+            Cv2.BitwiseAnd(mask, railRoiMask, mask);
+            using var refined = motionMaskRefiner.Refine(mask, BuildRefinerOptions(activeMorphKernelSize));
+            refined.CopyTo(refinedMask);
 
-                Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
-                Cv2.Resize(frame, colorResized, processSize, interpolation: InterpolationFlags.Area);
-                Cv2.Resize(gray, resized, processSize, interpolation: InterpolationFlags.Area);
-                Cv2.Absdiff(medianBackground, resized, diff);
-                Cv2.Threshold(diff, mask, activeThreshold, 255, ThresholdTypes.Binary);
-                Cv2.BitwiseAnd(mask, railRoiMask, mask);
-                Cv2.MorphologyEx(mask, cleanMask, MorphTypes.Open, morphologyKernel);
-                Cv2.MorphologyEx(cleanMask, cleanMask, MorphTypes.Close, morphologyKernel);
+            var movingRects = GetMovingObjectRectangles(refinedMask, activeMinMotionArea);
 
-                var movingRects = GetMovingObjectRectangles(cleanMask, activeMinMotionArea);
+            movingColor.SetTo(Scalar.Black);
+            colorResized.CopyTo(movingColor, refinedMask);
+            DrawMovingObjectBoxes(movingColor, movingRects);
 
-                movingColor.SetTo(Scalar.Black);
-                colorResized.CopyTo(movingColor, cleanMask);
-                DrawMovingObjectBoxes(movingColor, movingRects);
+            colorResized.CopyTo(colorDetections);
+            RenderColorDetections(colorDetections, colorResized, refinedMask, hsv, movingRects, activeColorCalibrations, activeMinColorPixels);
 
-                colorResized.CopyTo(colorDetections);
-                RenderColorDetections(colorDetections, colorResized, cleanMask, hsv, movingRects, activeColorCalibrations, activeMinColorPixels);
+            colorResized.CopyTo(motionView);
+            var timestampSec = capture.PosMsec / 1000.0;
+            RenderMotionOverlay(motionView, movingRects, timestampSec, ref previousTracks, ref nextTrackId);
 
-                colorResized.CopyTo(motionView);
-                var timestampSec = capture.PosMsec / 1000.0;
-                RenderMotionOverlay(motionView, movingRects, timestampSec, ref previousTracks, ref nextTrackId);
+            var preview = BuildPreviewFrameSet(refinedMask, movingColor, colorDetections, motionView);
+            await onFrame(preview);
 
-                var preview = BuildPreviewFrameSet(cleanMask, movingColor, colorDetections, motionView);
-                await onFrame(preview);
-
-                frameIndex++;
-                if (frameIndex % 20 == 0)
-                {
-                    var fpsText = fps > 0 ? $"{fps:0.0}" : "n/a";
-                    if (pacePlayback)
-                    {
-                        var positionMs = capture.PosMsec;
-                        await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps {fpsText} | t={positionMs / 1000:0.0}s");
-                    }
-                    else
-                    {
-                        await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps {fpsText}");
-                    }
-                }
-
+            frameIndex++;
+            if (frameIndex % 20 == 0)
+            {
+                var fpsText = fps > 0 ? $"{fps:0.0}" : "n/a";
                 if (pacePlayback)
                 {
-                    await WaitForPlaybackScheduleAsync(
-                        frameIndex,
-                        pacingFps,
-                        playbackClock,
-                        shouldStopEarly,
-                        cancellationToken);
+                    var positionMs = capture.PosMsec;
+                    await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps {fpsText} | t={positionMs / 1000:0.0}s");
+                }
+                else
+                {
+                    await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps {fpsText}");
                 }
             }
-        }
-        finally
-        {
-            morphologyKernel.Dispose();
+
+            if (pacePlayback)
+            {
+                await WaitForPlaybackScheduleAsync(
+                    frameIndex,
+                    pacingFps,
+                    playbackClock,
+                    shouldStopEarly,
+                    cancellationToken);
+            }
         }
 
         return VideoProcessResult.Ok();
@@ -760,6 +747,13 @@ internal sealed class BackgroundEstimationEngine
         }
 
         return (double)Cv2.CountNonZero(mask) / total;
+    }
+
+    private static MotionMaskRefiner.Options BuildRefinerOptions(int morphKernelSize)
+    {
+        var closeKernelSize = Math.Max(1, morphKernelSize);
+        var openKernelSize = closeKernelSize >= 5 ? 3 : 1;
+        return new MotionMaskRefiner.Options(closeKernelSize, openKernelSize);
     }
 
     private static async Task WaitForPlaybackScheduleAsync(

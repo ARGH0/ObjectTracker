@@ -39,6 +39,7 @@ public partial class MainWindow : AppWindow
     private readonly CameraZoneLayerRepository cameraZoneLayerRepository = new();
     private readonly AppSettingsStore appSettingsStore = new();
     private readonly CameraZoneLayerEditorService cameraZoneLayerEditorService = new();
+    private readonly EffectiveZoneCompositionService effectiveZoneCompositionService = new();
     private readonly SessionAuditLogger sessionAuditLogger = new();
     private readonly CameraZoneIdentityService cameraZoneIdentityService;
     private readonly LayerTypeCatalogService layerTypeCatalogService;
@@ -113,6 +114,7 @@ public partial class MainWindow : AppWindow
         RegionsListBox.SelectionChanged += RegionsListBoxOnSelectionChanged;
         SaveRegionButton.Click += SaveRegionButtonOnClick;
         DeleteRegionButton.Click += DeleteRegionButtonOnClick;
+        RefreshCompositionPreviewButton.Click += RefreshCompositionPreviewButtonOnClick;
         BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
         SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
         ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
@@ -926,6 +928,7 @@ public partial class MainWindow : AppWindow
         {
             LayersListBox.SelectedIndex = -1;
             RegionsListBox.ItemsSource = null;
+            CompositionPreviewListBox.ItemsSource = null;
             return;
         }
 
@@ -935,6 +938,7 @@ public partial class MainWindow : AppWindow
         }
 
         RefreshRegionsForSelectedLayer();
+        RefreshCompositionPreview();
     }
 
     private void RefreshRegionsForSelectedLayer()
@@ -1360,6 +1364,25 @@ public partial class MainWindow : AppWindow
         cameraZoneLayerRepository.Save(cameraZoneLayers);
         RefreshLayerEditorUiForSelectedCamera();
         SetStatus("Status: region deleted.");
+    }
+
+    private void RefreshCompositionPreviewButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        RefreshCompositionPreview();
+        SetStatus("Status: composition preview refreshed.");
+    }
+
+    private void RefreshCompositionPreview()
+    {
+        var camera = GetSelectedCamera();
+        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
+        {
+            CompositionPreviewListBox.ItemsSource = null;
+            return;
+        }
+
+        var composed = effectiveZoneCompositionService.Compose(zone.CameraZoneId, cameraZoneLayers, layerTypeCatalogService);
+        CompositionPreviewListBox.ItemsSource = composed.Select(item => item.DisplayText).ToList();
     }
 
     private CameraProfile? GetSelectedCamera()

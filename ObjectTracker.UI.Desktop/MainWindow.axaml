@@ -121,6 +121,12 @@
                                                 Classes="ghost"
                                                 Content="Delete Region" />
                                     </Grid>
+                                    <Button x:Name="RefreshCompositionPreviewButton"
+                                            Classes="ghost"
+                                            Content="Refresh Composition Preview" />
+                                    <ListBox x:Name="CompositionPreviewListBox"
+                                             MinHeight="80"
+                                             MaxHeight="140" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>

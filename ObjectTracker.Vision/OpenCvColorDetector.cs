@@ -213,7 +213,7 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
 
     private static ColorCalibrationProfile Normalize(ColorCalibrationProfile profile)
     {
-        var normalizedName = profile.Name.Trim().ToLowerInvariant();
+        var normalizedName = profile.Name.Trim().ToUpperInvariant();
         return new ColorCalibrationProfile(
             normalizedName,
             Math.Clamp(profile.HueLower, 0, 180),

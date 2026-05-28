@@ -1182,7 +1182,7 @@ public partial class MainWindow : AppWindow
                 : string.Empty;
 
             options.Add(new UsbCameraOption(
-                $"usb:{cameraIndex}:{api.ToString().ToLowerInvariant()}",
+                $"usb:{cameraIndex}:{api.ToString().ToUpperInvariant()}",
                 $"USB camera {cameraIndex}{sizeSuffix}",
                 cameraIndex,
                 api));
@@ -1389,7 +1389,7 @@ public partial class MainWindow : AppWindow
             && item.Content is string selected
             && !string.IsNullOrWhiteSpace(selected))
         {
-            return selected.Trim().ToLowerInvariant();
+            return selected.Trim().ToUpperInvariant();
         }
 
         return null;
@@ -1398,7 +1398,7 @@ public partial class MainWindow : AppWindow
     private static ColorCalibrationProfile NormalizeColorCalibration(ColorCalibrationProfile profile)
     {
         return new ColorCalibrationProfile(
-            profile.Name.Trim().ToLowerInvariant(),
+            profile.Name.Trim().ToUpperInvariant(),
             Math.Clamp(profile.HueLower, 0, 180),
             Math.Clamp(profile.HueUpper, 0, 180),
             Math.Clamp(profile.SaturationLower, 0, 255),

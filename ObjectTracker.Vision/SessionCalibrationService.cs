@@ -249,7 +249,7 @@ public sealed class SessionCalibrationService
     {
         var bytes = Encoding.UTF8.GetBytes(input);
         var hash = SHA256.HashData(bytes);
-        return Convert.ToHexString(hash).ToLowerInvariant();
+        return Convert.ToHexString(hash).ToUpperInvariant();
     }
 
     private static Size BuildProcessSize(int sourceWidth, int sourceHeight, int maxWidth)

@@ -473,13 +473,13 @@ internal sealed class BackgroundEstimationEngine
 
     private static Scalar GetOverlayColor(string name)
     {
-        return name.ToLowerInvariant() switch
+        return name.ToUpperInvariant() switch
         {
-            "red" => new Scalar(60, 60, 255),
-            "green" => new Scalar(60, 220, 60),
-            "blue" => new Scalar(255, 120, 50),
-            "yellow" => new Scalar(40, 220, 240),
-            "white" => new Scalar(255, 255, 255),
+            "RED" => new Scalar(60, 60, 255),
+            "GREEN" => new Scalar(60, 220, 60),
+            "BLUE" => new Scalar(255, 120, 50),
+            "YELLOW" => new Scalar(40, 220, 240),
+            "WHITE" => new Scalar(255, 255, 255),
             _ => new Scalar(180, 180, 180)
         };
     }

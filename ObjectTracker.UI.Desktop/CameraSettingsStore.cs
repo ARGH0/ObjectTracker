@@ -131,7 +131,7 @@ internal sealed class CameraSettingsStore
                     continue;
                 }
 
-                var normalizedName = dto.Name.Trim().ToLowerInvariant();
+                var normalizedName = dto.Name.Trim().ToUpperInvariant();
                 defaults[normalizedName] = new ColorCalibrationProfile(
                     normalizedName,
                     Math.Clamp(dto.HueLower, 0, 180),

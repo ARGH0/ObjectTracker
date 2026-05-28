@@ -27,7 +27,7 @@ public sealed class OpenCvUsbFrameSource : IFrameSource
     {
         this.cameraIndex = cameraIndex;
         this.api = api;
-        Id = $"usb:{cameraIndex}:{api.ToString().ToLowerInvariant()}";
+        Id = $"usb:{cameraIndex}:{api.ToString().ToUpperInvariant()}";
         DisplayName = $"USB camera {cameraIndex} ({api})";
     }
 

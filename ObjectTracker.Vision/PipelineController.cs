@@ -184,7 +184,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
         lock (overlaySettingsLock)
         {
-            overlayColors[kind.Trim().ToLowerInvariant()] = new RgbColor(r, g, b);
+            overlayColors[kind.Trim().ToUpperInvariant()] = new RgbColor(r, g, b);
         }
     }
 
@@ -313,19 +313,19 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
             return new Cv.Scalar(configured.B, configured.G, configured.R);
         }
 
-        return kind.ToLowerInvariant() switch
+        return kind.ToUpperInvariant() switch
         {
-            "red" => new Cv.Scalar(0, 0, 255),
-            "orange" => new Cv.Scalar(0, 165, 255),
-            "pink" => new Cv.Scalar(180, 105, 255),
-            "purple" => new Cv.Scalar(160, 32, 240),
-            "green" => new Cv.Scalar(0, 255, 0),
-            "blue" => new Cv.Scalar(255, 191, 0),
-            "cyan" => new Cv.Scalar(255, 255, 0),
-            "yellow" => new Cv.Scalar(0, 255, 255),
-            "white" => new Cv.Scalar(255, 255, 255),
-            "black" => new Cv.Scalar(192, 192, 192),
-            "aruco" => new Cv.Scalar(255, 255, 255),
+            "RED" => new Cv.Scalar(0, 0, 255),
+            "ORANGE" => new Cv.Scalar(0, 165, 255),
+            "PINK" => new Cv.Scalar(180, 105, 255),
+            "PURPLE" => new Cv.Scalar(160, 32, 240),
+            "GREEN" => new Cv.Scalar(0, 255, 0),
+            "BLUE" => new Cv.Scalar(255, 191, 0),
+            "CYAN" => new Cv.Scalar(255, 255, 0),
+            "YELLOW" => new Cv.Scalar(0, 255, 255),
+            "WHITE" => new Cv.Scalar(255, 255, 255),
+            "BLACK" => new Cv.Scalar(192, 192, 192),
+            "ARUCO" => new Cv.Scalar(255, 255, 255),
             _ => new Cv.Scalar(0, 165, 255)
         };
     }
@@ -334,17 +334,17 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     {
         return new Dictionary<string, RgbColor>(StringComparer.OrdinalIgnoreCase)
         {
-            ["red"] = new RgbColor(255, 0, 0),
-            ["orange"] = new RgbColor(255, 165, 0),
-            ["pink"] = new RgbColor(255, 105, 180),
-            ["purple"] = new RgbColor(160, 32, 240),
-            ["green"] = new RgbColor(0, 255, 0),
-            ["blue"] = new RgbColor(0, 191, 255),
-            ["cyan"] = new RgbColor(0, 255, 255),
-            ["yellow"] = new RgbColor(255, 255, 0),
-            ["white"] = new RgbColor(255, 255, 255),
-            ["black"] = new RgbColor(192, 192, 192),
-            ["aruco"] = new RgbColor(255, 255, 255)
+            ["RED"] = new RgbColor(255, 0, 0),
+            ["ORANGE"] = new RgbColor(255, 165, 0),
+            ["PINK"] = new RgbColor(255, 105, 180),
+            ["PURPLE"] = new RgbColor(160, 32, 240),
+            ["GREEN"] = new RgbColor(0, 255, 0),
+            ["BLUE"] = new RgbColor(0, 191, 255),
+            ["CYAN"] = new RgbColor(0, 255, 255),
+            ["YELLOW"] = new RgbColor(255, 255, 0),
+            ["WHITE"] = new RgbColor(255, 255, 255),
+            ["BLACK"] = new RgbColor(192, 192, 192),
+            ["ARUCO"] = new RgbColor(255, 255, 255)
         };
     }
 

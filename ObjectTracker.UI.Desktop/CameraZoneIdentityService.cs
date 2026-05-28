@@ -49,6 +49,13 @@ public sealed class CameraZoneIdentityService
 
     public IReadOnlyCollection<CameraZoneDefinition> CameraZones => zonesById.Values;
 
+    public IReadOnlyList<CameraZoneDefinition> GetCameraZonesOrderedByName()
+    {
+        var zones = new List<CameraZoneDefinition>(zonesById.Values);
+        zones.Sort((left, right) => string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase));
+        return zones;
+    }
+
     public IReadOnlyCollection<CameraZoneBinding> SourceBindings
     {
         get
@@ -94,6 +101,42 @@ public sealed class CameraZoneIdentityService
         zoneIdBySourceId[sourceId] = newZoneId;
 
         return new CameraZoneBindingResult(zone, new CameraZoneBinding(sourceId, newZoneId), CreatedNewZone: true);
+    }
+
+    public CameraZoneDefinition CreateCameraZone(string? requestedZoneName = null)
+    {
+        var newZoneId = zoneIdFactory();
+        var zoneName = NormalizeZoneName(requestedZoneName, newZoneId);
+        var zone = new CameraZoneDefinition(newZoneId, zoneName);
+        zonesById[newZoneId] = zone;
+        return zone;
+    }
+
+    public bool TryGetCameraZoneForSource(string sourceId, out CameraZoneDefinition zone)
+    {
+        zone = default;
+
+        if (string.IsNullOrWhiteSpace(sourceId))
+        {
+            return false;
+        }
+
+        if (!zoneIdBySourceId.TryGetValue(sourceId, out var zoneId))
+        {
+            return false;
+        }
+
+        return zonesById.TryGetValue(zoneId, out zone);
+    }
+
+    public void RemoveSourceBinding(string sourceId)
+    {
+        if (string.IsNullOrWhiteSpace(sourceId))
+        {
+            return;
+        }
+
+        zoneIdBySourceId.Remove(sourceId);
     }
 
     private static string NormalizeZoneName(string? requestedZoneName, string fallbackId)

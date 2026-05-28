@@ -50,7 +50,7 @@
                              MaxHeight="220" />
 
                       <Grid Grid.Row="4"
-                          RowDefinitions="Auto,8,Auto,8,*">
+                           RowDefinitions="Auto,8,Auto,8,Auto,8,*">
                         <Grid Grid.Row="0"
                             ColumnDefinitions="*,6,*">
                             <Button x:Name="AddVideosButton"
@@ -69,6 +69,19 @@
                                 Content="Clear Cameras" />
 
                         <Border Grid.Row="4"
+                                Classes="surfaceAlt"
+                                Padding="10">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Camera Zone"
+                                           Classes="sectionTitle" />
+                                <TextBlock Text="Bind selected source to a stable Camera Zone"
+                                           Classes="muted"
+                                           TextWrapping="Wrap" />
+                                <ComboBox x:Name="CameraZoneComboBox" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="6"
                                 Classes="surfaceAlt"
                                 Padding="10">
                                 <Grid RowDefinitions="Auto,6,*,8,Auto">

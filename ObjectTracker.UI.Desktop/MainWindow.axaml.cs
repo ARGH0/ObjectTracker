@@ -34,7 +34,11 @@ public partial class MainWindow : AppWindow
 
     private readonly BackgroundEstimationEngine engine = new();
     private readonly CameraSettingsStore cameraSettingsStore = new();
+    private readonly CameraZoneBindingStore cameraZoneBindingStore = new();
+    private readonly LayerTypeSettingsStore layerTypeSettingsStore = new();
     private readonly SessionAuditLogger sessionAuditLogger = new();
+    private readonly CameraZoneIdentityService cameraZoneIdentityService;
+    private readonly LayerTypeCatalogService layerTypeCatalogService;
 
     private CancellationTokenSource? runCts;
     private Task? runTask;
@@ -45,6 +49,7 @@ public partial class MainWindow : AppWindow
     private string selectedCalibrationColor = "red";
     private bool ambiguityActive;
     private string ambiguityMessage = "Ambiguity detected. Resolve before automatic processing continues.";
+    private bool applyingCameraZoneUi;
 
     public MainWindow()
     {
@@ -63,8 +68,13 @@ public partial class MainWindow : AppWindow
             cameraSettings[cameraId] = settings;
         }
 
+        var cameraZoneSnapshot = cameraZoneBindingStore.Load();
+        cameraZoneIdentityService = new CameraZoneIdentityService(cameraZoneSnapshot.Zones, cameraZoneSnapshot.Bindings);
+        layerTypeCatalogService = layerTypeSettingsStore.Load();
+
         HookEvents();
         RefreshCameraUi();
+        AppendLog($"Loaded {layerTypeCatalogService.GetOrderedByPrecedence().Count} layer type definitions.");
         AppendLog("Application initialized.");
     }
 
@@ -86,6 +96,7 @@ public partial class MainWindow : AppWindow
         StartStopButton.Click += StartStopButtonOnClick;
         OpenBakedMaskButton.Click += OpenBakedMaskButtonOnClick;
         PlaylistListBox.SelectionChanged += CameraSelectionChanged;
+        CameraZoneComboBox.SelectionChanged += CameraZoneComboBoxOnSelectionChanged;
         BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
         SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
         ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
@@ -164,6 +175,7 @@ public partial class MainWindow : AppWindow
                 var cameraId = path;
                 var displayName = BuildCameraName(path, cameras.Count + 1);
                 cameras.Add(CameraProfile.CreateVideo(cameraId, displayName, new List<string> { path }));
+                cameraZoneIdentityService.AssignSourceToZone(cameraId, requestedZoneName: displayName);
 
                 if (!cameraSettings.ContainsKey(cameraId))
                 {
@@ -180,6 +192,7 @@ public partial class MainWindow : AppWindow
         }
 
         PersistCameraSettings();
+        PersistCameraZones();
         RefreshCameraUi();
         SetStatus(added == 0
             ? "Status: no new video cameras added."
@@ -216,6 +229,7 @@ public partial class MainWindow : AppWindow
             if (!cameras.Any(camera => string.Equals(camera.Id, option.Id, StringComparison.OrdinalIgnoreCase)))
             {
                 cameras.Add(CameraProfile.CreateUsb(option.Id, option.DisplayName, option.CameraIndex, option.Api));
+                cameraZoneIdentityService.AssignSourceToZone(option.Id, requestedZoneName: option.DisplayName);
 
                 if (!cameraSettings.ContainsKey(option.Id))
                 {
@@ -238,6 +252,7 @@ public partial class MainWindow : AppWindow
         }
 
         PersistCameraSettings();
+        PersistCameraZones();
         RefreshCameraUi();
         SetStatus($"Status: added {option.DisplayName}.");
     }
@@ -316,6 +331,7 @@ public partial class MainWindow : AppWindow
             removed = cameras[index];
             cameras.RemoveAt(index);
             cameraSettings.Remove(removed.Value.Id);
+            cameraZoneIdentityService.RemoveSourceBinding(removed.Value.Id);
 
             if (cameras.Count == 0)
             {
@@ -328,6 +344,7 @@ public partial class MainWindow : AppWindow
         }
 
         PersistCameraSettings();
+        PersistCameraZones();
         RefreshCameraUi();
 
         if (runTask is not null && selectedCameraIndex >= 0)
@@ -348,6 +365,7 @@ public partial class MainWindow : AppWindow
         }
 
         PersistCameraSettings();
+        PersistCameraZones();
         RefreshCameraUi();
         SetStatus("Status: all cameras cleared.");
     }
@@ -383,6 +401,7 @@ public partial class MainWindow : AppWindow
             ApplySettingsToUi(GetSettingsForCamera(camera.Value.Id));
             CurrentVideoText.Text = BuildCurrentSourceText(camera.Value);
             OpenBakedMaskButton.IsEnabled = camera.Value.CanOpenBakedMask;
+            UpdateCameraZoneSelectionUi(camera.Value.Id);
         }
 
         if (runTask is not null && index >= 0)
@@ -824,6 +843,7 @@ public partial class MainWindow : AppWindow
         }
 
         PlaylistListBox.ItemsSource = snapshot.ConvertAll(camera => camera.DisplayName);
+        RefreshCameraZoneComboItems();
 
         var canNavigate = snapshot.Count > 1;
         PreviousVideoButton.IsEnabled = canNavigate;
@@ -834,6 +854,7 @@ public partial class MainWindow : AppWindow
             PlaylistListBox.SelectedIndex = -1;
             CurrentVideoText.Text = "Current camera/source: -";
             OpenBakedMaskButton.IsEnabled = false;
+            CameraZoneComboBox.SelectedIndex = -1;
             return;
         }
 
@@ -844,6 +865,7 @@ public partial class MainWindow : AppWindow
         ApplySettingsToUi(GetSettingsForCamera(selected.Id));
         CurrentVideoText.Text = BuildCurrentSourceText(selected);
         OpenBakedMaskButton.IsEnabled = selected.CanOpenBakedMask;
+        UpdateCameraZoneSelectionUi(selected.Id);
     }
 
     private void SetRunState(bool isRunning)
@@ -1070,6 +1092,76 @@ public partial class MainWindow : AppWindow
         }
 
         cameraSettingsStore.Save(snapshot);
+    }
+
+    private void PersistCameraZones()
+    {
+        cameraZoneBindingStore.Save(cameraZoneIdentityService.CameraZones, cameraZoneIdentityService.SourceBindings);
+    }
+
+    private void RefreshCameraZoneComboItems()
+    {
+        applyingCameraZoneUi = true;
+        try
+        {
+            CameraZoneComboBox.ItemsSource = cameraZoneIdentityService
+                .GetCameraZonesOrderedByName()
+                .Select(zone => new CameraZoneComboItem(zone.CameraZoneId, zone.Name))
+                .ToList();
+        }
+        finally
+        {
+            applyingCameraZoneUi = false;
+        }
+    }
+
+    private void UpdateCameraZoneSelectionUi(string sourceId)
+    {
+        applyingCameraZoneUi = true;
+        try
+        {
+            if (!cameraZoneIdentityService.TryGetCameraZoneForSource(sourceId, out var zone))
+            {
+                CameraZoneComboBox.SelectedIndex = -1;
+                return;
+            }
+
+            if (CameraZoneComboBox.ItemsSource is not IEnumerable<CameraZoneComboItem> items)
+            {
+                CameraZoneComboBox.SelectedIndex = -1;
+                return;
+            }
+
+            var selected = items.FirstOrDefault(item => string.Equals(item.CameraZoneId, zone.CameraZoneId, StringComparison.OrdinalIgnoreCase));
+            CameraZoneComboBox.SelectedItem = selected;
+        }
+        finally
+        {
+            applyingCameraZoneUi = false;
+        }
+    }
+
+    private void CameraZoneComboBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (applyingCameraZoneUi)
+        {
+            return;
+        }
+
+        var camera = GetSelectedCamera();
+        if (camera is null)
+        {
+            return;
+        }
+
+        if (CameraZoneComboBox.SelectedItem is not CameraZoneComboItem selected)
+        {
+            return;
+        }
+
+        cameraZoneIdentityService.AssignSourceToZone(camera.Value.Id, selected.CameraZoneId);
+        PersistCameraZones();
+        SetStatus($"Status: {camera.Value.DisplayName} rebound to Camera Zone {selected.CameraZoneName}.");
     }
 
     private CameraProfile? GetSelectedCamera()
@@ -1514,5 +1606,10 @@ public partial class MainWindow : AppWindow
         IReadOnlyList<ColorCalibrationProfile> ColorCalibrations)
     {
         public static RuntimeProcessingSettings Default => new(20, 100, 220, 40, 3, 640, BakeSourceMode.Samples, string.Empty, CreateDefaultColorCalibrations());
+    }
+
+    private readonly record struct CameraZoneComboItem(string CameraZoneId, string CameraZoneName)
+    {
+        public override string ToString() => CameraZoneName;
     }
 }

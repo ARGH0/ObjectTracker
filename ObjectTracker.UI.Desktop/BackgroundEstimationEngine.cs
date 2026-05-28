@@ -787,7 +787,7 @@ internal sealed class BackgroundEstimationEngine
                 ? TimeSpan.FromMilliseconds(20)
                 : remaining;
 
-            await Task.Delay(slice, cancellationToken);
+            await Task.Delay(slice);
         }
     }
 

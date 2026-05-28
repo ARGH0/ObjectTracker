@@ -1270,11 +1270,27 @@ public partial class MainWindow : AppWindow
             logEntries.RemoveAt(0);
         }
 
-        LogListBox.SelectedIndex = logEntries.Count - 1;
-        if (LogListBox.SelectedItem is not null)
+        if (!LogListBox.IsEffectivelyVisible)
         {
-            LogListBox.ScrollIntoView(LogListBox.SelectedItem);
+            return;
         }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!LogListBox.IsEffectivelyVisible)
+            {
+                return;
+            }
+
+            try
+            {
+                LogListBox.ScrollIntoView(line);
+            }
+            catch (InvalidOperationException)
+            {
+                // Ignore transient layout instability while the list is being arranged.
+            }
+        }, DispatcherPriority.Background);
     }
 
     private void UpdateSelectedColorCalibrationFromUi(bool logChange)

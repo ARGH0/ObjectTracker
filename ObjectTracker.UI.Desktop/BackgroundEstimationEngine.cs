@@ -16,7 +16,7 @@ namespace ObjectTracker.UI.Desktop;
 
 internal sealed class BackgroundEstimationEngine
 {
-    private readonly SessionCalibrationService sessionCalibration = new ();
+    private readonly SessionCalibrationService sessionCalibration = new();
 
     public async Task<VideoProcessResult> ProcessVideoAsync(
         string videoPath,
@@ -685,11 +685,11 @@ internal sealed class BackgroundEstimationEngine
 
         public bool StoppedEarly { get; }
 
-        public static VideoProcessResult Ok() => new (true, string.Empty, false);
+        public static VideoProcessResult Ok() => new(true, string.Empty, false);
 
-        public static VideoProcessResult Stopped() => new (true, string.Empty, true);
+        public static VideoProcessResult Stopped() => new(true, string.Empty, true);
 
-        public static VideoProcessResult Fail(string message) => new (false, message, false);
+        public static VideoProcessResult Fail(string message) => new(false, message, false);
     }
 
     internal readonly record struct ProcessingOptions(
@@ -699,7 +699,7 @@ internal sealed class BackgroundEstimationEngine
         int MorphKernelSize,
         IReadOnlyList<ColorCalibrationProfile> ColorCalibrations)
     {
-        public static ProcessingOptions Default => new (640, 220, 40, 3, MainWindow.CreateDefaultColorCalibrations());
+        public static ProcessingOptions Default => new(640, 220, 40, 3, MainWindow.CreateDefaultColorCalibrations());
     }
 
     internal readonly record struct LiveTuning(

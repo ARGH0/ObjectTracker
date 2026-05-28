@@ -9,7 +9,7 @@ namespace ObjectTracker.UI.Desktop;
 
 internal sealed class CameraSettingsStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new ()
+    private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
     };
@@ -148,7 +148,7 @@ internal sealed class CameraSettingsStore
 
     private sealed class CameraSettingsFileDto
     {
-        public List<CameraSettingsItemDto> Items { get; set; } = new ();
+        public List<CameraSettingsItemDto> Items { get; set; } = new();
     }
 
     private sealed class CameraSettingsItemDto
@@ -171,7 +171,7 @@ internal sealed class CameraSettingsStore
 
         public string BakeImagePath { get; set; } = string.Empty;
 
-        public List<ColorCalibrationDto> ColorCalibrations { get; set; } = new ();
+        public List<ColorCalibrationDto> ColorCalibrations { get; set; } = new();
     }
 
     private sealed class ColorCalibrationDto

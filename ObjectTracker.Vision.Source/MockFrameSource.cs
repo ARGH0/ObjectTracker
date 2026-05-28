@@ -54,7 +54,7 @@ public sealed class MockFrameSource : IFrameSource
         Cv2.PutText(image, "MOCK", new Point(20, 40), HersheyFonts.HersheySimplex, 1.0, Scalar.White, 2);
         tick += 4;
 
-        Cv2.ImEncode(".jpg", image, out var bytes,[new ImageEncodingParam(ImwriteFlags.JpegQuality, 80)]);
+        Cv2.ImEncode(".jpg", image, out var bytes, [new ImageEncodingParam(ImwriteFlags.JpegQuality, 80)]);
 
         return new FramePacket(
             Id,

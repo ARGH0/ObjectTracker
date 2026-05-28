@@ -26,15 +26,15 @@ public partial class MainWindow : AppWindow
     private const int PreviewIntervalMs = 33;
     private const int MaxUsbCameraProbeIndex = 5;
 
-    private readonly Lock cameraSync = new ();
-    private readonly Lock settingsSync = new ();
-    private readonly List<CameraProfile> cameras = new ();
-    private readonly Dictionary<string, RuntimeProcessingSettings> cameraSettings = new (StringComparer.OrdinalIgnoreCase);
-    private readonly ObservableCollection<string> logEntries = new ();
+    private readonly Lock cameraSync = new();
+    private readonly Lock settingsSync = new();
+    private readonly List<CameraProfile> cameras = new();
+    private readonly Dictionary<string, RuntimeProcessingSettings> cameraSettings = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ObservableCollection<string> logEntries = new();
 
-    private readonly BackgroundEstimationEngine engine = new ();
-    private readonly CameraSettingsStore cameraSettingsStore = new ();
-    private readonly SessionAuditLogger sessionAuditLogger = new ();
+    private readonly BackgroundEstimationEngine engine = new();
+    private readonly CameraSettingsStore cameraSettingsStore = new();
+    private readonly SessionAuditLogger sessionAuditLogger = new();
 
     private CancellationTokenSource? runCts;
     private Task? runTask;
@@ -1480,10 +1480,10 @@ public partial class MainWindow : AppWindow
             : (string.IsNullOrWhiteSpace(PrimaryVideoPath) ? DisplayName : Path.GetFileName(PrimaryVideoPath));
 
         public static CameraProfile CreateVideo(string id, string displayName, List<string> videoPaths)
-            => new (id, displayName, CameraSourceKind.VideoFiles, videoPaths, null);
+            => new(id, displayName, CameraSourceKind.VideoFiles, videoPaths, null);
 
         public static CameraProfile CreateUsb(string id, string displayName, int cameraIndex, VideoCaptureAPIs api)
-            => new (id, displayName, CameraSourceKind.UsbCamera, new List<string>(), new UsbCameraSource(cameraIndex, api));
+            => new(id, displayName, CameraSourceKind.UsbCamera, new List<string>(), new UsbCameraSource(cameraIndex, api));
     }
 
     internal readonly record struct RuntimeProcessingSettings(
@@ -1497,6 +1497,6 @@ public partial class MainWindow : AppWindow
         string BakeImagePath,
         IReadOnlyList<ColorCalibrationProfile> ColorCalibrations)
     {
-        public static RuntimeProcessingSettings Default => new (20, 100, 220, 40, 3, 640, BakeSourceMode.Samples, string.Empty, CreateDefaultColorCalibrations());
+        public static RuntimeProcessingSettings Default => new(20, 100, 220, 40, 3, 640, BakeSourceMode.Samples, string.Empty, CreateDefaultColorCalibrations());
     }
 }

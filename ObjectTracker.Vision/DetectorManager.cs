@@ -7,7 +7,7 @@ public sealed class DetectorManager : IDetectorManager
 {
     private readonly Dictionary<DetectorMode, IDetectionAlgorithm> algorithms;
     private readonly List<IColorFilterControl> colorFilterControls;
-    private readonly Lock modeLock = new ();
+    private readonly Lock modeLock = new();
     private DetectorMode activeMode;
 
     public DetectorManager(IEnumerable<IDetectionAlgorithm> algorithms, DetectorMode defaultMode = DetectorMode.Hybrid)

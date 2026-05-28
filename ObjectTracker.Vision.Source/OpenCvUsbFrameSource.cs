@@ -103,7 +103,7 @@ public sealed class OpenCvUsbFrameSource : IFrameSource
             lastOrientationMeta = orientationMeta;
         }
 
-        Cv2.ImEncode(".jpg", frame, out var bytes,[new ImageEncodingParam(ImwriteFlags.JpegQuality, 80)]);
+        Cv2.ImEncode(".jpg", frame, out var bytes, [new ImageEncodingParam(ImwriteFlags.JpegQuality, 80)]);
         var packet = new FramePacket(
             Id,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),

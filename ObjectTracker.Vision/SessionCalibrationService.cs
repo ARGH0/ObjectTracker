@@ -7,8 +7,8 @@ namespace ObjectTracker.Vision;
 
 public sealed class SessionCalibrationService
 {
-    private readonly Lock bakeSync = new ();
-    private readonly Dictionary<string, Task<string>> bakeJobs = new (StringComparer.OrdinalIgnoreCase);
+    private readonly Lock bakeSync = new();
+    private readonly Dictionary<string, Task<string>> bakeJobs = new(StringComparer.OrdinalIgnoreCase);
 
     public Task PreBakeBackgroundAsync(string videoPath, int sampleCount, int processMaxWidth, CancellationToken cancellationToken)
     {

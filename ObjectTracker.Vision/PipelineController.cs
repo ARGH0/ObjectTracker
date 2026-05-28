@@ -12,9 +12,9 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     private readonly ITracker tracker;
     private readonly IReadOnlyList<IOutputPort> outputs;
     private readonly IClock clock;
-    private readonly SemaphoreSlim lifecycleLock = new (1, 1);
-    private readonly Lock overlaySettingsLock = new ();
-    private readonly Dictionary<string, RgbColor> overlayColors = new (StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim lifecycleLock = new(1, 1);
+    private readonly Lock overlaySettingsLock = new();
+    private readonly Dictionary<string, RgbColor> overlayColors = new(StringComparer.OrdinalIgnoreCase);
 
     private IFrameSource? activeSource;
     private CancellationTokenSource? loopCts;
@@ -297,7 +297,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 Cv.LineTypes.AntiAlias);
         }
 
-        Cv.Cv2.ImEncode(".jpg", image, out var encoded,[new Cv.ImageEncodingParam(Cv.ImwriteFlags.JpegQuality, 90)]);
+        Cv.Cv2.ImEncode(".jpg", image, out var encoded, [new Cv.ImageEncodingParam(Cv.ImwriteFlags.JpegQuality, 90)]);
         return new FramePacket(
             frame.SourceId,
             frame.TimestampUtcMs,

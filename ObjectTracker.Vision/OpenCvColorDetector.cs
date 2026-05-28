@@ -10,7 +10,7 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
 
     public string Name => "OpenCV Color";
 
-    private readonly Lock filterLock = new ();
+    private readonly Lock filterLock = new();
 
     private Dictionary<string, ColorRange> rangesByName = CreateDefaultRanges();
     private HashSet<string> enabledColors = CreateDefaultProfiles()

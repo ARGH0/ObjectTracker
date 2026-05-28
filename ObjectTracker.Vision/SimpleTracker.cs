@@ -10,7 +10,7 @@ public sealed class SimpleTracker : ITracker
     private const long UncertainTimeoutMs = 3000;
     private const long RemovalTimeoutMs = 10000;
 
-    private readonly Dictionary<string, TrackedTrain> tracks = new (StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TrackedTrain> tracks = new(StringComparer.OrdinalIgnoreCase);
     private int nextTrackNumber = 1;
 
     public IReadOnlyList<TrainState> Update(IReadOnlyList<Detection> detections, long frameTimestampUtcMs)
@@ -120,7 +120,7 @@ public sealed class SimpleTracker : ITracker
 
     private TrackedTrain CreateTrack(Detection detection)
     {
-        var localTrainId = $"train-{nextTrackNumber++ :000}";
+        var localTrainId = $"train-{nextTrackNumber++:000}";
         var state = new TrainState(
             localTrainId,
             detection.Kind,

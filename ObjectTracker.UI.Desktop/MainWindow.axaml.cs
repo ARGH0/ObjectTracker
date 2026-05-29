@@ -7,9 +7,11 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Layout;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -55,7 +57,7 @@ public partial class MainWindow : AppWindow
         int Rows,
         int Columns,
         IReadOnlyList<string> Titles,
-        IReadOnlyList<bool> VisibleSlots);
+        IReadOnlyList<string> CameraIds);
 
     public readonly record struct CameraPanelLayoutState(
         bool IsOpen,
@@ -141,26 +143,11 @@ public partial class MainWindow : AppWindow
         };
     }
 
-    public static CameraTileViewState BuildCameraTileViewState(CameraGridProjection projection, int maxSlots = 4)
+    public static CameraTileViewState BuildCameraTileViewState(CameraGridProjection projection)
     {
-        var titles = new List<string>(maxSlots);
-        var visible = new List<bool>(maxSlots);
-
-        for (var i = 0; i < maxSlots; i++)
-        {
-            if (i < projection.Tiles.Count)
-            {
-                titles.Add($"{i + 1}. {projection.Tiles[i].DisplayName}");
-                visible.Add(true);
-            }
-            else
-            {
-                titles.Add(string.Empty);
-                visible.Add(false);
-            }
-        }
-
-        return new CameraTileViewState(projection.Rows, projection.Columns, titles, visible);
+        var titles = projection.Tiles.Select((tile, index) => $"{index + 1}. {tile.DisplayName}").ToList();
+        var ids = projection.Tiles.Select(tile => tile.CameraId).ToList();
+        return new CameraTileViewState(projection.Rows, projection.Columns, titles, ids);
     }
 
     public static SelectionMode GetCameraListSelectionMode()
@@ -180,7 +167,6 @@ public partial class MainWindow : AppWindow
     private const int MaxLogEntries = 300;
     private const int PreviewIntervalMs = 33;
     private const int MaxUsbCameraProbeIndex = 5;
-    private const int MaxCameraTileFeeds = 4;
 
     private readonly Lock cameraSync = new();
     private readonly Lock settingsSync = new();
@@ -205,6 +191,7 @@ public partial class MainWindow : AppWindow
     private CancellationTokenSource? runCts;
     private CancellationTokenSource? tilePreviewCts;
     private Task[] tilePreviewTasks = Array.Empty<Task>();
+    private readonly Dictionary<string, Image> cameraTileImagesById = new(StringComparer.OrdinalIgnoreCase);
     private Task? runTask;
     private long lastPreviewRenderTick;
     private int previewRenderBusy;
@@ -1220,14 +1207,10 @@ public partial class MainWindow : AppWindow
     {
         CancelCameraTilePreview();
 
-        var visibleIds = projection.Tiles
-            .Take(MaxCameraTileFeeds)
-            .Select(tile => tile.CameraId)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var visibleIds = projection.Tiles.Select(tile => tile.CameraId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var feedCameras = orderedCameras
             .Where(camera => visibleIds.Contains(camera.Id))
-            .Take(MaxCameraTileFeeds)
             .ToList();
 
         if (feedCameras.Count == 0)
@@ -1235,18 +1218,11 @@ public partial class MainWindow : AppWindow
             return;
         }
 
-        var imageTargets = new[]
-        {
-            PreviewBackgroundMaskImage,
-            PreviewMovingColorImage,
-            PreviewColorDetectionImage,
-            PreviewMotionImage
-        };
-
         tilePreviewCts = new CancellationTokenSource();
         var token = tilePreviewCts.Token;
         tilePreviewTasks = feedCameras
-            .Select((camera, index) => Task.Run(() => RunCameraTilePreviewLoop(camera, imageTargets[index], token), token))
+            .Where(camera => cameraTileImagesById.ContainsKey(camera.Id))
+            .Select(camera => Task.Run(() => RunCameraTilePreviewLoop(camera, cameraTileImagesById[camera.Id], token), token))
             .ToArray();
     }
 
@@ -1322,11 +1298,16 @@ public partial class MainWindow : AppWindow
                 return;
             }
 
-            using var videoCapture = new VideoCapture(camera.PrimaryVideoPath);
-            if (!videoCapture.IsOpened())
-            {
-                return;
-            }
+        using var videoCapture = new VideoCapture(camera.PrimaryVideoPath);
+        if (!videoCapture.IsOpened())
+        {
+            return;
+        }
+
+        var sourceFps = videoCapture.Get(VideoCaptureProperties.Fps);
+        var frameIntervalMs = sourceFps > 0.1
+            ? Math.Max(1, (int)Math.Round(1000d / sourceFps))
+            : PreviewIntervalMs;
 
             using var videoFrame = new Mat();
             while (!cancellationToken.IsCancellationRequested)
@@ -1339,7 +1320,7 @@ public partial class MainWindow : AppWindow
                 }
 
                 RenderRawFrameToTile(target, videoFrame);
-                await DelayIgnoringCancellationAsync(PreviewIntervalMs, cancellationToken);
+                await DelayIgnoringCancellationAsync(frameIntervalMs, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -1360,21 +1341,78 @@ public partial class MainWindow : AppWindow
 
     private void RenderRawFrameToTile(Image target, Mat frame)
     {
-        Cv2.ImEncode(".jpg", frame, out var encoded);
-        Dispatcher.UIThread.Post(() => UpdatePreviewImage(target, encoded), DispatcherPriority.Background);
+        var bitmap = ConvertMatToBitmap(frame);
+        Dispatcher.UIThread.Post(() => UpdatePreviewBitmap(target, bitmap), DispatcherPriority.Background);
+    }
+
+    private static Bitmap ConvertMatToBitmap(Mat frame)
+    {
+        using var rgb = new Mat();
+        Cv2.CvtColor(frame, rgb, ColorConversionCodes.BGR2RGB);
+
+        var pixelSize = new PixelSize(rgb.Width, rgb.Height);
+        var dpi = new Vector(96, 96);
+        var bitmap = new WriteableBitmap(pixelSize, dpi, PixelFormats.Rgb24, AlphaFormat.Opaque);
+
+        using var locked = bitmap.Lock();
+        var bytesPerRow = rgb.Width * 3;
+        var sourceStride = (int)rgb.Step();
+        var destinationStride = locked.RowBytes;
+        var rowBuffer = new byte[bytesPerRow];
+
+        for (var row = 0; row < rgb.Height; row++)
+        {
+            var sourceRow = rgb.Data + (row * sourceStride);
+            var destinationRow = locked.Address + (row * destinationStride);
+            Marshal.Copy(sourceRow, rowBuffer, 0, bytesPerRow);
+            Marshal.Copy(rowBuffer, 0, destinationRow, bytesPerRow);
+        }
+
+        return bitmap;
+    }
+
+    private static void UpdatePreviewBitmap(Image target, Bitmap bitmap)
+    {
+        var previous = target.Source as Bitmap;
+        target.Source = bitmap;
+        previous?.Dispose();
     }
 
     private void ApplyCameraTileViewState(CameraTileViewState viewState)
     {
         ApplyCameraTileGridDimensions(viewState.Rows, viewState.Columns);
 
-        var tileBorders = new[] { CameraTile1Border, CameraTile2Border, CameraTile3Border, CameraTile4Border };
-        var tileTitles = new[] { CameraTile1Title, CameraTile2Title, CameraTile3Title, CameraTile4Title };
+        CameraTileGrid.Children.Clear();
+        cameraTileImagesById.Clear();
 
-        for (var i = 0; i < tileBorders.Length; i++)
+        for (var i = 0; i < viewState.CameraIds.Count; i++)
         {
-            tileBorders[i].IsVisible = viewState.VisibleSlots[i];
-            tileTitles[i].Text = viewState.Titles[i];
+            var image = new Image { Stretch = Avalonia.Media.Stretch.Uniform };
+            cameraTileImagesById[viewState.CameraIds[i]] = image;
+
+            var title = new TextBlock
+            {
+                Text = viewState.Titles[i],
+                Classes = { "cardTitle" }
+            };
+
+            var titleOverlay = new Border
+            {
+                VerticalAlignment = VerticalAlignment.Top,
+                Background = Avalonia.Media.Brush.Parse("#99000000"),
+                Padding = new Thickness(8, 5),
+                Child = title
+            };
+
+            var panel = new Panel();
+            panel.Children.Add(image);
+            panel.Children.Add(titleOverlay);
+
+            CameraTileGrid.Children.Add(new Border
+            {
+                Background = Avalonia.Media.Brush.Parse("#070A0E"),
+                Child = panel
+            });
         }
     }
 
@@ -1402,37 +1440,8 @@ public partial class MainWindow : AppWindow
 
     private void ApplyCameraTileGridDimensions(int rows, int columns)
     {
-        CameraTileGrid.RowDefinitions.Clear();
-        CameraTileGrid.ColumnDefinitions.Clear();
-
-        if (rows <= 0 || columns <= 0)
-        {
-            CameraTileGrid.RowDefinitions.Add(new RowDefinition(1, GridUnitType.Star));
-            CameraTileGrid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
-            return;
-        }
-
-        for (var row = 0; row < rows; row++)
-        {
-            CameraTileGrid.RowDefinitions.Add(new RowDefinition(1, GridUnitType.Star));
-        }
-
-        for (var column = 0; column < columns; column++)
-        {
-            CameraTileGrid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
-        }
-
-        Grid.SetRow(CameraTile1Border, 0);
-        Grid.SetColumn(CameraTile1Border, 0);
-
-        Grid.SetRow(CameraTile2Border, 0);
-        Grid.SetColumn(CameraTile2Border, columns > 1 ? 1 : 0);
-
-        Grid.SetRow(CameraTile3Border, rows > 1 ? 1 : 0);
-        Grid.SetColumn(CameraTile3Border, 0);
-
-        Grid.SetRow(CameraTile4Border, rows > 1 ? 1 : 0);
-        Grid.SetColumn(CameraTile4Border, columns > 1 ? 1 : 0);
+        CameraTileGrid.Rows = Math.Max(1, rows);
+        CameraTileGrid.Columns = Math.Max(1, columns);
     }
 
     private void ToggleGridEditorButtonOnClick(object? sender, RoutedEventArgs e)

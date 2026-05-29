@@ -62,10 +62,25 @@ public sealed class MainWindowCameraGridProjectionTests
         Assert.Equal(2, viewState.Columns);
         Assert.Equal("1. Camera C", viewState.Titles[0]);
         Assert.Equal("2. Camera A", viewState.Titles[1]);
-        Assert.True(viewState.VisibleSlots[0]);
-        Assert.True(viewState.VisibleSlots[1]);
-        Assert.False(viewState.VisibleSlots[2]);
-        Assert.False(viewState.VisibleSlots[3]);
+        Assert.Equal(new[] { "cam-c", "cam-a" }, viewState.CameraIds.ToArray());
+    }
+
+    [Fact]
+    public void CameraTileViewState_DoesNotCapVisibleTilesAtFour()
+    {
+        var projection = MainWindow.BuildCameraGridProjection(new[]
+        {
+            new MainWindow.CameraWorkspaceCamera("cam-1", "Camera 1", IsVisible: true),
+            new MainWindow.CameraWorkspaceCamera("cam-2", "Camera 2", IsVisible: true),
+            new MainWindow.CameraWorkspaceCamera("cam-3", "Camera 3", IsVisible: true),
+            new MainWindow.CameraWorkspaceCamera("cam-4", "Camera 4", IsVisible: true),
+            new MainWindow.CameraWorkspaceCamera("cam-5", "Camera 5", IsVisible: true),
+        });
+
+        var viewState = MainWindow.BuildCameraTileViewState(projection);
+
+        Assert.Equal(5, viewState.CameraIds.Count);
+        Assert.Equal("5. Camera 5", viewState.Titles[4]);
     }
 
     [Theory]

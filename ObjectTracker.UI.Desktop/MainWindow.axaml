@@ -584,70 +584,10 @@
                         </Grid>
                     </Border>
 
-                    <Grid x:Name="CameraTileGrid"
-                          Grid.Row="4"
-                          RowDefinitions="*,*"
-                          ColumnDefinitions="*,*">
-                        <Border x:Name="CameraTile1Border"
-                                Grid.Row="0" Grid.Column="0"
-                                Background="#070A0E">
-                            <Panel>
-                                <Image x:Name="PreviewBackgroundMaskImage" Stretch="Uniform" />
-                                <Border VerticalAlignment="Top"
-                                        Background="#99000000"
-                                        Padding="8,5">
-                                    <TextBlock x:Name="CameraTile1Title"
-                                               Text="1. Background Estimation"
-                                               Classes="cardTitle" />
-                                </Border>
-                            </Panel>
-                        </Border>
-
-                        <Border x:Name="CameraTile2Border"
-                                Grid.Row="0" Grid.Column="1"
-                                Background="#070A0E">
-                            <Panel>
-                                <Image x:Name="PreviewMovingColorImage" Stretch="Uniform" />
-                                <Border VerticalAlignment="Top"
-                                        Background="#99000000"
-                                        Padding="8,5">
-                                    <TextBlock x:Name="CameraTile2Title"
-                                               Text="2. Moving Objects"
-                                               Classes="cardTitle" />
-                                </Border>
-                            </Panel>
-                        </Border>
-
-                        <Border x:Name="CameraTile3Border"
-                                Grid.Row="1" Grid.Column="0"
-                                Background="#070A0E">
-                            <Panel>
-                                <Image x:Name="PreviewColorDetectionImage" Stretch="Uniform" />
-                                <Border VerticalAlignment="Top"
-                                        Background="#99000000"
-                                        Padding="8,5">
-                                    <TextBlock x:Name="CameraTile3Title"
-                                               Text="3. Color Detection"
-                                               Classes="cardTitle" />
-                                </Border>
-                            </Panel>
-                        </Border>
-
-                        <Border x:Name="CameraTile4Border"
-                                Grid.Row="1" Grid.Column="1"
-                                Background="#070A0E">
-                            <Panel>
-                                <Image x:Name="PreviewMotionImage" Stretch="Uniform" />
-                                <Border VerticalAlignment="Top"
-                                        Background="#99000000"
-                                        Padding="8,5">
-                                    <TextBlock x:Name="CameraTile4Title"
-                                               Text="4. Speed + Direction"
-                                               Classes="cardTitle" />
-                                </Border>
-                            </Panel>
-                        </Border>
-                    </Grid>
+                    <UniformGrid x:Name="CameraTileGrid"
+                                 Grid.Row="4"
+                                 Rows="2"
+                                 Columns="2" />
                 </Grid>
                 </Border>
             </SplitView>

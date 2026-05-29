@@ -1,18 +1,18 @@
 <wnd:AppWindow xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:wnd="using:FluentAvalonia.UI.Windowing"
-        mc:Ignorable="d"
-        x:Class="ObjectTracker.UI.Desktop.MainWindow"
-        Title="ObjectTracker"
-        Width="1920"
-        Height="1080"
-        MinWidth="1080"
-        MinHeight="680"
-        Background="{StaticResource AppBackgroundBrush}"
-        d:DesignWidth="1920"
-        d:DesignHeight="1080">
+               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+               xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+               xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+               xmlns:wnd="using:FluentAvalonia.UI.Windowing"
+               mc:Ignorable="d"
+               x:Class="ObjectTracker.UI.Desktop.MainWindow"
+               Title="ObjectTracker"
+               Width="1920"
+               Height="1080"
+               MinWidth="1080"
+               MinHeight="680"
+               Background="{StaticResource AppBackgroundBrush}"
+               d:DesignWidth="1920"
+               d:DesignHeight="1080">
     <Grid RowDefinitions="40,*,Auto"
           Margin="10,0,10,10">
 
@@ -20,26 +20,28 @@
         <Border Grid.Row="0"
                 Background="Transparent"
                 wnd:AppWindow.AllowInteractionInTitleBar="False">
-            <DockPanel Margin="12,0,0,0" VerticalAlignment="Center">
-                <TextBlock Text="ObjectTracker"
-                           FontSize="13"
-                           FontWeight="SemiBold"
-                           Foreground="{StaticResource TextBrush}"
-                           VerticalAlignment="Center" />
-                <TextBlock Text="Background Estimation Lab"
-                           FontSize="11"
-                           Classes="muted"
-                           Margin="10,1,0,0"
-                           VerticalAlignment="Center" />
-            </DockPanel>
+            <Menu DockPanel.Dock="Right"
+                  Margin="0,0,12,0"
+                  VerticalAlignment="Center"
+                  Background="Transparent">
+                <MenuItem Header="Camera"
+                          x:Name="CameraWorkspaceMenuItem" />
+                <MenuItem Header="Layers"
+                          x:Name="LayersWorkspaceMenuItem" />
+                <MenuItem Header="Settings"
+                          x:Name="SettingsWorkspaceMenuItem" />
+            </Menu>
         </Border>
 
-        <Grid Grid.Row="1"
+        <Grid x:Name="CameraWorkspacePanel"
+              Grid.Row="1"
+              RowDefinitions="*,Auto"
               ColumnDefinitions="340,6,*">
             <Border Grid.Column="0"
+                    Grid.Row="0"
                     Classes="surface"
                     Padding="10">
-                    <Grid RowDefinitions="Auto,8,Auto,8,*,8,Auto">
+                <Grid RowDefinitions="Auto,8,Auto,8,*,8,Auto">
                     <TextBlock Grid.Row="0"
                                Text="Camera Sources"
                                Classes="sectionTitle" />
@@ -49,10 +51,10 @@
                              MinHeight="150"
                              MaxHeight="220" />
 
-                      <Grid Grid.Row="4"
-                           RowDefinitions="Auto,8,Auto,8,Auto,8,*">
+                    <Grid Grid.Row="4"
+                          RowDefinitions="Auto,8,Auto,8,Auto,8,*">
                         <Grid Grid.Row="0"
-                            ColumnDefinitions="*,6,*">
+                              ColumnDefinitions="*,6,*">
                             <Button x:Name="AddVideosButton"
                                     Grid.Column="0"
                                     Classes="primary"
@@ -134,30 +136,30 @@
                         <Border Grid.Row="6"
                                 Classes="surfaceAlt"
                                 Padding="10">
-                                <Grid RowDefinitions="Auto,6,*,8,Auto">
+                            <Grid RowDefinitions="Auto,6,*,8,Auto">
                                 <StackPanel Grid.Row="0"
-                                        Spacing="2">
+                                            Spacing="2">
                                     <TextBlock Text="Processing"
                                                Classes="sectionTitle" />
                                     <TextBlock Text="Compact runtime tuning for selected camera"
                                                Classes="muted"
                                                TextWrapping="Wrap" />
                                     <DockPanel LastChildFill="False"
-                                           Margin="0,2,0,0">
-                                    <Border Background="#26323B"
-                                        BorderBrush="#3C4F5E"
-                                        BorderThickness="1"
-                                        Padding="4,1"
-                                        Margin="0,0,6,0">
-                                        <TextBlock Text="i"
-                                               Foreground="#CFE0EC"
-                                               FontSize="11"
-                                               FontWeight="Bold" />
-                                    </Border>
-                                    <TextBlock Text="Hover labels for parameter help"
-                                           Classes="muted"
-                                           FontSize="11"
-                                           VerticalAlignment="Center" />
+                                               Margin="0,2,0,0">
+                                        <Border Background="#26323B"
+                                                BorderBrush="#3C4F5E"
+                                                BorderThickness="1"
+                                                Padding="4,1"
+                                                Margin="0,0,6,0">
+                                            <TextBlock Text="i"
+                                                       Foreground="#CFE0EC"
+                                                       FontSize="11"
+                                                       FontWeight="Bold" />
+                                        </Border>
+                                        <TextBlock Text="Hover labels for parameter help"
+                                                   Classes="muted"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center" />
                                     </DockPanel>
                                 </StackPanel>
 
@@ -181,8 +183,8 @@
                                             </Border>
                                         </StackPanel>
 
-                                            <Grid ColumnDefinitions="*,8,*"
-                                                RowDefinitions="Auto,8,Auto,8,Auto,8,Auto">
+                                        <Grid ColumnDefinitions="*,8,*"
+                                              RowDefinitions="Auto,8,Auto,8,Auto,8,Auto">
                                             <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                                     <TextBlock Text="Samples"
@@ -461,15 +463,17 @@
             </Border>
 
             <GridSplitter Grid.Column="1"
+                          Grid.Row="0"
                           ResizeDirection="Columns"
                           Width="6"
                           HorizontalAlignment="Stretch"
                           VerticalAlignment="Stretch" />
 
             <Border Grid.Column="2"
+                    Grid.Row="0"
                     Classes="surface"
                     Padding="10">
-                    <Grid RowDefinitions="Auto,8,Auto,8,*">
+                <Grid RowDefinitions="Auto,8,Auto,8,*">
                     <Border Grid.Row="0"
                             Classes="surfaceAlt"
                             Padding="8">
@@ -489,7 +493,7 @@
                                        VerticalAlignment="Center"
                                        TextWrapping="Wrap" />
 
-                                <Grid Grid.Column="3"
+                            <Grid Grid.Column="3"
                                   ColumnDefinitions="Auto,6,Auto,6,Auto">
                                 <Button Grid.Column="0"
                                         x:Name="PreviousVideoButton"
@@ -500,48 +504,48 @@
                                         Classes="ghost"
                                         Content="Next" />
                                 <Button Grid.Column="4"
-                                    x:Name="MarkAmbiguityButton"
-                                    Classes="destructive"
-                                    Content="Mark Ambiguity" />
+                                        x:Name="MarkAmbiguityButton"
+                                        Classes="destructive"
+                                        Content="Mark Ambiguity" />
                             </Grid>
                         </Grid>
                     </Border>
 
-                            <Border Grid.Row="2"
-                                x:Name="AmbiguityBanner"
-                                Background="#4A1E25"
-                                BorderBrush="#D17A86"
-                                BorderThickness="1"
-                                Padding="8"
-                                IsVisible="False">
-                            <Grid ColumnDefinitions="*,8,Auto,6,Auto,6,Auto,6,Auto">
-                                <TextBlock x:Name="AmbiguityText"
+                    <Border Grid.Row="2"
+                            x:Name="AmbiguityBanner"
+                            Background="#4A1E25"
+                            BorderBrush="#D17A86"
+                            BorderThickness="1"
+                            Padding="8"
+                            IsVisible="False">
+                        <Grid ColumnDefinitions="*,8,Auto,6,Auto,6,Auto,6,Auto">
+                            <TextBlock x:Name="AmbiguityText"
                                        Grid.Column="0"
                                        Text="Ambiguity detected. Resolve before automatic processing continues."
                                        Foreground="#FFEDEE"
                                        FontWeight="SemiBold"
                                        VerticalAlignment="Center"
                                        TextWrapping="Wrap" />
-                                <Button x:Name="ResolveRemovedButton"
+                            <Button x:Name="ResolveRemovedButton"
                                     Grid.Column="2"
                                     Classes="ghost"
                                     Content="Removed" />
-                                <Button x:Name="ResolveRelinkButton"
+                            <Button x:Name="ResolveRelinkButton"
                                     Grid.Column="4"
                                     Classes="ghost"
                                     Content="Relinked" />
-                                <Button x:Name="ResolveFalseButton"
+                            <Button x:Name="ResolveFalseButton"
                                     Grid.Column="6"
                                     Classes="ghost"
                                     Content="False" />
-                                <Button x:Name="ResolveOtherButton"
+                            <Button x:Name="ResolveOtherButton"
                                     Grid.Column="8"
                                     Classes="ghost"
                                     Content="Other" />
-                            </Grid>
-                            </Border>
+                        </Grid>
+                    </Border>
 
-                              <Grid Grid.Row="4"
+                    <Grid Grid.Row="4"
                           RowDefinitions="*,*"
                           ColumnDefinitions="*,*">
                         <Border Grid.Row="0" Grid.Column="0"
@@ -598,17 +602,67 @@
                     </Grid>
                 </Grid>
             </Border>
+
+            <Expander x:Name="RuntimeLogExpander"
+                      Grid.Row="1"
+                      Grid.ColumnSpan="3"
+                      IsExpanded="False"
+                      Header="Runtime Log"
+                      Margin="0,8,0,0"
+                      FontWeight="SemiBold">
+                <ListBox x:Name="LogListBox"
+                         Height="170"
+                         FontFamily="Cascadia Mono"
+                         FontSize="12" />
+            </Expander>
         </Grid>
 
-        <Expander Grid.Row="2"
-                  IsExpanded="False"
-                  Header="Runtime Log"
-                  Margin="0,8,0,0"
-                  FontWeight="SemiBold">
-            <ListBox x:Name="LogListBox"
-                     Height="170"
-                     FontFamily="Cascadia Mono"
-                     FontSize="12" />
-        </Expander>
+        <Border x:Name="LayersWorkspacePanel"
+                Grid.Row="1"
+                Classes="surface"
+                IsVisible="False"
+                Padding="16">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Layers Workspace"
+                           Classes="sectionTitle" />
+                <TextBlock Text="Global Layer Type management appears here."
+                           Classes="muted" />
+            </StackPanel>
+        </Border>
+
+        <Border x:Name="SettingsWorkspacePanel"
+                Grid.Row="1"
+                Classes="surface"
+                IsVisible="False"
+                Padding="16">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Settings Workspace"
+                           Classes="sectionTitle" />
+                <TextBlock Text="Global settings and restart policy controls appear here."
+                           Classes="muted" />
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2"
+                Classes="surfaceAlt"
+                Margin="0,8,0,0"
+                Padding="8">
+            <Grid ColumnDefinitions="*,16,*,16,*,16,*">
+                <TextBlock x:Name="BottomVisionPipelineStateText"
+                           Grid.Column="0"
+                           Text="Vision Pipeline: stopped"
+                           FontWeight="SemiBold" />
+                <TextBlock x:Name="BottomAmbiguityStateText"
+                           Grid.Column="2"
+                           Text="Ambiguity Alert: clear" />
+                <TextBlock x:Name="BottomCalibrationStateText"
+                           Grid.Column="4"
+                           Text="Calibration: unknown" />
+                <TextBlock x:Name="BottomPendingRestartStateText"
+                           Grid.Column="6"
+                           Text="Pending restart: none" />
+            </Grid>
+        </Border>
+
     </Grid>
 </wnd:AppWindow>

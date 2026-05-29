@@ -22,6 +22,31 @@ namespace ObjectTracker.UI.Desktop;
 
 public partial class MainWindow : AppWindow
 {
+    public enum Workspace
+    {
+        Camera,
+        Layers,
+        Settings
+    }
+
+    public readonly record struct WorkspaceVisibility(bool CameraVisible, bool LayersVisible, bool SettingsVisible);
+
+    public static WorkspaceVisibility BuildWorkspaceVisibility(Workspace workspace)
+    {
+        return workspace switch
+        {
+            Workspace.Camera => new WorkspaceVisibility(true, false, false),
+            Workspace.Layers => new WorkspaceVisibility(false, true, false),
+            Workspace.Settings => new WorkspaceVisibility(false, false, true),
+            _ => new WorkspaceVisibility(true, false, false)
+        };
+    }
+
+    public static bool IsWorkspaceNavigationAllowedDuringAmbiguity()
+    {
+        return true;
+    }
+
     private const int MaxLogEntries = 300;
     private const int PreviewIntervalMs = 33;
     private const int MaxUsbCameraProbeIndex = 5;
@@ -57,6 +82,7 @@ public partial class MainWindow : AppWindow
     private string ambiguityMessage = "Ambiguity detected. Resolve before automatic processing continues.";
     private bool applyingCameraZoneUi;
     private bool gridEditorVisible;
+    private Workspace activeWorkspace = Workspace.Camera;
 
     public MainWindow()
     {
@@ -82,10 +108,12 @@ public partial class MainWindow : AppWindow
         cameraZoneLayers = cameraZoneLayerRepository.Load().ToList();
 
         HookEvents();
+        SetActiveWorkspace(Workspace.Camera);
         RefreshCameraUi();
         RefreshLayerTypeUi();
         AppendLog($"Loaded {layerTypeCatalogService.GetOrderedByPrecedence().Count} layer type definitions.");
         AppendLog("Application initialized.");
+        UpdateBottomStatusBar();
     }
 
     protected override async void OnClosing(WindowClosingEventArgs e)
@@ -123,6 +151,9 @@ public partial class MainWindow : AppWindow
         ResolveRelinkButton.Click += ResolveRelinkButtonOnClick;
         ResolveFalseButton.Click += ResolveFalseButtonOnClick;
         ResolveOtherButton.Click += ResolveOtherButtonOnClick;
+        CameraWorkspaceMenuItem.Click += CameraWorkspaceButtonOnClick;
+        LayersWorkspaceMenuItem.Click += LayersWorkspaceButtonOnClick;
+        SettingsWorkspaceMenuItem.Click += SettingsWorkspaceButtonOnClick;
 
         SampleCountTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         ThresholdTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
@@ -140,6 +171,36 @@ public partial class MainWindow : AppWindow
         ValueUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
 
         UpdateAmbiguityUi();
+    }
+
+    private void CameraWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        SetActiveWorkspace(Workspace.Camera);
+    }
+
+    private void LayersWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        SetActiveWorkspace(Workspace.Layers);
+    }
+
+    private void SettingsWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        SetActiveWorkspace(Workspace.Settings);
+    }
+
+    public void SetActiveWorkspace(Workspace workspace)
+    {
+        activeWorkspace = workspace;
+        var visibility = BuildWorkspaceVisibility(workspace);
+        CameraWorkspacePanel.IsVisible = visibility.CameraVisible;
+        LayersWorkspacePanel.IsVisible = visibility.LayersVisible;
+        SettingsWorkspacePanel.IsVisible = visibility.SettingsVisible;
+        RuntimeLogExpander.IsVisible = workspace == Workspace.Camera;
+    }
+
+    public Workspace GetActiveWorkspace()
+    {
+        return activeWorkspace;
     }
 
     private async void AddCamerasButtonOnClick(object? sender, RoutedEventArgs e)
@@ -971,6 +1032,8 @@ public partial class MainWindow : AppWindow
         {
             Interlocked.Exchange(ref requestedCameraIndex, -1);
         }
+
+        UpdateBottomStatusBar();
     }
 
     private async void MarkAmbiguityButtonOnClick(object? sender, RoutedEventArgs e)
@@ -1050,6 +1113,16 @@ public partial class MainWindow : AppWindow
     {
         AmbiguityBanner.IsVisible = ambiguityActive;
         AmbiguityText.Text = ambiguityMessage;
+        UpdateBottomStatusBar();
+    }
+
+    private void UpdateBottomStatusBar()
+    {
+        var isRunning = runTask is not null;
+        BottomVisionPipelineStateText.Text = isRunning ? "Vision Pipeline: running" : "Vision Pipeline: stopped";
+        BottomAmbiguityStateText.Text = ambiguityActive ? "Ambiguity Alert: active" : "Ambiguity Alert: clear";
+        BottomCalibrationStateText.Text = "Calibration: unknown";
+        BottomPendingRestartStateText.Text = "Pending restart: none";
     }
 
     private void RuntimeSettingControlOnLostFocus(object? sender, RoutedEventArgs e)

@@ -15,6 +15,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Windowing;
 using ObjectTracker.Core.Domain;
+using OpenCvSharp;
 using VideoCapture = OpenCvSharp.VideoCapture;
 using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
 using VideoCaptureProperties = OpenCvSharp.VideoCaptureProperties;
@@ -39,6 +40,22 @@ public partial class MainWindow : AppWindow
         string PendingRestart);
 
     public readonly record struct VisionPipelineMenuState(bool StartEnabled, bool StopEnabled);
+
+    public readonly record struct CameraWorkspaceCamera(string CameraId, string DisplayName, bool IsVisible);
+
+    public readonly record struct CameraWorkspaceTile(string CameraId, string DisplayName, int Index);
+
+    public readonly record struct CameraGridProjection(
+        int VisibleCount,
+        int Rows,
+        int Columns,
+        IReadOnlyList<CameraWorkspaceTile> Tiles);
+
+    public readonly record struct CameraTileViewState(
+        int Rows,
+        int Columns,
+        IReadOnlyList<string> Titles,
+        IReadOnlyList<bool> VisibleSlots);
 
     public readonly record struct CameraPanelLayoutState(
         bool IsOpen,
@@ -101,6 +118,51 @@ public partial class MainWindow : AppWindow
             PinButtonText: "📌");
     }
 
+    public static CameraGridProjection BuildCameraGridProjection(IReadOnlyList<CameraWorkspaceCamera> cameras)
+    {
+        var visible = cameras.Where(camera => camera.IsVisible).ToList();
+        var (rows, columns) = ComputeCameraGridDimensions(visible.Count);
+        var tiles = visible
+            .Select((camera, index) => new CameraWorkspaceTile(camera.CameraId, camera.DisplayName, index))
+            .ToList();
+
+        return new CameraGridProjection(visible.Count, rows, columns, tiles);
+    }
+
+    public static (int Rows, int Columns) ComputeCameraGridDimensions(int visibleCount)
+    {
+        return visibleCount switch
+        {
+            <= 0 => (0, 0),
+            1 => (1, 1),
+            2 => (1, 2),
+            <= 4 => (2, 2),
+            _ => (2, (int)Math.Ceiling(visibleCount / 2d))
+        };
+    }
+
+    public static CameraTileViewState BuildCameraTileViewState(CameraGridProjection projection, int maxSlots = 4)
+    {
+        var titles = new List<string>(maxSlots);
+        var visible = new List<bool>(maxSlots);
+
+        for (var i = 0; i < maxSlots; i++)
+        {
+            if (i < projection.Tiles.Count)
+            {
+                titles.Add($"{i + 1}. {projection.Tiles[i].DisplayName}");
+                visible.Add(true);
+            }
+            else
+            {
+                titles.Add(string.Empty);
+                visible.Add(false);
+            }
+        }
+
+        return new CameraTileViewState(projection.Rows, projection.Columns, titles, visible);
+    }
+
     public static SelectionMode GetCameraListSelectionMode()
     {
         return SelectionMode.Single;
@@ -118,6 +180,7 @@ public partial class MainWindow : AppWindow
     private const int MaxLogEntries = 300;
     private const int PreviewIntervalMs = 33;
     private const int MaxUsbCameraProbeIndex = 5;
+    private const int MaxCameraTileFeeds = 4;
 
     private readonly Lock cameraSync = new();
     private readonly Lock settingsSync = new();
@@ -140,6 +203,8 @@ public partial class MainWindow : AppWindow
     private List<CameraZoneLayer> cameraZoneLayers = new();
 
     private CancellationTokenSource? runCts;
+    private CancellationTokenSource? tilePreviewCts;
+    private Task[] tilePreviewTasks = Array.Empty<Task>();
     private Task? runTask;
     private long lastPreviewRenderTick;
     private int previewRenderBusy;
@@ -149,6 +214,7 @@ public partial class MainWindow : AppWindow
     private bool ambiguityActive;
     private string ambiguityMessage = "Ambiguity detected. Resolve before automatic processing continues.";
     private bool applyingCameraZoneUi;
+    private bool applyingCameraVisibilityUi;
     private bool gridEditorVisible;
     private bool hasPendingVisionPipelineRestart;
     private bool isCameraPanelOpen = true;
@@ -191,6 +257,7 @@ public partial class MainWindow : AppWindow
 
     protected override async void OnClosing(WindowClosingEventArgs e)
     {
+        await StopCameraTilePreviewAsync();
         await StopProcessingAsync();
         PersistCameraSettings();
         sessionAuditLogger.Dispose();
@@ -201,6 +268,8 @@ public partial class MainWindow : AppWindow
     {
         AddVideosButton.Click += AddCamerasButtonOnClick;
         RemoveSelectedButton.Click += RemoveCameraButtonOnClick;
+        MoveCameraUpButton.Click += MoveCameraUpButtonOnClick;
+        MoveCameraDownButton.Click += MoveCameraDownButtonOnClick;
         ClearPlaylistButton.Click += ClearCamerasButtonOnClick;
         PreviousVideoButton.Click += PreviousCameraButtonOnClick;
         NextVideoButton.Click += NextCameraButtonOnClick;
@@ -208,6 +277,7 @@ public partial class MainWindow : AppWindow
         OpenBakedMaskButton.Click += OpenBakedMaskButtonOnClick;
         PlaylistListBox.SelectionChanged += CameraSelectionChanged;
         CameraZoneComboBox.SelectionChanged += CameraZoneComboBoxOnSelectionChanged;
+        CameraVisibilityCheckBox.IsCheckedChanged += CameraVisibilityCheckBoxOnChanged;
         ToggleGridEditorButton.Click += ToggleGridEditorButtonOnClick;
         AddLayerButton.Click += AddLayerButtonOnClick;
         DeleteLayerButton.Click += DeleteLayerButtonOnClick;
@@ -608,6 +678,9 @@ public partial class MainWindow : AppWindow
             ApplySettingsToUi(GetSettingsForCamera(camera.Value.Id));
             CurrentVideoText.Text = BuildCurrentSourceText(camera.Value);
             OpenBakedMaskButton.IsEnabled = camera.Value.CanOpenBakedMask;
+            applyingCameraVisibilityUi = true;
+            CameraVisibilityCheckBox.IsChecked = camera.Value.IsVisible;
+            applyingCameraVisibilityUi = false;
             UpdateCameraZoneSelectionUi(camera.Value.Id);
             RefreshLayerEditorUiForSelectedCamera();
         }
@@ -637,6 +710,40 @@ public partial class MainWindow : AppWindow
         }
 
         await StartVisionPipelineFromUiAsync();
+    }
+
+    private void MoveCameraUpButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        MoveSelectedCameraBy(-1);
+    }
+
+    private void MoveCameraDownButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        MoveSelectedCameraBy(1);
+    }
+
+    private void MoveSelectedCameraBy(int delta)
+    {
+        lock (cameraSync)
+        {
+            if (selectedCameraIndex < 0 || selectedCameraIndex >= cameras.Count)
+            {
+                return;
+            }
+
+            var target = selectedCameraIndex + delta;
+            if (target < 0 || target >= cameras.Count)
+            {
+                return;
+            }
+
+            var selected = cameras[selectedCameraIndex];
+            cameras.RemoveAt(selectedCameraIndex);
+            cameras.Insert(target, selected);
+            selectedCameraIndex = target;
+        }
+
+        RefreshCameraUi();
     }
 
     private async Task StartVisionPipelineFromUiAsync()
@@ -1037,10 +1144,7 @@ public partial class MainWindow : AppWindow
 
     private void RenderFrameSet(BackgroundEstimationEngine.PreviewFrameSet frameSet)
     {
-        UpdatePreviewImage(PreviewBackgroundMaskImage, frameSet.BackgroundMaskJpeg);
-        UpdatePreviewImage(PreviewMovingColorImage, frameSet.MovingColorJpeg);
-        UpdatePreviewImage(PreviewColorDetectionImage, frameSet.ColorDetectionJpeg);
-        UpdatePreviewImage(PreviewMotionImage, frameSet.MotionJpeg);
+        // Camera workspace now prioritizes raw camera tile feeds.
     }
 
     private static void UpdatePreviewImage(Image target, byte[] imageBytes)
@@ -1062,17 +1166,24 @@ public partial class MainWindow : AppWindow
         }
 
         PlaylistListBox.ItemsSource = snapshot.ConvertAll(camera => camera.DisplayName);
+        RefreshCameraWorkspaceTiles(snapshot);
         RefreshCameraZoneComboItems();
 
         var canNavigate = snapshot.Count > 1;
         PreviousVideoButton.IsEnabled = canNavigate;
         NextVideoButton.IsEnabled = canNavigate;
+        MoveCameraUpButton.IsEnabled = selectedCameraIndex > 0;
+        MoveCameraDownButton.IsEnabled = selectedCameraIndex >= 0 && selectedCameraIndex < snapshot.Count - 1;
 
         if (snapshot.Count == 0)
         {
             PlaylistListBox.SelectedIndex = -1;
             CurrentVideoText.Text = "Current camera/source: -";
             OpenBakedMaskButton.IsEnabled = false;
+            applyingCameraVisibilityUi = true;
+            CameraVisibilityCheckBox.IsChecked = false;
+            applyingCameraVisibilityUi = false;
+            CameraVisibilityCheckBox.IsEnabled = false;
             CameraZoneComboBox.SelectedIndex = -1;
             LayersListBox.ItemsSource = null;
             RegionsListBox.ItemsSource = null;
@@ -1086,8 +1197,242 @@ public partial class MainWindow : AppWindow
         ApplySettingsToUi(GetSettingsForCamera(selected.Id));
         CurrentVideoText.Text = BuildCurrentSourceText(selected);
         OpenBakedMaskButton.IsEnabled = selected.CanOpenBakedMask;
+        CameraVisibilityCheckBox.IsEnabled = true;
+        applyingCameraVisibilityUi = true;
+        CameraVisibilityCheckBox.IsChecked = selected.IsVisible;
+        applyingCameraVisibilityUi = false;
         UpdateCameraZoneSelectionUi(selected.Id);
         RefreshLayerEditorUiForSelectedCamera();
+    }
+
+    private void RefreshCameraWorkspaceTiles(IReadOnlyList<CameraProfile> orderedCameras)
+    {
+        var projection = BuildCameraGridProjection(orderedCameras
+            .Select(camera => new CameraWorkspaceCamera(camera.Id, camera.DisplayName, camera.IsVisible))
+            .ToList());
+
+        var viewState = BuildCameraTileViewState(projection);
+        ApplyCameraTileViewState(viewState);
+        StartCameraTilePreview(orderedCameras, projection);
+    }
+
+    private void StartCameraTilePreview(IReadOnlyList<CameraProfile> orderedCameras, CameraGridProjection projection)
+    {
+        CancelCameraTilePreview();
+
+        var visibleIds = projection.Tiles
+            .Take(MaxCameraTileFeeds)
+            .Select(tile => tile.CameraId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var feedCameras = orderedCameras
+            .Where(camera => visibleIds.Contains(camera.Id))
+            .Take(MaxCameraTileFeeds)
+            .ToList();
+
+        if (feedCameras.Count == 0)
+        {
+            return;
+        }
+
+        var imageTargets = new[]
+        {
+            PreviewBackgroundMaskImage,
+            PreviewMovingColorImage,
+            PreviewColorDetectionImage,
+            PreviewMotionImage
+        };
+
+        tilePreviewCts = new CancellationTokenSource();
+        var token = tilePreviewCts.Token;
+        tilePreviewTasks = feedCameras
+            .Select((camera, index) => Task.Run(() => RunCameraTilePreviewLoop(camera, imageTargets[index], token), token))
+            .ToArray();
+    }
+
+    private void CancelCameraTilePreview()
+    {
+        if (tilePreviewTasks.Length == 0)
+        {
+            return;
+        }
+
+        tilePreviewCts?.Cancel();
+        tilePreviewCts?.Dispose();
+        tilePreviewCts = null;
+        tilePreviewTasks = Array.Empty<Task>();
+    }
+
+    private async Task StopCameraTilePreviewAsync()
+    {
+        if (tilePreviewTasks.Length == 0)
+        {
+            return;
+        }
+
+        var tasksToWait = tilePreviewTasks;
+        tilePreviewCts?.Cancel();
+
+        try
+        {
+            await Task.WhenAll(tasksToWait);
+        }
+        catch
+        {
+            // Ignore stop-time preview errors.
+        }
+        finally
+        {
+            tilePreviewCts?.Dispose();
+            tilePreviewCts = null;
+            tilePreviewTasks = Array.Empty<Task>();
+        }
+    }
+
+    private async Task RunCameraTilePreviewLoop(CameraProfile camera, Image target, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (camera.IsUsbCamera && camera.UsbCamera is { } usb)
+            {
+                using var capture = new VideoCapture(usb.CameraIndex, usb.Api);
+                if (!capture.IsOpened())
+                {
+                    return;
+                }
+
+                using var frame = new Mat();
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    if (!capture.Read(frame) || frame.Empty())
+                    {
+                        await DelayIgnoringCancellationAsync(50, cancellationToken);
+                        continue;
+                    }
+
+                    RenderRawFrameToTile(target, frame);
+                    await DelayIgnoringCancellationAsync(PreviewIntervalMs, cancellationToken);
+                }
+
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(camera.PrimaryVideoPath))
+            {
+                return;
+            }
+
+            using var videoCapture = new VideoCapture(camera.PrimaryVideoPath);
+            if (!videoCapture.IsOpened())
+            {
+                return;
+            }
+
+            using var videoFrame = new Mat();
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                if (!videoCapture.Read(videoFrame) || videoFrame.Empty())
+                {
+                    videoCapture.Set(VideoCaptureProperties.PosFrames, 0);
+                    await DelayIgnoringCancellationAsync(10, cancellationToken);
+                    continue;
+                }
+
+                RenderRawFrameToTile(target, videoFrame);
+                await DelayIgnoringCancellationAsync(PreviewIntervalMs, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when tile preview is restarted or stopped.
+        }
+    }
+
+    private static async Task DelayIgnoringCancellationAsync(int milliseconds, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        await Task.Delay(milliseconds);
+    }
+
+    private void RenderRawFrameToTile(Image target, Mat frame)
+    {
+        Cv2.ImEncode(".jpg", frame, out var encoded);
+        Dispatcher.UIThread.Post(() => UpdatePreviewImage(target, encoded), DispatcherPriority.Background);
+    }
+
+    private void ApplyCameraTileViewState(CameraTileViewState viewState)
+    {
+        ApplyCameraTileGridDimensions(viewState.Rows, viewState.Columns);
+
+        var tileBorders = new[] { CameraTile1Border, CameraTile2Border, CameraTile3Border, CameraTile4Border };
+        var tileTitles = new[] { CameraTile1Title, CameraTile2Title, CameraTile3Title, CameraTile4Title };
+
+        for (var i = 0; i < tileBorders.Length; i++)
+        {
+            tileBorders[i].IsVisible = viewState.VisibleSlots[i];
+            tileTitles[i].Text = viewState.Titles[i];
+        }
+    }
+
+    private void CameraVisibilityCheckBoxOnChanged(object? sender, RoutedEventArgs e)
+    {
+        if (applyingCameraVisibilityUi)
+        {
+            return;
+        }
+
+        lock (cameraSync)
+        {
+            if (selectedCameraIndex < 0 || selectedCameraIndex >= cameras.Count)
+            {
+                return;
+            }
+
+            var selected = cameras[selectedCameraIndex];
+            var isVisible = CameraVisibilityCheckBox.IsChecked == true;
+            cameras[selectedCameraIndex] = selected with { IsVisible = isVisible };
+        }
+
+        RefreshCameraUi();
+    }
+
+    private void ApplyCameraTileGridDimensions(int rows, int columns)
+    {
+        CameraTileGrid.RowDefinitions.Clear();
+        CameraTileGrid.ColumnDefinitions.Clear();
+
+        if (rows <= 0 || columns <= 0)
+        {
+            CameraTileGrid.RowDefinitions.Add(new RowDefinition(1, GridUnitType.Star));
+            CameraTileGrid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
+            return;
+        }
+
+        for (var row = 0; row < rows; row++)
+        {
+            CameraTileGrid.RowDefinitions.Add(new RowDefinition(1, GridUnitType.Star));
+        }
+
+        for (var column = 0; column < columns; column++)
+        {
+            CameraTileGrid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
+        }
+
+        Grid.SetRow(CameraTile1Border, 0);
+        Grid.SetColumn(CameraTile1Border, 0);
+
+        Grid.SetRow(CameraTile2Border, 0);
+        Grid.SetColumn(CameraTile2Border, columns > 1 ? 1 : 0);
+
+        Grid.SetRow(CameraTile3Border, rows > 1 ? 1 : 0);
+        Grid.SetColumn(CameraTile3Border, 0);
+
+        Grid.SetRow(CameraTile4Border, rows > 1 ? 1 : 0);
+        Grid.SetColumn(CameraTile4Border, columns > 1 ? 1 : 0);
     }
 
     private void ToggleGridEditorButtonOnClick(object? sender, RoutedEventArgs e)
@@ -2015,6 +2360,7 @@ public partial class MainWindow : AppWindow
     private readonly record struct CameraProfile(
         string Id,
         string DisplayName,
+        bool IsVisible,
         CameraSourceKind SourceKind,
         List<string> VideoPaths,
         UsbCameraSource? UsbCamera)
@@ -2030,10 +2376,10 @@ public partial class MainWindow : AppWindow
             : (string.IsNullOrWhiteSpace(PrimaryVideoPath) ? DisplayName : Path.GetFileName(PrimaryVideoPath));
 
         public static CameraProfile CreateVideo(string id, string displayName, List<string> videoPaths)
-            => new(id, displayName, CameraSourceKind.VideoFiles, videoPaths, null);
+            => new(id, displayName, true, CameraSourceKind.VideoFiles, videoPaths, null);
 
         public static CameraProfile CreateUsb(string id, string displayName, int cameraIndex, VideoCaptureAPIs api)
-            => new(id, displayName, CameraSourceKind.UsbCamera, new List<string>(), new UsbCameraSource(cameraIndex, api));
+            => new(id, displayName, true, CameraSourceKind.UsbCamera, new List<string>(), new UsbCameraSource(cameraIndex, api));
     }
 
     internal readonly record struct RuntimeProcessingSettings(

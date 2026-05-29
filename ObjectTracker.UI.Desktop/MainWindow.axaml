@@ -96,6 +96,18 @@
                                     Content="Remove" />
                         </Grid>
 
+                        <Grid Grid.Row="1"
+                              ColumnDefinitions="*,6,*">
+                            <Button x:Name="MoveCameraUpButton"
+                                    Grid.Column="0"
+                                    Classes="ghost"
+                                    Content="Move Up" />
+                            <Button x:Name="MoveCameraDownButton"
+                                    Grid.Column="2"
+                                    Classes="ghost"
+                                    Content="Move Down" />
+                        </Grid>
+
                         <Button Grid.Row="2"
                                 x:Name="ClearPlaylistButton"
                                 Classes="ghost"
@@ -110,6 +122,9 @@
                                 <TextBlock Text="Bind selected source to a stable Camera Zone"
                                            Classes="muted"
                                            TextWrapping="Wrap" />
+                                <CheckBox x:Name="CameraVisibilityCheckBox"
+                                          Content="Camera Visibility"
+                                          IsChecked="True" />
                                 <ComboBox x:Name="CameraZoneComboBox" />
                                 <Button x:Name="ToggleGridEditorButton"
                                         Classes="ghost"
@@ -569,56 +584,65 @@
                         </Grid>
                     </Border>
 
-                    <Grid Grid.Row="4"
+                    <Grid x:Name="CameraTileGrid"
+                          Grid.Row="4"
                           RowDefinitions="*,*"
                           ColumnDefinitions="*,*">
-                        <Border Grid.Row="0" Grid.Column="0"
+                        <Border x:Name="CameraTile1Border"
+                                Grid.Row="0" Grid.Column="0"
                                 Background="#070A0E">
                             <Panel>
                                 <Image x:Name="PreviewBackgroundMaskImage" Stretch="Uniform" />
                                 <Border VerticalAlignment="Top"
                                         Background="#99000000"
                                         Padding="8,5">
-                                    <TextBlock Text="1. Background Estimation"
+                                    <TextBlock x:Name="CameraTile1Title"
+                                               Text="1. Background Estimation"
                                                Classes="cardTitle" />
                                 </Border>
                             </Panel>
                         </Border>
 
-                        <Border Grid.Row="0" Grid.Column="1"
+                        <Border x:Name="CameraTile2Border"
+                                Grid.Row="0" Grid.Column="1"
                                 Background="#070A0E">
                             <Panel>
                                 <Image x:Name="PreviewMovingColorImage" Stretch="Uniform" />
                                 <Border VerticalAlignment="Top"
                                         Background="#99000000"
                                         Padding="8,5">
-                                    <TextBlock Text="2. Moving Objects"
+                                    <TextBlock x:Name="CameraTile2Title"
+                                               Text="2. Moving Objects"
                                                Classes="cardTitle" />
                                 </Border>
                             </Panel>
                         </Border>
 
-                        <Border Grid.Row="1" Grid.Column="0"
+                        <Border x:Name="CameraTile3Border"
+                                Grid.Row="1" Grid.Column="0"
                                 Background="#070A0E">
                             <Panel>
                                 <Image x:Name="PreviewColorDetectionImage" Stretch="Uniform" />
                                 <Border VerticalAlignment="Top"
                                         Background="#99000000"
                                         Padding="8,5">
-                                    <TextBlock Text="3. Color Detection"
+                                    <TextBlock x:Name="CameraTile3Title"
+                                               Text="3. Color Detection"
                                                Classes="cardTitle" />
                                 </Border>
                             </Panel>
                         </Border>
 
-                        <Border Grid.Row="1" Grid.Column="1"
+                        <Border x:Name="CameraTile4Border"
+                                Grid.Row="1" Grid.Column="1"
                                 Background="#070A0E">
                             <Panel>
                                 <Image x:Name="PreviewMotionImage" Stretch="Uniform" />
                                 <Border VerticalAlignment="Top"
                                         Background="#99000000"
                                         Padding="8,5">
-                                    <TextBlock Text="4. Speed + Direction"
+                                    <TextBlock x:Name="CameraTile4Title"
+                                               Text="4. Speed + Direction"
                                                Classes="cardTitle" />
                                 </Border>
                             </Panel>

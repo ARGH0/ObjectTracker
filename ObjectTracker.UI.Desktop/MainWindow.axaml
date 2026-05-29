@@ -125,6 +125,12 @@
                                 <CheckBox x:Name="CameraVisibilityCheckBox"
                                           Content="Camera Visibility"
                                           IsChecked="True" />
+                                <CheckBox x:Name="VisionPipelineInclusionCheckBox"
+                                          Content="Vision Pipeline Inclusion"
+                                          IsChecked="True" />
+                                <CheckBox x:Name="CameraDebugViewCheckBox"
+                                          Content="Debug View"
+                                          IsChecked="False" />
                                 <ComboBox x:Name="CameraZoneComboBox" />
                                 <Button x:Name="ToggleGridEditorButton"
                                         Classes="ghost"

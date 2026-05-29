@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
+using Avalonia.Layout;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Windowing;
@@ -37,6 +38,17 @@ public partial class MainWindow : AppWindow
         string Calibration,
         string PendingRestart);
 
+    public readonly record struct VisionPipelineMenuState(bool StartEnabled, bool StopEnabled);
+
+    public readonly record struct CameraPanelLayoutState(
+        bool IsOpen,
+        bool IsPinned,
+        SplitViewDisplayMode DisplayMode,
+        double CameraPanelWidth,
+        double CompactPaneWidth,
+        string ToggleButtonText,
+        string PinButtonText);
+
     public static WorkspaceVisibility BuildWorkspaceVisibility(Workspace workspace)
     {
         return workspace switch
@@ -58,13 +70,49 @@ public partial class MainWindow : AppWindow
         return workspace == Workspace.Camera;
     }
 
-    public static BottomStatusSnapshot BuildBottomStatusSnapshot(bool isVisionPipelineRunning, bool isAmbiguityActive)
+    public static VisionPipelineMenuState BuildVisionPipelineMenuState(bool isVisionPipelineRunning)
+    {
+        return isVisionPipelineRunning
+            ? new VisionPipelineMenuState(StartEnabled: false, StopEnabled: true)
+            : new VisionPipelineMenuState(StartEnabled: true, StopEnabled: false);
+    }
+
+    public static CameraPanelLayoutState BuildCameraPanelLayoutState(bool isOpen, bool isPinned)
+    {
+        if (isPinned)
+        {
+            return new CameraPanelLayoutState(
+                IsOpen: true,
+                IsPinned: true,
+                DisplayMode: SplitViewDisplayMode.Inline,
+                CameraPanelWidth: 340,
+                CompactPaneWidth: 0,
+                ToggleButtonText: string.Empty,
+                PinButtonText: "📍");
+        }
+
+        return new CameraPanelLayoutState(
+            IsOpen: isOpen,
+            IsPinned: false,
+            DisplayMode: SplitViewDisplayMode.CompactOverlay,
+            CameraPanelWidth: 340,
+            CompactPaneWidth: 48,
+            ToggleButtonText: isOpen ? "<" : ">",
+            PinButtonText: "📌");
+    }
+
+    public static SelectionMode GetCameraListSelectionMode()
+    {
+        return SelectionMode.Single;
+    }
+
+    public static BottomStatusSnapshot BuildBottomStatusSnapshot(bool isVisionPipelineRunning, bool isAmbiguityActive, bool hasPendingVisionPipelineRestart)
     {
         return new BottomStatusSnapshot(
             VisionPipeline: isVisionPipelineRunning ? "Vision Pipeline: running" : "Vision Pipeline: stopped",
             AmbiguityAlert: isAmbiguityActive ? "Ambiguity Alert: active" : "Ambiguity Alert: clear",
             Calibration: "Calibration: unknown",
-            PendingRestart: "Pending restart: none");
+            PendingRestart: hasPendingVisionPipelineRestart ? "Pending restart: required" : "Pending restart: none");
     }
 
     private const int MaxLogEntries = 300;
@@ -102,6 +150,9 @@ public partial class MainWindow : AppWindow
     private string ambiguityMessage = "Ambiguity detected. Resolve before automatic processing continues.";
     private bool applyingCameraZoneUi;
     private bool gridEditorVisible;
+    private bool hasPendingVisionPipelineRestart;
+    private bool isCameraPanelOpen = true;
+    private bool isCameraPanelPinned = true;
     private Workspace activeWorkspace = Workspace.Camera;
 
     public MainWindow()
@@ -129,6 +180,8 @@ public partial class MainWindow : AppWindow
 
         HookEvents();
         SetActiveWorkspace(Workspace.Camera);
+        SetRunState(isRunning: false);
+        ApplyCameraPanelLayout();
         RefreshCameraUi();
         RefreshLayerTypeUi();
         AppendLog($"Loaded {layerTypeCatalogService.GetOrderedByPrecedence().Count} layer type definitions.");
@@ -171,9 +224,13 @@ public partial class MainWindow : AppWindow
         ResolveRelinkButton.Click += ResolveRelinkButtonOnClick;
         ResolveFalseButton.Click += ResolveFalseButtonOnClick;
         ResolveOtherButton.Click += ResolveOtherButtonOnClick;
-        CameraWorkspaceMenuItem.Click += CameraWorkspaceButtonOnClick;
+        OpenCameraWorkspaceMenuItem.Click += CameraWorkspaceButtonOnClick;
         LayersWorkspaceMenuItem.Click += LayersWorkspaceButtonOnClick;
         SettingsWorkspaceMenuItem.Click += SettingsWorkspaceButtonOnClick;
+        StartVisionPipelineMenuItem.Click += StartVisionPipelineMenuItemOnClick;
+        StopVisionPipelineMenuItem.Click += StopVisionPipelineMenuItemOnClick;
+        ToggleCameraPanelButton.Click += ToggleCameraPanelButtonOnClick;
+        PinCameraPanelButton.Click += PinCameraPanelButtonOnClick;
 
         SampleCountTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         ThresholdTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
@@ -206,6 +263,57 @@ public partial class MainWindow : AppWindow
     private void SettingsWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
     {
         SetActiveWorkspace(Workspace.Settings);
+    }
+
+    private async void StartVisionPipelineMenuItemOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (runTask is null)
+        {
+            await StartVisionPipelineFromUiAsync();
+        }
+    }
+
+    private void ToggleCameraPanelButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (isCameraPanelPinned)
+        {
+            return;
+        }
+
+        isCameraPanelOpen = !isCameraPanelOpen;
+        ApplyCameraPanelLayout();
+    }
+
+    private void PinCameraPanelButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        isCameraPanelPinned = !isCameraPanelPinned;
+        isCameraPanelOpen = true;
+        ApplyCameraPanelLayout();
+    }
+
+    private void ApplyCameraPanelLayout()
+    {
+        var layout = BuildCameraPanelLayoutState(isCameraPanelOpen, isCameraPanelPinned);
+
+        CameraSplitView.CompactPaneLength = layout.CompactPaneWidth;
+        CameraSplitView.IsPaneOpen = layout.IsOpen;
+        CameraSplitView.DisplayMode = layout.DisplayMode;
+        CameraSplitView.OpenPaneLength = layout.CameraPanelWidth;
+        CameraPanelFullContent.IsVisible = layout.IsOpen;
+        CameraPanelTitleText.IsVisible = layout.IsOpen;
+        PinCameraPanelButton.IsVisible = layout.IsOpen;
+        ToggleCameraPanelButton.IsVisible = !layout.IsPinned;
+
+        ToggleCameraPanelButton.Content = layout.ToggleButtonText;
+        PinCameraPanelButton.Content = layout.PinButtonText;
+    }
+
+    private async void StopVisionPipelineMenuItemOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (runTask is not null)
+        {
+            await StopProcessingAsync();
+        }
     }
 
     public void SetActiveWorkspace(Workspace workspace)
@@ -528,6 +636,16 @@ public partial class MainWindow : AppWindow
             return;
         }
 
+        await StartVisionPipelineFromUiAsync();
+    }
+
+    private async Task StartVisionPipelineFromUiAsync()
+    {
+        if (runTask is not null)
+        {
+            return;
+        }
+
         if (ambiguityActive)
         {
             SetStatus("Status: ambiguity is active. Resolve alert before starting automatic processing.");
@@ -565,6 +683,7 @@ public partial class MainWindow : AppWindow
             SetStatus($"Status: session log active at {sessionAuditLogger.CurrentFilePath}");
         }
 
+        hasPendingVisionPipelineRestart = false;
         SetRunState(isRunning: true);
         StartBakeForAllCameras(token);
         runTask = Task.Run(() => RunCameraSelectionAsync(startIndex, loopCameraVideos, token), token);
@@ -1042,6 +1161,9 @@ public partial class MainWindow : AppWindow
     {
         StartStopButton.Content = isRunning ? "Stop" : "Start";
         StartStopButton.IsEnabled = isRunning || !ambiguityActive;
+        var menuState = BuildVisionPipelineMenuState(isRunning);
+        StartVisionPipelineMenuItem.IsEnabled = menuState.StartEnabled;
+        StopVisionPipelineMenuItem.IsEnabled = menuState.StopEnabled;
         AddVideosButton.IsEnabled = !isRunning && !ambiguityActive;
         RemoveSelectedButton.IsEnabled = !isRunning && !ambiguityActive;
         ClearPlaylistButton.IsEnabled = !isRunning && !ambiguityActive;
@@ -1138,7 +1260,7 @@ public partial class MainWindow : AppWindow
 
     private void UpdateBottomStatusBar()
     {
-        var snapshot = BuildBottomStatusSnapshot(runTask is not null, ambiguityActive);
+        var snapshot = BuildBottomStatusSnapshot(runTask is not null, ambiguityActive, hasPendingVisionPipelineRestart);
         BottomVisionPipelineStateText.Text = snapshot.VisionPipeline;
         BottomAmbiguityStateText.Text = snapshot.AmbiguityAlert;
         BottomCalibrationStateText.Text = snapshot.Calibration;
@@ -1217,6 +1339,12 @@ public partial class MainWindow : AppWindow
 
         PersistCameraSettings();
         UpdateOpenBakedMaskButtonState(camera.Value, cameraSettings[camera.Value.Id]);
+
+        if (runTask is not null)
+        {
+            hasPendingVisionPipelineRestart = true;
+            UpdateBottomStatusBar();
+        }
 
         if (logChange)
         {

@@ -25,33 +25,64 @@
                   VerticalAlignment="Center"
                   Background="Transparent">
                 <MenuItem Header="Camera"
-                          x:Name="CameraWorkspaceMenuItem" />
+                          x:Name="CameraWorkspaceMenuItem">
+                    <MenuItem Header="Open Workspace"
+                              x:Name="OpenCameraWorkspaceMenuItem" />
+                </MenuItem>
                 <MenuItem Header="Layers"
                           x:Name="LayersWorkspaceMenuItem" />
                 <MenuItem Header="Settings"
                           x:Name="SettingsWorkspaceMenuItem" />
+                <MenuItem Header="Vision Pipeline"
+                          x:Name="VisionPipelineMenuItem">
+                    <MenuItem Header="Start"
+                              x:Name="StartVisionPipelineMenuItem" />
+                    <MenuItem Header="Stop"
+                              x:Name="StopVisionPipelineMenuItem" />
+                </MenuItem>
             </Menu>
         </Border>
 
         <Grid x:Name="CameraWorkspacePanel"
               Grid.Row="1"
-              RowDefinitions="*,Auto"
-              ColumnDefinitions="340,6,*">
-            <Border Grid.Column="0"
-                    Grid.Row="0"
-                    Classes="surface"
-                    Padding="10">
+              RowDefinitions="*,Auto">
+            <SplitView x:Name="CameraSplitView"
+                       Grid.Row="0"
+                       OpenPaneLength="340"
+                       CompactPaneLength="0"
+                       DisplayMode="Inline"
+                       IsPaneOpen="True"
+                       UseLightDismissOverlayMode="True">
+                <SplitView.Pane>
+                    <Border x:Name="CameraPanelBorder"
+                            Classes="surface"
+                            Padding="10">
                 <Grid RowDefinitions="Auto,8,Auto,8,*,8,Auto">
-                    <TextBlock Grid.Row="0"
-                               Text="Camera Sources"
-                               Classes="sectionTitle" />
+                    <Grid Grid.Row="0" ColumnDefinitions="*,8,Auto,8,Auto">
+                        <TextBlock x:Name="CameraPanelTitleText"
+                                   Grid.Column="0"
+                                   Text="Camera Sources"
+                                   Classes="sectionTitle" />
+                        <Button x:Name="ToggleCameraPanelButton"
+                                Grid.Column="2"
+                                Classes="ghost"
+                                Content="Hide" />
+                        <Button x:Name="PinCameraPanelButton"
+                                Grid.Column="4"
+                                Classes="ghost"
+                                Content="📌" />
+                    </Grid>
 
-                    <ListBox Grid.Row="2"
-                             x:Name="PlaylistListBox"
-                             MinHeight="150"
-                             MaxHeight="220" />
+                    <Grid x:Name="CameraPanelFullContent"
+                          Grid.Row="2"
+                          RowDefinitions="Auto,8,*">
+                    <ListBox Grid.Row="0"
+                              x:Name="PlaylistListBox"
+                              SelectionMode="Single"
+                              MinHeight="150"
+                              MaxHeight="220" />
 
-                    <Grid Grid.Row="4"
+                    <Grid Grid.Row="2"
                           RowDefinitions="Auto,8,Auto,8,Auto,8,*">
                         <Grid Grid.Row="0"
                               ColumnDefinitions="*,6,*">
@@ -459,20 +490,13 @@
                             </Grid>
                         </Border>
                     </Grid>
+                    </Grid>
                 </Grid>
-            </Border>
+                    </Border>
+                </SplitView.Pane>
 
-            <GridSplitter Grid.Column="1"
-                          Grid.Row="0"
-                          ResizeDirection="Columns"
-                          Width="6"
-                          HorizontalAlignment="Stretch"
-                          VerticalAlignment="Stretch" />
-
-            <Border Grid.Column="2"
-                    Grid.Row="0"
-                    Classes="surface"
-                    Padding="10">
+                <Border Classes="surface"
+                        Padding="10">
                 <Grid RowDefinitions="Auto,8,Auto,8,*">
                     <Border Grid.Row="0"
                             Classes="surfaceAlt"
@@ -601,12 +625,12 @@
                         </Border>
                     </Grid>
                 </Grid>
-            </Border>
+                </Border>
+            </SplitView>
 
             <Expander x:Name="RuntimeLogExpander"
-                      Grid.Row="1"
-                      Grid.ColumnSpan="3"
-                      IsExpanded="False"
+                       Grid.Row="1"
+                       IsExpanded="False"
                       Header="Runtime Log"
                       Margin="0,8,0,0"
                       FontWeight="SemiBold">

@@ -1,4 +1,5 @@
 using ObjectTracker.UI.Desktop;
+using Avalonia.Controls;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;
@@ -52,7 +53,10 @@ public sealed class MainWindowWorkspaceShellTests
     [Fact]
     public void BottomStatusSnapshot_ShowsRunningAndActiveAmbiguityStates()
     {
-        var snapshot = MainWindow.BuildBottomStatusSnapshot(isVisionPipelineRunning: true, isAmbiguityActive: true);
+        var snapshot = MainWindow.BuildBottomStatusSnapshot(
+            isVisionPipelineRunning: true,
+            isAmbiguityActive: true,
+            hasPendingVisionPipelineRestart: false);
 
         Assert.Equal("Vision Pipeline: running", snapshot.VisionPipeline);
         Assert.Equal("Ambiguity Alert: active", snapshot.AmbiguityAlert);
@@ -63,9 +67,93 @@ public sealed class MainWindowWorkspaceShellTests
     [Fact]
     public void BottomStatusSnapshot_ShowsStoppedAndClearAmbiguityStates()
     {
-        var snapshot = MainWindow.BuildBottomStatusSnapshot(isVisionPipelineRunning: false, isAmbiguityActive: false);
+        var snapshot = MainWindow.BuildBottomStatusSnapshot(
+            isVisionPipelineRunning: false,
+            isAmbiguityActive: false,
+            hasPendingVisionPipelineRestart: false);
 
         Assert.Equal("Vision Pipeline: stopped", snapshot.VisionPipeline);
         Assert.Equal("Ambiguity Alert: clear", snapshot.AmbiguityAlert);
+    }
+
+    [Fact]
+    public void BottomStatusSnapshot_ShowsPendingRestartWhenRequired()
+    {
+        var snapshot = MainWindow.BuildBottomStatusSnapshot(
+            isVisionPipelineRunning: true,
+            isAmbiguityActive: false,
+            hasPendingVisionPipelineRestart: true);
+
+        Assert.Equal("Pending restart: required", snapshot.PendingRestart);
+    }
+
+    [Fact]
+    public void VisionPipelineMenuState_WhenRunning_DisablesStartAndEnablesStop()
+    {
+        var state = MainWindow.BuildVisionPipelineMenuState(isVisionPipelineRunning: true);
+
+        Assert.False(state.StartEnabled);
+        Assert.True(state.StopEnabled);
+    }
+
+    [Fact]
+    public void VisionPipelineMenuState_WhenStopped_EnablesStartAndDisablesStop()
+    {
+        var state = MainWindow.BuildVisionPipelineMenuState(isVisionPipelineRunning: false);
+
+        Assert.True(state.StartEnabled);
+        Assert.False(state.StopEnabled);
+    }
+
+    [Fact]
+    public void CameraPanelLayoutState_WhenPinnedAndOpen_ClaimsLayoutSpace()
+    {
+        var state = MainWindow.BuildCameraPanelLayoutState(isOpen: true, isPinned: true);
+
+        Assert.True(state.IsOpen);
+        Assert.True(state.IsPinned);
+        Assert.Equal(SplitViewDisplayMode.Inline, state.DisplayMode);
+        Assert.Equal(340, state.CameraPanelWidth);
+        Assert.Equal(0, state.CompactPaneWidth);
+    }
+
+    [Fact]
+    public void CameraPanelLayoutState_WhenOverlayAndOpen_DoesNotClaimLayoutSpace()
+    {
+        var state = MainWindow.BuildCameraPanelLayoutState(isOpen: true, isPinned: false);
+
+        Assert.True(state.IsOpen);
+        Assert.False(state.IsPinned);
+        Assert.Equal(SplitViewDisplayMode.CompactOverlay, state.DisplayMode);
+        Assert.Equal(340, state.CameraPanelWidth);
+        Assert.Equal(48, state.CompactPaneWidth);
+    }
+
+    [Fact]
+    public void CameraPanelLayoutState_WhenPinned_IgnoresClosedStateAndStaysOpen()
+    {
+        var state = MainWindow.BuildCameraPanelLayoutState(isOpen: false, isPinned: true);
+
+        Assert.True(state.IsOpen);
+        Assert.Equal(SplitViewDisplayMode.Inline, state.DisplayMode);
+        Assert.Equal(340, state.CameraPanelWidth);
+        Assert.Equal(0, state.CompactPaneWidth);
+    }
+
+    [Fact]
+    public void CameraPanelLayoutState_WhenClosedAndUnpinned_UsesOverlayWithoutCompactPane()
+    {
+        var state = MainWindow.BuildCameraPanelLayoutState(isOpen: false, isPinned: false);
+
+        Assert.False(state.IsOpen);
+        Assert.Equal(SplitViewDisplayMode.CompactOverlay, state.DisplayMode);
+        Assert.Equal(340, state.CameraPanelWidth);
+        Assert.Equal(48, state.CompactPaneWidth);
+    }
+
+    [Fact]
+    public void CameraListSelectionMode_IsSingle()
+    {
+        Assert.Equal(SelectionMode.Single, MainWindow.GetCameraListSelectionMode());
     }
 }

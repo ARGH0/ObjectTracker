@@ -44,6 +44,10 @@ _Avoid_: Presence flag, active flag
 The system's trust level in the current Train State. Low confidence does not erase the Train; it marks the state as unsafe for automatic action.
 _Avoid_: Certainty, health
 
+**Vision Pipeline**:
+The runtime flow that produces Train State from camera input during a Session. It can be running or stopped; configuration changes may be saved but not applied until the Vision Pipeline is restarted.
+_Avoid_: Engine, processing unit (when referring to start/stop runtime control)
+
 ### Layout And Coverage
 
 **Rail ROI**:
@@ -57,6 +61,22 @@ _Avoid_: Hotspot, special area
 **Camera Zone**:
 The portion of the rail layout observed by one camera.
 _Avoid_: Screen, viewport
+
+**Camera Visibility**:
+Whether a camera tile is shown in the Camera workspace. Canonical states are `visible` and `hidden`.
+_Avoid_: Enabled view, display toggle
+
+**Vision Pipeline Inclusion**:
+Whether a camera source contributes frames to the Vision Pipeline. Canonical states are `included` and `excluded`. This is independent from Camera Visibility.
+_Avoid_: Include in processing, active camera flag
+
+**Layer Type**:
+A globally defined layer category that can be reused across cameras.
+_Avoid_: Per-camera layer definition
+
+**Camera Layer Regions**:
+The camera-specific region drawings and assignments that use global Layer Types within one Camera Zone.
+_Avoid_: Global region map
 
 **Processing Unit**:
 The runtime boundary that processes one or more camera zones and owns Local Train IDs within that boundary.

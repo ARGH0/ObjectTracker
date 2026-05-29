@@ -40,4 +40,32 @@ public sealed class MainWindowWorkspaceShellTests
     {
         Assert.True(MainWindow.IsWorkspaceNavigationAllowedDuringAmbiguity());
     }
+
+    [Fact]
+    public void RuntimeLog_IsVisible_OnlyInCameraWorkspace()
+    {
+        Assert.True(MainWindow.IsRuntimeLogVisibleForWorkspace(MainWindow.Workspace.Camera));
+        Assert.False(MainWindow.IsRuntimeLogVisibleForWorkspace(MainWindow.Workspace.Layers));
+        Assert.False(MainWindow.IsRuntimeLogVisibleForWorkspace(MainWindow.Workspace.Settings));
+    }
+
+    [Fact]
+    public void BottomStatusSnapshot_ShowsRunningAndActiveAmbiguityStates()
+    {
+        var snapshot = MainWindow.BuildBottomStatusSnapshot(isVisionPipelineRunning: true, isAmbiguityActive: true);
+
+        Assert.Equal("Vision Pipeline: running", snapshot.VisionPipeline);
+        Assert.Equal("Ambiguity Alert: active", snapshot.AmbiguityAlert);
+        Assert.Equal("Calibration: unknown", snapshot.Calibration);
+        Assert.Equal("Pending restart: none", snapshot.PendingRestart);
+    }
+
+    [Fact]
+    public void BottomStatusSnapshot_ShowsStoppedAndClearAmbiguityStates()
+    {
+        var snapshot = MainWindow.BuildBottomStatusSnapshot(isVisionPipelineRunning: false, isAmbiguityActive: false);
+
+        Assert.Equal("Vision Pipeline: stopped", snapshot.VisionPipeline);
+        Assert.Equal("Ambiguity Alert: clear", snapshot.AmbiguityAlert);
+    }
 }

@@ -31,6 +31,12 @@ public partial class MainWindow : AppWindow
 
     public readonly record struct WorkspaceVisibility(bool CameraVisible, bool LayersVisible, bool SettingsVisible);
 
+    public readonly record struct BottomStatusSnapshot(
+        string VisionPipeline,
+        string AmbiguityAlert,
+        string Calibration,
+        string PendingRestart);
+
     public static WorkspaceVisibility BuildWorkspaceVisibility(Workspace workspace)
     {
         return workspace switch
@@ -45,6 +51,20 @@ public partial class MainWindow : AppWindow
     public static bool IsWorkspaceNavigationAllowedDuringAmbiguity()
     {
         return true;
+    }
+
+    public static bool IsRuntimeLogVisibleForWorkspace(Workspace workspace)
+    {
+        return workspace == Workspace.Camera;
+    }
+
+    public static BottomStatusSnapshot BuildBottomStatusSnapshot(bool isVisionPipelineRunning, bool isAmbiguityActive)
+    {
+        return new BottomStatusSnapshot(
+            VisionPipeline: isVisionPipelineRunning ? "Vision Pipeline: running" : "Vision Pipeline: stopped",
+            AmbiguityAlert: isAmbiguityActive ? "Ambiguity Alert: active" : "Ambiguity Alert: clear",
+            Calibration: "Calibration: unknown",
+            PendingRestart: "Pending restart: none");
     }
 
     private const int MaxLogEntries = 300;
@@ -195,7 +215,7 @@ public partial class MainWindow : AppWindow
         CameraWorkspacePanel.IsVisible = visibility.CameraVisible;
         LayersWorkspacePanel.IsVisible = visibility.LayersVisible;
         SettingsWorkspacePanel.IsVisible = visibility.SettingsVisible;
-        RuntimeLogExpander.IsVisible = workspace == Workspace.Camera;
+        RuntimeLogExpander.IsVisible = IsRuntimeLogVisibleForWorkspace(workspace);
     }
 
     public Workspace GetActiveWorkspace()
@@ -1118,11 +1138,11 @@ public partial class MainWindow : AppWindow
 
     private void UpdateBottomStatusBar()
     {
-        var isRunning = runTask is not null;
-        BottomVisionPipelineStateText.Text = isRunning ? "Vision Pipeline: running" : "Vision Pipeline: stopped";
-        BottomAmbiguityStateText.Text = ambiguityActive ? "Ambiguity Alert: active" : "Ambiguity Alert: clear";
-        BottomCalibrationStateText.Text = "Calibration: unknown";
-        BottomPendingRestartStateText.Text = "Pending restart: none";
+        var snapshot = BuildBottomStatusSnapshot(runTask is not null, ambiguityActive);
+        BottomVisionPipelineStateText.Text = snapshot.VisionPipeline;
+        BottomAmbiguityStateText.Text = snapshot.AmbiguityAlert;
+        BottomCalibrationStateText.Text = snapshot.Calibration;
+        BottomPendingRestartStateText.Text = snapshot.PendingRestart;
     }
 
     private void RuntimeSettingControlOnLostFocus(object? sender, RoutedEventArgs e)

@@ -28,6 +28,8 @@
                           x:Name="CameraWorkspaceMenuItem">
                     <MenuItem Header="Open Workspace"
                               x:Name="OpenCameraWorkspaceMenuItem" />
+                    <MenuItem Header="Clear Cameras"
+                              x:Name="ClearCamerasMenuItem" />
                 </MenuItem>
                 <MenuItem Header="Layers"
                           x:Name="LayersWorkspaceMenuItem" />
@@ -80,7 +82,14 @@
                               x:Name="PlaylistListBox"
                               SelectionMode="Single"
                               MinHeight="150"
-                              MaxHeight="220" />
+                              MaxHeight="220">
+                        <ListBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem x:Name="DeleteSelectedCameraMenuItem"
+                                          Header="Delete Camera" />
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
+                    </ListBox>
 
                     <Grid Grid.Row="2"
                           RowDefinitions="Auto,8,Auto,8,Auto,8,*">

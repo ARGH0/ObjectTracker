@@ -43,6 +43,12 @@ public partial class MainWindow : AppWindow
 
     public readonly record struct VisionPipelineMenuState(bool StartEnabled, bool StopEnabled);
 
+    public readonly record struct CameraDestructiveActionsState(
+        bool DeleteSelectedEnabled,
+        bool ClearAllEnabled,
+        bool DeleteSelectedRequiresConfirmation,
+        bool ClearAllRequiresConfirmation);
+
     public readonly record struct CameraWorkspaceCamera(
         string CameraId,
         string DisplayName,
@@ -200,6 +206,30 @@ public partial class MainWindow : AppWindow
         return SelectionMode.Single;
     }
 
+    public static CameraDestructiveActionsState BuildCameraDestructiveActionsState(
+        bool isVisionPipelineRunning,
+        bool isAmbiguityActive,
+        bool hasSelectedCamera,
+        int cameraCount)
+    {
+        var runtimeBlocked = isVisionPipelineRunning || isAmbiguityActive;
+        return new CameraDestructiveActionsState(
+            DeleteSelectedEnabled: hasSelectedCamera && !runtimeBlocked,
+            ClearAllEnabled: cameraCount > 0 && !runtimeBlocked,
+            DeleteSelectedRequiresConfirmation: true,
+            ClearAllRequiresConfirmation: true);
+    }
+
+    public static string BuildDeleteCameraConfirmationMessage(string cameraDisplayName)
+    {
+        return $"Delete camera '{cameraDisplayName}' from this Session?";
+    }
+
+    public static string BuildClearCamerasConfirmationMessage(int cameraCount)
+    {
+        return $"Clear all {cameraCount} cameras from this Session? This cannot be undone.";
+    }
+
     public static BottomStatusSnapshot BuildBottomStatusSnapshot(bool isVisionPipelineRunning, bool isAmbiguityActive, bool hasPendingVisionPipelineRestart)
     {
         return new BottomStatusSnapshot(
@@ -257,6 +287,7 @@ public partial class MainWindow : AppWindow
     private bool isCameraPanelPinned = true;
     private Workspace activeWorkspace = Workspace.Camera;
     private string? activeVisionPipelineCameraId;
+    internal Func<string, string, Task<bool>> ConfirmDestructiveActionAsync { get; set; }
 
     private sealed record DebugTileImageSet(Image Background, Image Moving, Image Color, Image Motion);
 
@@ -282,6 +313,7 @@ public partial class MainWindow : AppWindow
         layerTypeCatalogService = layerTypeSettingsStore.Load();
         appSettings = appSettingsStore.Load();
         cameraZoneLayers = cameraZoneLayerRepository.Load().ToList();
+        ConfirmDestructiveActionAsync = ShowDestructiveConfirmationDialogAsync;
 
         HookEvents();
         SetActiveWorkspace(Workspace.Camera);
@@ -307,9 +339,11 @@ public partial class MainWindow : AppWindow
     {
         AddVideosButton.Click += AddCamerasButtonOnClick;
         RemoveSelectedButton.Click += RemoveCameraButtonOnClick;
+        DeleteSelectedCameraMenuItem.Click += RemoveCameraButtonOnClick;
         MoveCameraUpButton.Click += MoveCameraUpButtonOnClick;
         MoveCameraDownButton.Click += MoveCameraDownButtonOnClick;
         ClearPlaylistButton.Click += ClearCamerasButtonOnClick;
+        ClearCamerasMenuItem.Click += ClearCamerasButtonOnClick;
         PreviousVideoButton.Click += PreviousCameraButtonOnClick;
         NextVideoButton.Click += NextCameraButtonOnClick;
         StartStopButton.Click += StartStopButtonOnClick;
@@ -634,20 +668,34 @@ public partial class MainWindow : AppWindow
         SetStatus($"Status: cleared bake image for {camera.Value.DisplayName}.");
     }
 
-    private void RemoveCameraButtonOnClick(object? sender, RoutedEventArgs e)
+    private async void RemoveCameraButtonOnClick(object? sender, RoutedEventArgs e)
     {
+        if (!TryResolveSelectedCameraForDestructiveAction(out var cameraIndex, out var selected))
+        {
+            return;
+        }
+
+        var cameraDisplayName = selected.DisplayName;
+        var confirmed = await ConfirmDestructiveActionAsync(
+            "Delete Camera",
+            BuildDeleteCameraConfirmationMessage(cameraDisplayName));
+        if (!confirmed)
+        {
+            SetStatus($"Status: delete canceled for {cameraDisplayName}.");
+            return;
+        }
+
         CameraProfile? removed = null;
 
         lock (cameraSync)
         {
-            var index = PlaylistListBox.SelectedIndex;
-            if (index < 0 || index >= cameras.Count)
+            if (cameraIndex < 0 || cameraIndex >= cameras.Count)
             {
                 return;
             }
 
-            removed = cameras[index];
-            cameras.RemoveAt(index);
+            removed = cameras[cameraIndex];
+            cameras.RemoveAt(cameraIndex);
             cameraSettings.Remove(removed.Value.Id);
             cameraZoneIdentityService.RemoveSourceBinding(removed.Value.Id);
 
@@ -657,7 +705,7 @@ public partial class MainWindow : AppWindow
             }
             else
             {
-                selectedCameraIndex = Math.Clamp(index, 0, cameras.Count - 1);
+                selectedCameraIndex = Math.Clamp(cameraIndex, 0, cameras.Count - 1);
             }
         }
 
@@ -673,8 +721,29 @@ public partial class MainWindow : AppWindow
         SetStatus($"Status: removed camera {removed?.DisplayName ?? "-"}.");
     }
 
-    private void ClearCamerasButtonOnClick(object? sender, RoutedEventArgs e)
+    private async void ClearCamerasButtonOnClick(object? sender, RoutedEventArgs e)
     {
+        var count = GetCameraCount();
+        if (count <= 0)
+        {
+            return;
+        }
+
+        if (runTask is not null)
+        {
+            SetStatus("Status: stop Vision Pipeline before clearing cameras.");
+            return;
+        }
+
+        var confirmed = await ConfirmDestructiveActionAsync(
+            "Clear Cameras",
+            BuildClearCamerasConfirmationMessage(count));
+        if (!confirmed)
+        {
+            SetStatus("Status: clear cameras canceled.");
+            return;
+        }
+
         lock (cameraSync)
         {
             cameras.Clear();
@@ -1241,6 +1310,7 @@ public partial class MainWindow : AppWindow
         PlaylistListBox.ItemsSource = snapshot.ConvertAll(camera => camera.DisplayName);
         RefreshCameraWorkspaceTiles(snapshot);
         RefreshCameraZoneComboItems();
+        ApplyCameraDestructiveActionsState(snapshot.Count);
 
         var canNavigate = snapshot.Count > 1;
         PreviousVideoButton.IsEnabled = canNavigate;
@@ -1767,7 +1837,121 @@ public partial class MainWindow : AppWindow
             Interlocked.Exchange(ref requestedCameraIndex, -1);
         }
 
+        ApplyCameraDestructiveActionsState(GetCameraCount());
+
         UpdateBottomStatusBar();
+    }
+
+    private void ApplyCameraDestructiveActionsState(int cameraCount)
+    {
+        var selectedIndex = PlaylistListBox.SelectedIndex;
+        if ((selectedIndex < 0 || selectedIndex >= cameraCount) && selectedCameraIndex >= 0 && selectedCameraIndex < cameraCount)
+        {
+            selectedIndex = selectedCameraIndex;
+        }
+
+        if ((selectedIndex < 0 || selectedIndex >= cameraCount) && cameraCount == 1)
+        {
+            selectedIndex = 0;
+        }
+
+        var hasSelectedCamera = selectedIndex >= 0 && selectedIndex < cameraCount;
+        var state = BuildCameraDestructiveActionsState(
+            isVisionPipelineRunning: runTask is not null,
+            isAmbiguityActive: ambiguityActive,
+            hasSelectedCamera: hasSelectedCamera,
+            cameraCount: cameraCount);
+
+        RemoveSelectedButton.IsEnabled = state.DeleteSelectedEnabled;
+        DeleteSelectedCameraMenuItem.IsEnabled = state.DeleteSelectedEnabled;
+        ClearPlaylistButton.IsEnabled = state.ClearAllEnabled;
+        ClearCamerasMenuItem.IsEnabled = state.ClearAllEnabled;
+    }
+
+    private bool TryResolveSelectedCameraForDestructiveAction(out int index, out CameraProfile camera)
+    {
+        index = -1;
+        camera = default;
+
+        lock (cameraSync)
+        {
+            var count = cameras.Count;
+            if (count <= 0)
+            {
+                return false;
+            }
+
+            var candidate = PlaylistListBox.SelectedIndex;
+            if (candidate < 0 || candidate >= count)
+            {
+                candidate = selectedCameraIndex;
+            }
+
+            if ((candidate < 0 || candidate >= count) && count == 1)
+            {
+                candidate = 0;
+            }
+
+            if (candidate < 0 || candidate >= count)
+            {
+                return false;
+            }
+
+            selectedCameraIndex = candidate;
+            index = candidate;
+            camera = cameras[candidate];
+            return true;
+        }
+    }
+
+    private async Task<bool> ShowDestructiveConfirmationDialogAsync(string title, string message)
+    {
+        var dialog = new Avalonia.Controls.Window
+        {
+            Width = 480,
+            Height = 180,
+            CanResize = false,
+            Title = title,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+
+        var result = false;
+        var cancelButton = new Button { Content = "Cancel", MinWidth = 90 };
+        var confirmButton = new Button { Content = "Confirm", MinWidth = 90, Classes = { "destructive" } };
+        cancelButton.Click += (_, _) => dialog.Close();
+        confirmButton.Click += (_, _) =>
+        {
+            result = true;
+            dialog.Close();
+        };
+
+        var contentGrid = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,12,Auto")
+        };
+        contentGrid.Children.Add(new TextBlock
+        {
+            Text = message,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap
+        });
+        var buttonRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+            Children = { cancelButton, confirmButton }
+        };
+        Grid.SetRow(buttonRow, 2);
+        contentGrid.Children.Add(buttonRow);
+
+        dialog.Content = new Border
+        {
+            Padding = new Thickness(14),
+            Child = contentGrid
+        };
+
+        await dialog.ShowDialog(this);
+        return result;
     }
 
     private async void MarkAmbiguityButtonOnClick(object? sender, RoutedEventArgs e)

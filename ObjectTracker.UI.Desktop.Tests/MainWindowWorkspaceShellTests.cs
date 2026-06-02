@@ -156,4 +156,48 @@ public sealed class MainWindowWorkspaceShellTests
     {
         Assert.Equal(SelectionMode.Single, MainWindow.GetCameraListSelectionMode());
     }
+
+    [Fact]
+    public void CameraDestructiveActionsState_WhenVisionPipelineRunning_DisablesClearAndDelete()
+    {
+        var state = MainWindow.BuildCameraDestructiveActionsState(
+            isVisionPipelineRunning: true,
+            isAmbiguityActive: false,
+            hasSelectedCamera: true,
+            cameraCount: 2);
+
+        Assert.False(state.DeleteSelectedEnabled);
+        Assert.False(state.ClearAllEnabled);
+        Assert.True(state.DeleteSelectedRequiresConfirmation);
+        Assert.True(state.ClearAllRequiresConfirmation);
+    }
+
+    [Fact]
+    public void CameraDestructiveActionsState_WhenStoppedAndSelectionExists_EnablesDeleteAndClear()
+    {
+        var state = MainWindow.BuildCameraDestructiveActionsState(
+            isVisionPipelineRunning: false,
+            isAmbiguityActive: false,
+            hasSelectedCamera: true,
+            cameraCount: 1);
+
+        Assert.True(state.DeleteSelectedEnabled);
+        Assert.True(state.ClearAllEnabled);
+    }
+
+    [Fact]
+    public void DeleteCameraConfirmationMessage_UsesSelectedCameraName()
+    {
+        var message = MainWindow.BuildDeleteCameraConfirmationMessage("Camera A");
+
+        Assert.Equal("Delete camera 'Camera A' from this Session?", message);
+    }
+
+    [Fact]
+    public void ClearCamerasConfirmationMessage_UsesCameraCountAndWarning()
+    {
+        var message = MainWindow.BuildClearCamerasConfirmationMessage(3);
+
+        Assert.Equal("Clear all 3 cameras from this Session? This cannot be undone.", message);
+    }
 }

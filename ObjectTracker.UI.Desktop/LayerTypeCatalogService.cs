@@ -66,6 +66,47 @@ public sealed class LayerTypeCatalogService
             .ThenBy(definition => definition.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    public LayerTypeCatalogService AddLayerType(LayerTypeDefinition definition)
+    {
+        var definitions = GetOrderedByPrecedence().ToList();
+        definitions.Add(definition);
+        return Create(definitions);
+    }
+
+    public LayerTypeAddResult TryAddLayerType(LayerTypeDefinition definition)
+    {
+        if (string.IsNullOrWhiteSpace(definition.LayerTypeId))
+        {
+            return new LayerTypeAddResult(false, this, "Layer Type ID is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(definition.DisplayName))
+        {
+            return new LayerTypeAddResult(false, this, $"Layer Type '{definition.LayerTypeId}' requires a display name.");
+        }
+
+        var normalizedId = definition.LayerTypeId.Trim().ToUpperInvariant();
+        if (definitionsById.ContainsKey(normalizedId))
+        {
+            return new LayerTypeAddResult(false, this, $"Layer Type '{normalizedId}' already exists.");
+        }
+
+        if (definitionsById.Values.Any(existing => existing.Precedence == definition.Precedence))
+        {
+            return new LayerTypeAddResult(false, this, $"Duplicate precedence '{definition.Precedence}' is not allowed.");
+        }
+
+        return new LayerTypeAddResult(true, AddLayerType(definition), string.Empty);
+    }
+
+    public LayerTypeCatalogService RemoveLayerType(string layerTypeId)
+    {
+        var definitions = GetOrderedByPrecedence()
+            .Where(definition => !string.Equals(definition.LayerTypeId, layerTypeId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return Create(definitions);
+    }
 }
 
 public enum LayerMergePolicy
@@ -86,3 +127,5 @@ public readonly record struct LayerTypeDefinition(
     int Precedence,
     LayerMergePolicy MergePolicy,
     LayerTypeBehaviorClass BehaviorClass);
+
+public readonly record struct LayerTypeAddResult(bool Added, LayerTypeCatalogService Catalog, string Warning);

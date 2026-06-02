@@ -49,6 +49,16 @@ public partial class MainWindow : AppWindow
         bool DeleteSelectedRequiresConfirmation,
         bool ClearAllRequiresConfirmation);
 
+    public readonly record struct LayerTypeUsageItem(
+        string CameraDisplayName,
+        string CameraZoneName,
+        string LayerName,
+        int RegionCount);
+
+    public readonly record struct LayerTypeUsageProjection(IReadOnlyList<LayerTypeUsageItem> Items);
+
+    public readonly record struct LayerTypeDeleteState(bool CanDelete, string Message);
+
     public readonly record struct CameraWorkspaceCamera(
         string CameraId,
         string DisplayName,
@@ -230,6 +240,47 @@ public partial class MainWindow : AppWindow
         return $"Clear all {cameraCount} cameras from this Session? This cannot be undone.";
     }
 
+    public static LayerTypeUsageProjection BuildLayerTypeUsageProjection(
+        string layerTypeId,
+        IReadOnlyCollection<CameraZoneLayer> cameraZoneLayers,
+        IReadOnlyCollection<CameraZoneDefinition> cameraZones,
+        IReadOnlyCollection<CameraZoneBinding> cameraZoneBindings,
+        IReadOnlyDictionary<string, string> cameraDisplayNamesBySourceId)
+    {
+        var zoneNameById = cameraZones.ToDictionary(zone => zone.CameraZoneId, zone => zone.Name, StringComparer.OrdinalIgnoreCase);
+        var cameraNameByZoneId = cameraZoneBindings
+            .Where(binding => cameraDisplayNamesBySourceId.ContainsKey(binding.SourceId))
+            .GroupBy(binding => binding.CameraZoneId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => cameraDisplayNamesBySourceId[group.First().SourceId],
+                StringComparer.OrdinalIgnoreCase);
+
+        var items = cameraZoneLayers
+            .Where(layer => string.Equals(layer.LayerTypeId, layerTypeId, StringComparison.OrdinalIgnoreCase))
+            .Select(layer => new LayerTypeUsageItem(
+                cameraNameByZoneId.TryGetValue(layer.CameraZoneId, out var cameraName) ? cameraName : "Unbound camera source",
+                zoneNameById.TryGetValue(layer.CameraZoneId, out var zoneName) ? zoneName : layer.CameraZoneId,
+                layer.Name,
+                layer.Regions.Count))
+            .OrderBy(item => item.CameraDisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.LayerName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new LayerTypeUsageProjection(items);
+    }
+
+    public static LayerTypeDeleteState BuildLayerTypeDeleteState(string layerTypeId, LayerTypeUsageProjection usage)
+    {
+        if (usage.Items.Count == 0)
+        {
+            return new LayerTypeDeleteState(true, $"Layer Type {layerTypeId} can be deleted.");
+        }
+
+        var dependencies = string.Join(", ", usage.Items.Select(item => $"{item.CameraDisplayName}: {item.LayerName}"));
+        return new LayerTypeDeleteState(false, $"Layer Type {layerTypeId} is in use and cannot be deleted. Remove Camera Layer Regions first: {dependencies}.");
+    }
+
     public static BottomStatusSnapshot BuildBottomStatusSnapshot(bool isVisionPipelineRunning, bool isAmbiguityActive, bool hasPendingVisionPipelineRestart)
     {
         return new BottomStatusSnapshot(
@@ -259,7 +310,7 @@ public partial class MainWindow : AppWindow
     private readonly EffectiveZoneCompositionService effectiveZoneCompositionService = new();
     private readonly SessionAuditLogger sessionAuditLogger = new();
     private readonly CameraZoneIdentityService cameraZoneIdentityService;
-    private readonly LayerTypeCatalogService layerTypeCatalogService;
+    private LayerTypeCatalogService layerTypeCatalogService;
     private readonly AppSettings appSettings;
     private List<CameraZoneLayer> cameraZoneLayers = new();
 
@@ -356,6 +407,9 @@ public partial class MainWindow : AppWindow
         ToggleGridEditorButton.Click += ToggleGridEditorButtonOnClick;
         AddLayerButton.Click += AddLayerButtonOnClick;
         DeleteLayerButton.Click += DeleteLayerButtonOnClick;
+        AddGlobalLayerTypeButton.Click += AddGlobalLayerTypeButtonOnClick;
+        DeleteGlobalLayerTypeButton.Click += DeleteGlobalLayerTypeButtonOnClick;
+        GlobalLayerTypesListBox.SelectionChanged += GlobalLayerTypesListBoxOnSelectionChanged;
         LayersListBox.SelectionChanged += LayersListBoxOnSelectionChanged;
         RegionsListBox.SelectionChanged += RegionsListBoxOnSelectionChanged;
         SaveRegionButton.Click += SaveRegionButtonOnClick;
@@ -1763,11 +1817,77 @@ public partial class MainWindow : AppWindow
 
     private void RefreshLayerTypeUi()
     {
-        LayerTypeComboBox.ItemsSource = layerTypeCatalogService
+        var orderedDefinitions = layerTypeCatalogService
             .GetOrderedByPrecedence()
+            .ToList();
+
+        LayerTypeComboBox.ItemsSource = orderedDefinitions
             .Select(definition => new LayerTypeComboItem(definition.LayerTypeId, definition.DisplayName))
             .ToList();
         LayerTypeComboBox.SelectedIndex = 0;
+
+        var selectedLayerTypeId = GlobalLayerTypesListBox.SelectedItem is GlobalLayerTypeListItem selected
+            ? selected.LayerTypeId
+            : null;
+        var globalItems = orderedDefinitions
+            .Select(definition => new GlobalLayerTypeListItem(
+                definition.LayerTypeId,
+                definition.DisplayName,
+                definition.Precedence,
+                definition.MergePolicy,
+                definition.BehaviorClass))
+            .ToList();
+        GlobalLayerTypesListBox.ItemsSource = globalItems;
+        var selectedIndex = string.IsNullOrWhiteSpace(selectedLayerTypeId)
+            ? 0
+            : globalItems.FindIndex(item => string.Equals(item.LayerTypeId, selectedLayerTypeId, StringComparison.OrdinalIgnoreCase));
+        GlobalLayerTypesListBox.SelectedIndex = globalItems.Count == 0 ? -1 : Math.Max(0, selectedIndex);
+        RefreshSelectedGlobalLayerTypeUsage();
+    }
+
+    private void GlobalLayerTypesListBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        RefreshSelectedGlobalLayerTypeUsage();
+    }
+
+    private void RefreshSelectedGlobalLayerTypeUsage()
+    {
+        if (GlobalLayerTypesListBox.SelectedItem is not GlobalLayerTypeListItem selected)
+        {
+            GlobalLayerTypeIdTextBox.Text = string.Empty;
+            GlobalLayerTypeNameTextBox.Text = string.Empty;
+            GlobalLayerTypePrecedenceTextBox.Text = string.Empty;
+            GlobalLayerTypeUsageListBox.ItemsSource = null;
+            DeleteGlobalLayerTypeButton.IsEnabled = false;
+            GlobalLayerTypeDeleteStatusText.Text = "Select a Layer Type to inspect usage.";
+            return;
+        }
+
+        GlobalLayerTypeIdTextBox.Text = selected.LayerTypeId;
+        GlobalLayerTypeNameTextBox.Text = selected.DisplayName;
+        GlobalLayerTypePrecedenceTextBox.Text = selected.Precedence.ToString();
+
+        var usage = BuildLayerTypeUsageProjection(
+            selected.LayerTypeId,
+            cameraZoneLayers,
+            cameraZoneIdentityService.CameraZones,
+            cameraZoneIdentityService.SourceBindings,
+            BuildCameraDisplayNamesBySourceId());
+        GlobalLayerTypeUsageListBox.ItemsSource = usage.Items.Count == 0
+            ? new[] { "No camera usage." }
+            : usage.Items.Select(item => $"{item.CameraDisplayName} / {item.CameraZoneName}: {item.LayerName} ({item.RegionCount} regions)").ToList();
+
+        var deleteState = BuildLayerTypeDeleteState(selected.LayerTypeId, usage);
+        DeleteGlobalLayerTypeButton.IsEnabled = deleteState.CanDelete;
+        GlobalLayerTypeDeleteStatusText.Text = deleteState.Message;
+    }
+
+    private Dictionary<string, string> BuildCameraDisplayNamesBySourceId()
+    {
+        lock (cameraSync)
+        {
+            return cameras.ToDictionary(camera => camera.Id, camera => camera.DisplayName, StringComparer.OrdinalIgnoreCase);
+        }
     }
 
     private void RefreshLayerEditorUiForSelectedCamera()
@@ -2278,6 +2398,60 @@ public partial class MainWindow : AppWindow
         cameraZoneLayerRepository.Save(cameraZoneLayers);
         RefreshLayerEditorUiForSelectedCamera();
         SetStatus($"Status: added {layerType.DisplayName} layer in {zone.Name}.");
+    }
+
+    private void AddGlobalLayerTypeButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (!int.TryParse(GlobalLayerTypePrecedenceTextBox.Text, out var precedence))
+        {
+            SetStatus("Status: enter a numeric Layer Type precedence.");
+            return;
+        }
+
+        var result = layerTypeCatalogService.TryAddLayerType(new LayerTypeDefinition(
+            GlobalLayerTypeIdTextBox.Text ?? string.Empty,
+            GlobalLayerTypeNameTextBox.Text ?? string.Empty,
+            precedence,
+            LayerMergePolicy.MergeForEffectiveMask,
+            LayerTypeBehaviorClass.Informational));
+        if (!result.Added)
+        {
+            GlobalLayerTypeDeleteStatusText.Text = result.Warning;
+            SetStatus($"Status: {result.Warning}");
+            return;
+        }
+
+        layerTypeCatalogService = result.Catalog;
+        layerTypeSettingsStore.Save(layerTypeCatalogService.GetOrderedByPrecedence());
+        RefreshLayerTypeUi();
+        SetStatus($"Status: added Layer Type {GlobalLayerTypeNameTextBox.Text}.");
+    }
+
+    private void DeleteGlobalLayerTypeButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (GlobalLayerTypesListBox.SelectedItem is not GlobalLayerTypeListItem selected)
+        {
+            return;
+        }
+
+        var usage = BuildLayerTypeUsageProjection(
+            selected.LayerTypeId,
+            cameraZoneLayers,
+            cameraZoneIdentityService.CameraZones,
+            cameraZoneIdentityService.SourceBindings,
+            BuildCameraDisplayNamesBySourceId());
+        var deleteState = BuildLayerTypeDeleteState(selected.LayerTypeId, usage);
+        if (!deleteState.CanDelete)
+        {
+            SetStatus($"Status: {deleteState.Message}");
+            RefreshSelectedGlobalLayerTypeUsage();
+            return;
+        }
+
+        layerTypeCatalogService = layerTypeCatalogService.RemoveLayerType(selected.LayerTypeId);
+        layerTypeSettingsStore.Save(layerTypeCatalogService.GetOrderedByPrecedence());
+        RefreshLayerTypeUi();
+        SetStatus($"Status: deleted Layer Type {selected.DisplayName}.");
     }
 
     private void DeleteLayerButtonOnClick(object? sender, RoutedEventArgs e)
@@ -2837,6 +3011,16 @@ public partial class MainWindow : AppWindow
     private readonly record struct LayerTypeComboItem(string LayerTypeId, string DisplayName)
     {
         public override string ToString() => DisplayName;
+    }
+
+    private readonly record struct GlobalLayerTypeListItem(
+        string LayerTypeId,
+        string DisplayName,
+        int Precedence,
+        LayerMergePolicy MergePolicy,
+        LayerTypeBehaviorClass BehaviorClass)
+    {
+        public override string ToString() => $"{DisplayName} ({LayerTypeId}, {Precedence})";
     }
 
     private readonly record struct LayerListItem(string LayerId, string Name, string LayerTypeId)

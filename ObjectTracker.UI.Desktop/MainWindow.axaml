@@ -59,7 +59,7 @@
                     <Border x:Name="CameraPanelBorder"
                             Classes="surface"
                             Padding="10">
-                <Grid RowDefinitions="Auto,8,Auto,8,*,8,Auto">
+                <Grid RowDefinitions="Auto,8,*">
                     <Grid Grid.Row="0" ColumnDefinitions="*,8,Auto,8,Auto">
                         <TextBlock x:Name="CameraPanelTitleText"
                                    Grid.Column="0"
@@ -75,8 +75,10 @@
                                 Content="📌" />
                     </Grid>
 
+                    <ScrollViewer Grid.Row="2"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
                     <Grid x:Name="CameraPanelFullContent"
-                          Grid.Row="2"
                           RowDefinitions="Auto,8,*">
                     <ListBox Grid.Row="0"
                               x:Name="PlaylistListBox"
@@ -521,6 +523,7 @@
                         </Border>
                     </Grid>
                     </Grid>
+                    </ScrollViewer>
                 </Grid>
                     </Border>
                 </SplitView.Pane>

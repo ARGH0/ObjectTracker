@@ -713,12 +713,66 @@
                 Classes="surface"
                 IsVisible="False"
                 Padding="16">
-            <StackPanel Spacing="6">
-                <TextBlock Text="Settings Workspace"
-                           Classes="sectionTitle" />
-                <TextBlock Text="Global settings and restart policy controls appear here."
-                           Classes="muted" />
-            </StackPanel>
+            <Grid RowDefinitions="Auto,12,Auto,12,Auto,12,*"
+                  ColumnDefinitions="360,16,*">
+                <StackPanel Grid.Row="0"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="3"
+                            Spacing="4">
+                    <TextBlock Text="Settings Workspace"
+                               Classes="sectionTitle" />
+                    <TextBlock Text="Global settings use draft edits until explicitly saved."
+                               Classes="muted" />
+                </StackPanel>
+
+                <Border Grid.Row="2"
+                        Grid.Column="0"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Grid Settings"
+                                   Classes="sectionTitle" />
+                        <TextBlock Text="Grid Columns"
+                                   Classes="eyebrow" />
+                        <TextBox x:Name="SettingsGridColumnsTextBox"
+                                 Watermark="32" />
+                        <TextBlock Text="Grid Rows"
+                                   Classes="eyebrow" />
+                        <TextBox x:Name="SettingsGridRowsTextBox"
+                                 Watermark="18" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="2"
+                        Grid.Column="2"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Draft State"
+                                   Classes="sectionTitle" />
+                        <TextBlock x:Name="SettingsDraftStatusText"
+                                   Text="Settings: saved"
+                                   Classes="muted"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="Leaving Settings with unsaved changes asks Save / Discard / Cancel."
+                                   Classes="muted"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Grid Grid.Row="4"
+                      Grid.Column="0"
+                      ColumnDefinitions="*,8,*">
+                    <Button Grid.Column="0"
+                            x:Name="SaveSettingsButton"
+                            Classes="primary"
+                            Content="Save Settings" />
+                    <Button Grid.Column="2"
+                            x:Name="DiscardSettingsButton"
+                            Classes="ghost"
+                            Content="Discard Changes" />
+                </Grid>
+            </Grid>
         </Border>
 
         <Border Grid.Row="2"

@@ -59,6 +59,19 @@ public partial class MainWindow : AppWindow
 
     public readonly record struct LayerTypeDeleteState(bool CanDelete, string Message);
 
+    public readonly record struct SettingsDraftState(
+        AppSettings SavedSettings,
+        AppSettings DraftSettings,
+        bool HasUnsavedChanges,
+        string StatusText);
+
+    public readonly record struct SettingsNavigationResult(
+        Workspace Workspace,
+        AppSettings SavedSettings,
+        AppSettings DraftSettings,
+        bool HasUnsavedChanges,
+        bool ShouldPersist);
+
     public readonly record struct CameraWorkspaceCamera(
         string CameraId,
         string DisplayName,
@@ -73,6 +86,13 @@ public partial class MainWindow : AppWindow
         LiveAnnotated,
         DebugView,
         RawFeed
+    }
+
+    public enum SettingsNavigationDecision
+    {
+        Save,
+        Discard,
+        Cancel
     }
 
     public readonly record struct CameraGridProjection(
@@ -281,6 +301,36 @@ public partial class MainWindow : AppWindow
         return new LayerTypeDeleteState(false, $"Layer Type {layerTypeId} is in use and cannot be deleted. Remove Camera Layer Regions first: {dependencies}.");
     }
 
+    public static SettingsDraftState BuildSettingsDraftState(AppSettings savedSettings, AppSettings draftSettings)
+    {
+        var hasUnsavedChanges = savedSettings != draftSettings;
+        return new SettingsDraftState(
+            savedSettings,
+            draftSettings,
+            hasUnsavedChanges,
+            hasUnsavedChanges ? "Settings: unsaved changes" : "Settings: saved");
+    }
+
+    public static SettingsNavigationResult ApplySettingsNavigationDecision(
+        Workspace currentWorkspace,
+        Workspace targetWorkspace,
+        AppSettings savedSettings,
+        AppSettings draftSettings,
+        SettingsNavigationDecision decision)
+    {
+        if (currentWorkspace != Workspace.Settings || savedSettings == draftSettings)
+        {
+            return new SettingsNavigationResult(targetWorkspace, savedSettings, draftSettings, false, false);
+        }
+
+        return decision switch
+        {
+            SettingsNavigationDecision.Save => new SettingsNavigationResult(targetWorkspace, draftSettings, draftSettings, false, true),
+            SettingsNavigationDecision.Discard => new SettingsNavigationResult(targetWorkspace, savedSettings, savedSettings, false, false),
+            _ => new SettingsNavigationResult(currentWorkspace, savedSettings, draftSettings, true, false)
+        };
+    }
+
     public static BottomStatusSnapshot BuildBottomStatusSnapshot(bool isVisionPipelineRunning, bool isAmbiguityActive, bool hasPendingVisionPipelineRestart)
     {
         return new BottomStatusSnapshot(
@@ -311,7 +361,8 @@ public partial class MainWindow : AppWindow
     private readonly SessionAuditLogger sessionAuditLogger = new();
     private readonly CameraZoneIdentityService cameraZoneIdentityService;
     private LayerTypeCatalogService layerTypeCatalogService;
-    private readonly AppSettings appSettings;
+    private AppSettings appSettings;
+    private AppSettings draftAppSettings;
     private List<CameraZoneLayer> cameraZoneLayers = new();
 
     private CancellationTokenSource? runCts;
@@ -339,6 +390,7 @@ public partial class MainWindow : AppWindow
     private Workspace activeWorkspace = Workspace.Camera;
     private string? activeVisionPipelineCameraId;
     internal Func<string, string, Task<bool>> ConfirmDestructiveActionAsync { get; set; }
+    internal Func<Task<SettingsNavigationDecision>> PromptSettingsNavigationDecisionAsync { get; set; }
 
     private sealed record DebugTileImageSet(Image Background, Image Moving, Image Color, Image Motion);
 
@@ -363,6 +415,8 @@ public partial class MainWindow : AppWindow
         cameraZoneIdentityService = new CameraZoneIdentityService(cameraZoneSnapshot.Zones, cameraZoneSnapshot.Bindings);
         layerTypeCatalogService = layerTypeSettingsStore.Load();
         appSettings = appSettingsStore.Load();
+        draftAppSettings = appSettings;
+        PromptSettingsNavigationDecisionAsync = ShowSettingsNavigationGuardDialogAsync;
         cameraZoneLayers = cameraZoneLayerRepository.Load().ToList();
         ConfirmDestructiveActionAsync = ShowDestructiveConfirmationDialogAsync;
 
@@ -370,6 +424,7 @@ public partial class MainWindow : AppWindow
         SetActiveWorkspace(Workspace.Camera);
         SetRunState(isRunning: false);
         ApplyCameraPanelLayout();
+        RefreshSettingsWorkspaceUi();
         RefreshCameraUi();
         RefreshLayerTypeUi();
         AppendLog($"Loaded {layerTypeCatalogService.GetOrderedByPrecedence().Count} layer type definitions.");
@@ -430,6 +485,10 @@ public partial class MainWindow : AppWindow
         StopVisionPipelineMenuItem.Click += StopVisionPipelineMenuItemOnClick;
         ToggleCameraPanelButton.Click += ToggleCameraPanelButtonOnClick;
         PinCameraPanelButton.Click += PinCameraPanelButtonOnClick;
+        SaveSettingsButton.Click += SaveSettingsButtonOnClick;
+        DiscardSettingsButton.Click += DiscardSettingsButtonOnClick;
+        SettingsGridColumnsTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
+        SettingsGridRowsTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
 
         SampleCountTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         ThresholdTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
@@ -449,19 +508,19 @@ public partial class MainWindow : AppWindow
         UpdateAmbiguityUi();
     }
 
-    private void CameraWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
+    private async void CameraWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
     {
-        SetActiveWorkspace(Workspace.Camera);
+        await TryNavigateWorkspaceAsync(Workspace.Camera);
     }
 
-    private void LayersWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
+    private async void LayersWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
     {
-        SetActiveWorkspace(Workspace.Layers);
+        await TryNavigateWorkspaceAsync(Workspace.Layers);
     }
 
-    private void SettingsWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
+    private async void SettingsWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
     {
-        SetActiveWorkspace(Workspace.Settings);
+        await TryNavigateWorkspaceAsync(Workspace.Settings);
     }
 
     private async void StartVisionPipelineMenuItemOnClick(object? sender, RoutedEventArgs e)
@@ -528,6 +587,74 @@ public partial class MainWindow : AppWindow
     public Workspace GetActiveWorkspace()
     {
         return activeWorkspace;
+    }
+
+    private async Task TryNavigateWorkspaceAsync(Workspace targetWorkspace)
+    {
+        if (targetWorkspace == activeWorkspace)
+        {
+            return;
+        }
+
+        var draftState = BuildSettingsDraftState(appSettings, draftAppSettings);
+        var decision = activeWorkspace == Workspace.Settings && draftState.HasUnsavedChanges
+            ? await PromptSettingsNavigationDecisionAsync()
+            : SettingsNavigationDecision.Discard;
+        var result = ApplySettingsNavigationDecision(activeWorkspace, targetWorkspace, appSettings, draftAppSettings, decision);
+
+        appSettings = result.SavedSettings;
+        draftAppSettings = result.DraftSettings;
+        if (result.ShouldPersist)
+        {
+            appSettingsStore.Save(appSettings);
+        }
+
+        RefreshSettingsWorkspaceUi();
+        SetActiveWorkspace(result.Workspace);
+    }
+
+    private void SaveSettingsButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        UpdateDraftAppSettingsFromUi();
+        appSettings = draftAppSettings;
+        appSettingsStore.Save(appSettings);
+        RefreshSettingsWorkspaceUi();
+        SetStatus("Status: settings saved.");
+    }
+
+    private void DiscardSettingsButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        draftAppSettings = appSettings;
+        RefreshSettingsWorkspaceUi();
+        SetStatus("Status: settings changes discarded.");
+    }
+
+    private void SettingsDraftTextBoxOnTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        UpdateDraftAppSettingsFromUi();
+        RefreshSettingsDraftStatusUi();
+    }
+
+    private void UpdateDraftAppSettingsFromUi()
+    {
+        var columns = ParseInt(SettingsGridColumnsTextBox.Text, appSettings.GridColumns, AppSettings.MinGridColumns, AppSettings.MaxGridColumns);
+        var rows = ParseInt(SettingsGridRowsTextBox.Text, appSettings.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows);
+        draftAppSettings = new AppSettings(columns, rows);
+    }
+
+    private void RefreshSettingsWorkspaceUi()
+    {
+        SettingsGridColumnsTextBox.Text = draftAppSettings.GridColumns.ToString();
+        SettingsGridRowsTextBox.Text = draftAppSettings.GridRows.ToString();
+        RefreshSettingsDraftStatusUi();
+    }
+
+    private void RefreshSettingsDraftStatusUi()
+    {
+        var state = BuildSettingsDraftState(appSettings, draftAppSettings);
+        SettingsDraftStatusText.Text = state.StatusText;
+        SaveSettingsButton.IsEnabled = state.HasUnsavedChanges;
+        DiscardSettingsButton.IsEnabled = state.HasUnsavedChanges;
     }
 
     private async void AddCamerasButtonOnClick(object? sender, RoutedEventArgs e)
@@ -2060,6 +2187,62 @@ public partial class MainWindow : AppWindow
             HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 8,
             Children = { cancelButton, confirmButton }
+        };
+        Grid.SetRow(buttonRow, 2);
+        contentGrid.Children.Add(buttonRow);
+
+        dialog.Content = new Border
+        {
+            Padding = new Thickness(14),
+            Child = contentGrid
+        };
+
+        await dialog.ShowDialog(this);
+        return result;
+    }
+
+    private async Task<SettingsNavigationDecision> ShowSettingsNavigationGuardDialogAsync()
+    {
+        var dialog = new Avalonia.Controls.Window
+        {
+            Width = 540,
+            Height = 190,
+            CanResize = false,
+            Title = "Unsaved Settings",
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+
+        var result = SettingsNavigationDecision.Cancel;
+        var saveButton = new Button { Content = "Save", MinWidth = 90, Classes = { "primary" } };
+        var discardButton = new Button { Content = "Discard", MinWidth = 90, Classes = { "destructive" } };
+        var cancelButton = new Button { Content = "Cancel", MinWidth = 90 };
+        saveButton.Click += (_, _) =>
+        {
+            result = SettingsNavigationDecision.Save;
+            dialog.Close();
+        };
+        discardButton.Click += (_, _) =>
+        {
+            result = SettingsNavigationDecision.Discard;
+            dialog.Close();
+        };
+        cancelButton.Click += (_, _) => dialog.Close();
+
+        var contentGrid = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,12,Auto")
+        };
+        contentGrid.Children.Add(new TextBlock
+        {
+            Text = "Settings have unsaved changes. Save changes, discard them, or cancel navigation?",
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap
+        });
+        var buttonRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+            Children = { saveButton, discardButton, cancelButton }
         };
         Grid.SetRow(buttonRow, 2);
         contentGrid.Children.Add(buttonRow);

@@ -200,4 +200,62 @@ public sealed class MainWindowWorkspaceShellTests
 
         Assert.Equal("Clear all 3 cameras from this Session? This cannot be undone.", message);
     }
+
+    [Fact]
+    public void SettingsDraftState_WhenDraftDiffersFromSaved_HasUnsavedChangesWithoutChangingSavedSettings()
+    {
+        var saved = new AppSettings(GridColumns: 32, GridRows: 18);
+        var draft = new AppSettings(GridColumns: 40, GridRows: 18);
+
+        var state = MainWindow.BuildSettingsDraftState(saved, draft);
+
+        Assert.True(state.HasUnsavedChanges);
+        Assert.Equal(saved, state.SavedSettings);
+        Assert.Equal(draft, state.DraftSettings);
+        Assert.Equal("Settings: unsaved changes", state.StatusText);
+    }
+
+    [Fact]
+    public void SettingsNavigation_WithUnsavedChangesAndCancel_StaysInSettingsWithDraftIntact()
+    {
+        var saved = new AppSettings(GridColumns: 32, GridRows: 18);
+        var draft = new AppSettings(GridColumns: 40, GridRows: 18);
+
+        var result = MainWindow.ApplySettingsNavigationDecision(
+            MainWindow.Workspace.Settings,
+            MainWindow.Workspace.Camera,
+            saved,
+            draft,
+            MainWindow.SettingsNavigationDecision.Cancel);
+
+        Assert.Equal(MainWindow.Workspace.Settings, result.Workspace);
+        Assert.Equal(saved, result.SavedSettings);
+        Assert.Equal(draft, result.DraftSettings);
+        Assert.True(result.HasUnsavedChanges);
+    }
+
+    [Theory]
+    [InlineData(MainWindow.SettingsNavigationDecision.Save, 40, true)]
+    [InlineData(MainWindow.SettingsNavigationDecision.Discard, 32, false)]
+    public void SettingsNavigation_WithUnsavedChanges_AppliesSaveOrDiscard(
+        MainWindow.SettingsNavigationDecision decision,
+        int expectedSavedColumns,
+        bool expectedPersist)
+    {
+        var saved = new AppSettings(GridColumns: 32, GridRows: 18);
+        var draft = new AppSettings(GridColumns: 40, GridRows: 18);
+
+        var result = MainWindow.ApplySettingsNavigationDecision(
+            MainWindow.Workspace.Settings,
+            MainWindow.Workspace.Camera,
+            saved,
+            draft,
+            decision);
+
+        Assert.Equal(MainWindow.Workspace.Camera, result.Workspace);
+        Assert.Equal(expectedSavedColumns, result.SavedSettings.GridColumns);
+        Assert.Equal(result.SavedSettings, result.DraftSettings);
+        Assert.False(result.HasUnsavedChanges);
+        Assert.Equal(expectedPersist, result.ShouldPersist);
+    }
 }

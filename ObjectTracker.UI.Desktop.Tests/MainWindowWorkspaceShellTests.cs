@@ -258,4 +258,27 @@ public sealed class MainWindowWorkspaceShellTests
         Assert.False(result.HasUnsavedChanges);
         Assert.Equal(expectedPersist, result.ShouldPersist);
     }
+
+    [Theory]
+    [InlineData(MainWindow.SettingsField.GridColumns)]
+    [InlineData(MainWindow.SettingsField.GridRows)]
+    public void SettingsApplyPolicyLabel_ForGridSettings_RequiresVisionPipelineRestart(MainWindow.SettingsField field)
+    {
+        var label = MainWindow.GetSettingsApplyPolicyLabel(field);
+
+        Assert.Equal("requires Vision Pipeline restart", label);
+    }
+
+    [Fact]
+    public void SettingsSaveImpact_WhenRestartRequiredSettingChangesWhileRunning_MarksPendingRestart()
+    {
+        var saved = new AppSettings(GridColumns: 32, GridRows: 18);
+        var draft = new AppSettings(GridColumns: 40, GridRows: 18);
+
+        var impact = MainWindow.BuildSettingsSaveImpact(saved, draft, isVisionPipelineRunning: true);
+
+        Assert.True(impact.RequiresVisionPipelineRestart);
+        Assert.True(impact.HasPendingVisionPipelineRestart);
+        Assert.Equal("Settings: saved, pending Vision Pipeline restart", impact.SettingsStatusText);
+    }
 }

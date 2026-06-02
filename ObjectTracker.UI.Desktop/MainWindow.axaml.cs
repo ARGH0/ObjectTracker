@@ -72,6 +72,11 @@ public partial class MainWindow : AppWindow
         bool HasUnsavedChanges,
         bool ShouldPersist);
 
+    public readonly record struct SettingsSaveImpact(
+        bool RequiresVisionPipelineRestart,
+        bool HasPendingVisionPipelineRestart,
+        string SettingsStatusText);
+
     public readonly record struct CameraWorkspaceCamera(
         string CameraId,
         string DisplayName,
@@ -93,6 +98,12 @@ public partial class MainWindow : AppWindow
         Save,
         Discard,
         Cancel
+    }
+
+    public enum SettingsField
+    {
+        GridColumns,
+        GridRows
     }
 
     public readonly record struct CameraGridProjection(
@@ -329,6 +340,27 @@ public partial class MainWindow : AppWindow
             SettingsNavigationDecision.Discard => new SettingsNavigationResult(targetWorkspace, savedSettings, savedSettings, false, false),
             _ => new SettingsNavigationResult(currentWorkspace, savedSettings, draftSettings, true, false)
         };
+    }
+
+    public static string GetSettingsApplyPolicyLabel(SettingsField field)
+    {
+        return field switch
+        {
+            SettingsField.GridColumns => "requires Vision Pipeline restart",
+            SettingsField.GridRows => "requires Vision Pipeline restart",
+            _ => "applies immediately"
+        };
+    }
+
+    public static SettingsSaveImpact BuildSettingsSaveImpact(AppSettings savedSettings, AppSettings draftSettings, bool isVisionPipelineRunning)
+    {
+        var requiresRestart = savedSettings.GridColumns != draftSettings.GridColumns
+            || savedSettings.GridRows != draftSettings.GridRows;
+        var pendingRestart = requiresRestart && isVisionPipelineRunning;
+        return new SettingsSaveImpact(
+            requiresRestart,
+            pendingRestart,
+            pendingRestart ? "Settings: saved, pending Vision Pipeline restart" : "Settings: saved");
     }
 
     public static BottomStatusSnapshot BuildBottomStatusSnapshot(bool isVisionPipelineRunning, bool isAmbiguityActive, bool hasPendingVisionPipelineRestart)
@@ -601,24 +633,32 @@ public partial class MainWindow : AppWindow
             ? await PromptSettingsNavigationDecisionAsync()
             : SettingsNavigationDecision.Discard;
         var result = ApplySettingsNavigationDecision(activeWorkspace, targetWorkspace, appSettings, draftAppSettings, decision);
+        var impact = result.ShouldPersist
+            ? BuildSettingsSaveImpact(appSettings, draftAppSettings, runTask is not null)
+            : new SettingsSaveImpact(false, false, "Settings: saved");
 
         appSettings = result.SavedSettings;
         draftAppSettings = result.DraftSettings;
         if (result.ShouldPersist)
         {
+            hasPendingVisionPipelineRestart = hasPendingVisionPipelineRestart || impact.HasPendingVisionPipelineRestart;
             appSettingsStore.Save(appSettings);
         }
 
         RefreshSettingsWorkspaceUi();
+        UpdateBottomStatusBar();
         SetActiveWorkspace(result.Workspace);
     }
 
     private void SaveSettingsButtonOnClick(object? sender, RoutedEventArgs e)
     {
         UpdateDraftAppSettingsFromUi();
+        var impact = BuildSettingsSaveImpact(appSettings, draftAppSettings, runTask is not null);
         appSettings = draftAppSettings;
+        hasPendingVisionPipelineRestart = hasPendingVisionPipelineRestart || impact.HasPendingVisionPipelineRestart;
         appSettingsStore.Save(appSettings);
         RefreshSettingsWorkspaceUi();
+        UpdateBottomStatusBar();
         SetStatus("Status: settings saved.");
     }
 
@@ -644,6 +684,8 @@ public partial class MainWindow : AppWindow
 
     private void RefreshSettingsWorkspaceUi()
     {
+        SettingsGridColumnsPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.GridColumns);
+        SettingsGridRowsPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.GridRows);
         SettingsGridColumnsTextBox.Text = draftAppSettings.GridColumns.ToString();
         SettingsGridRowsTextBox.Text = draftAppSettings.GridRows.ToString();
         RefreshSettingsDraftStatusUi();
@@ -653,6 +695,9 @@ public partial class MainWindow : AppWindow
     {
         var state = BuildSettingsDraftState(appSettings, draftAppSettings);
         SettingsDraftStatusText.Text = state.StatusText;
+        SettingsPendingRestartText.Text = hasPendingVisionPipelineRestart
+            ? "Pending restart: required"
+            : "Pending restart: none";
         SaveSettingsButton.IsEnabled = state.HasUnsavedChanges;
         DiscardSettingsButton.IsEnabled = state.HasUnsavedChanges;
     }

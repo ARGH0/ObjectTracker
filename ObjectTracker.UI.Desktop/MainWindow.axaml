@@ -732,12 +732,20 @@
                     <StackPanel Spacing="8">
                         <TextBlock Text="Grid Settings"
                                    Classes="sectionTitle" />
-                        <TextBlock Text="Grid Columns"
-                                   Classes="eyebrow" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Grid Columns"
+                                       Classes="eyebrow" />
+                            <TextBlock x:Name="SettingsGridColumnsPolicyText"
+                                       Classes="muted" />
+                        </StackPanel>
                         <TextBox x:Name="SettingsGridColumnsTextBox"
                                  Watermark="32" />
-                        <TextBlock Text="Grid Rows"
-                                   Classes="eyebrow" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Grid Rows"
+                                       Classes="eyebrow" />
+                            <TextBlock x:Name="SettingsGridRowsPolicyText"
+                                       Classes="muted" />
+                        </StackPanel>
                         <TextBox x:Name="SettingsGridRowsTextBox"
                                  Watermark="18" />
                     </StackPanel>
@@ -752,6 +760,10 @@
                                    Classes="sectionTitle" />
                         <TextBlock x:Name="SettingsDraftStatusText"
                                    Text="Settings: saved"
+                                   Classes="muted"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Name="SettingsPendingRestartText"
+                                   Text="Pending restart: none"
                                    Classes="muted"
                                    TextWrapping="Wrap" />
                         <TextBlock Text="Leaving Settings with unsaved changes asks Save / Discard / Cancel."

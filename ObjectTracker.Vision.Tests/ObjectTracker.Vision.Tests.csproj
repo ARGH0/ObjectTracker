@@ -17,5 +17,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ObjectTracker.Vision\ObjectTracker.Vision.csproj" />
+    <ProjectReference Include="..\ObjectTracker.Vision.Source\ObjectTracker.Vision.Source.csproj" />
   </ItemGroup>
 </Project>

@@ -62,6 +62,10 @@ _Avoid_: Hotspot, special area
 The portion of the rail layout observed by one camera.
 _Avoid_: Screen, viewport
 
+**Camera Source**:
+The physical or file-based feed that provides images for one Camera Zone during a Session. A live physical camera source should have one owning feed even when multiple parts of the system view or process it.
+_Avoid_: Stream, playback, device handle
+
 **Camera Visibility**:
 Whether a camera tile is shown in the Camera workspace. Canonical states are `visible` and `hidden`.
 _Avoid_: Enabled view, display toggle

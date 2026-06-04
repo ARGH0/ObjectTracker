@@ -400,8 +400,8 @@ public partial class MainWindow : AppWindow
     private List<CameraZoneLayer> cameraZoneLayers = new();
 
     private CancellationTokenSource? runCts;
-    private CancellationTokenSource? tilePreviewCts;
-    private Task[] tilePreviewTasks = Array.Empty<Task>();
+    private readonly CameraTileFeedCoordinator cameraTileFeedCoordinator;
+    private readonly Dictionary<string, CameraProfile> cameraTileFeedCamerasById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Image> cameraTileImagesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, CameraRenderMode> cameraTileRenderModesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DebugTileImageSet> cameraTileDebugImagesById = new(StringComparer.OrdinalIgnoreCase);
@@ -453,6 +453,7 @@ public partial class MainWindow : AppWindow
         PromptSettingsNavigationDecisionAsync = ShowSettingsNavigationGuardDialogAsync;
         cameraZoneLayers = cameraZoneLayerRepository.Load().ToList();
         ConfirmDestructiveActionAsync = ShowDestructiveConfirmationDialogAsync;
+        cameraTileFeedCoordinator = new CameraTileFeedCoordinator(StartCameraTileFeedConsumer);
 
         HookEvents();
         SetActiveWorkspace(Workspace.Camera);
@@ -980,6 +981,7 @@ public partial class MainWindow : AppWindow
             selectedCameraIndex = -1;
         }
 
+        await StopCameraTilePreviewAsync();
         await usbCameraOwnerManager.StopAllAsync(CancellationToken.None);
 
         PersistCameraSettings();
@@ -1613,8 +1615,6 @@ public partial class MainWindow : AppWindow
 
     private void StartCameraTilePreview(IReadOnlyList<CameraProfile> orderedCameras, CameraGridProjection projection)
     {
-        CancelCameraTilePreview();
-
         var visibleIds = projection.Tiles.Select(tile => tile.CameraId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var feedCameras = orderedCameras
@@ -1624,56 +1624,38 @@ public partial class MainWindow : AppWindow
                 mode != CameraRenderMode.DebugView)
             .ToList();
 
-        if (feedCameras.Count == 0)
+        cameraTileFeedCamerasById.Clear();
+        foreach (var camera in feedCameras)
         {
-            return;
+            cameraTileFeedCamerasById[camera.Id] = camera;
         }
 
-        tilePreviewCts = new CancellationTokenSource();
-        var token = tilePreviewCts.Token;
-        tilePreviewTasks = feedCameras
+        var requests = feedCameras
             .Where(camera => cameraTileImagesById.ContainsKey(camera.Id))
-            .Select(camera => Task.Run(() => RunCameraTilePreviewLoop(camera, cameraTileImagesById[camera.Id], token), token))
-            .ToArray();
-    }
+            .Select(camera => new CameraTileFeedRequest(
+                camera.Id,
+                camera.IsUsbCamera ? CameraTileFeedKind.Usb : CameraTileFeedKind.VideoFile))
+            .ToList();
 
-    private void CancelCameraTilePreview()
-    {
-        if (tilePreviewTasks.Length == 0)
-        {
-            return;
-        }
-
-        tilePreviewCts?.Cancel();
-        tilePreviewCts?.Dispose();
-        tilePreviewCts = null;
-        tilePreviewTasks = Array.Empty<Task>();
+        _ = cameraTileFeedCoordinator.ApplyAsync(requests, CancellationToken.None);
     }
 
     private async Task StopCameraTilePreviewAsync()
     {
-        if (tilePreviewTasks.Length == 0)
+        await cameraTileFeedCoordinator.StopAllAsync();
+    }
+
+    private IAsyncDisposable StartCameraTileFeedConsumer(CameraTileFeedRequest request)
+    {
+        if (!cameraTileFeedCamerasById.TryGetValue(request.CameraId, out var camera) ||
+            !cameraTileImagesById.TryGetValue(request.CameraId, out var image))
         {
-            return;
+            return EmptyAsyncDisposable.Instance;
         }
 
-        var tasksToWait = tilePreviewTasks;
-        tilePreviewCts?.Cancel();
-
-        try
-        {
-            await Task.WhenAll(tasksToWait);
-        }
-        catch
-        {
-            // Ignore stop-time preview errors.
-        }
-        finally
-        {
-            tilePreviewCts?.Dispose();
-            tilePreviewCts = null;
-            tilePreviewTasks = Array.Empty<Task>();
-        }
+        var cts = new CancellationTokenSource();
+        var task = Task.Run(() => RunCameraTilePreviewLoop(camera, image, cts.Token), cts.Token);
+        return new CameraTileFeedConsumer(cts, task);
     }
 
     private async Task RunCameraTilePreviewLoop(CameraProfile camera, Image target, CancellationToken cancellationToken)
@@ -1801,6 +1783,8 @@ public partial class MainWindow : AppWindow
     {
         ApplyCameraTileGridDimensions(viewState.Rows, viewState.Columns);
 
+        var existingImagesById = new Dictionary<string, Image>(cameraTileImagesById, StringComparer.OrdinalIgnoreCase);
+
         CameraTileGrid.Children.Clear();
         cameraTileImagesById.Clear();
         cameraTileRenderModesById.Clear();
@@ -1808,9 +1792,12 @@ public partial class MainWindow : AppWindow
 
         for (var i = 0; i < viewState.CameraIds.Count; i++)
         {
-            var image = new Image { Stretch = Avalonia.Media.Stretch.Uniform };
-            cameraTileImagesById[viewState.CameraIds[i]] = image;
-            cameraTileRenderModesById[viewState.CameraIds[i]] = viewState.RenderModes[i];
+            var cameraId = viewState.CameraIds[i];
+            var image = existingImagesById.TryGetValue(cameraId, out var existingImage)
+                ? existingImage
+                : new Image { Stretch = Avalonia.Media.Stretch.Uniform };
+            cameraTileImagesById[cameraId] = image;
+            cameraTileRenderModesById[cameraId] = viewState.RenderModes[i];
 
             var panel = new Panel();
             panel.Children.Add(image);
@@ -3272,5 +3259,32 @@ public partial class MainWindow : AppWindow
     private readonly record struct RegionListItem(string RegionId, string Name, int? Code, string CellsText)
     {
         public override string ToString() => Code is null ? Name : $"{Name} [{Code}]";
+    }
+
+    private sealed class CameraTileFeedConsumer(CancellationTokenSource cts, Task task) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            cts.Cancel();
+            try
+            {
+                await task;
+            }
+            catch
+            {
+                // Ignore preview loop shutdown errors.
+            }
+            finally
+            {
+                cts.Dispose();
+            }
+        }
+    }
+
+    private sealed class EmptyAsyncDisposable : IAsyncDisposable
+    {
+        public static EmptyAsyncDisposable Instance { get; } = new();
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

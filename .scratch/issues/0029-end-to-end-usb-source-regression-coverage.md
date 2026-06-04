@@ -1,7 +1,7 @@
 # End-To-End USB Source Regression Coverage
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: completed
 
 ## Parent
 
@@ -13,13 +13,13 @@ Add end-to-end-style regression coverage for the full session-owned USB Camera S
 
 ## Acceptance criteria
 
-- [ ] Regression coverage proves adding multiple USB Camera Sources does not halt existing visible USB feeds.
-- [ ] Regression coverage proves duplicate USB source handling and already-added discovery behavior.
-- [ ] Regression coverage proves starting, stale, failed, and restart status behavior in operator-facing projections.
-- [ ] Regression coverage proves USB capture settings Apply/Revert, requested-vs-actual display, pending Vision Pipeline restart behavior, and failed-source no-auto-restart behavior.
-- [ ] Regression coverage proves selected USB processing/calibration uses the shared owner lease rather than opening a duplicate capture.
-- [ ] Regression coverage proves video file camera playback behavior remains unchanged.
-- [ ] Tests use fake capture backends and service-level projections where possible rather than relying on physical USB cameras or private UI event wiring.
+- [x] Regression coverage proves adding multiple USB Camera Sources does not halt existing visible USB feeds.
+- [x] Regression coverage proves duplicate USB source handling and already-added discovery behavior.
+- [x] Regression coverage proves starting, stale, failed, and restart status behavior in operator-facing projections.
+- [x] Regression coverage proves USB capture settings Apply/Revert, requested-vs-actual display, pending Vision Pipeline restart behavior, and failed-source no-auto-restart behavior.
+- [x] Regression coverage proves selected USB processing/calibration uses the shared owner lease rather than opening a duplicate capture.
+- [x] Regression coverage proves video file camera playback behavior remains unchanged.
+- [x] Tests use fake capture backends and service-level projections where possible rather than relying on physical USB cameras or private UI event wiring.
 
 ## Blocked by
 

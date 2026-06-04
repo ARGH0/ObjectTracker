@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review - ObjectTracker flows</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .leak { stroke: #dc2626; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .arrow { marker-end: url(#arrowhead); }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+      <header class="space-y-5">
+        <div class="flex items-start justify-between gap-6">
+          <div>
+            <p class="text-xs uppercase tracking-wider text-slate-500">ObjectTracker</p>
+            <h1 class="text-4xl font-serif font-semibold tracking-tight">Current Flow Map</h1>
+            <p class="text-sm text-slate-500 mt-2">Generated 2026-06-04</p>
+          </div>
+          <div class="rounded-xl border border-slate-200 bg-white p-4 text-xs space-y-2 min-w-64">
+            <div class="flex items-center gap-2"><span class="inline-block h-4 w-8 rounded border border-slate-400 bg-white"></span> module</div>
+            <div class="flex items-center gap-2"><span class="inline-block h-0 w-8 border-t border-dashed border-slate-500"></span> seam</div>
+            <div class="flex items-center gap-2"><span class="inline-block h-0 w-8 border-t-2 border-red-600"></span> leakage</div>
+            <div class="flex items-center gap-2"><span class="inline-block h-4 w-8 rounded deep"></span> deep module</div>
+          </div>
+        </div>
+      </header>
+
+      <section id="top-recommendation" class="rounded-2xl border border-indigo-200 bg-indigo-50 p-6">
+        <p class="text-xs uppercase tracking-wider text-indigo-700">Top recommendation</p>
+        <h2 class="mt-2 text-2xl font-semibold">Inspect debug view routing first</h2>
+        <p class="mt-2 text-slate-700">Debug View is projected per Camera Source, but debug frames are produced only for <code class="font-mono text-sm">activeVisionPipelineCameraId</code>.</p>
+        <a class="mt-4 inline-block text-sm font-semibold text-indigo-700 underline" href="debug-view-routing-flow.html">Open debug view routing flow</a>
+      </section>
+
+      <section id="candidates" class="space-y-10">
+        <article class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 class="text-2xl font-semibold">Flow Reports</h2>
+          <div class="mt-6 grid gap-4 md:grid-cols-2">
+            <a class="rounded-xl border border-slate-200 p-4 hover:border-indigo-300 hover:bg-indigo-50" href="camera-source-runtime-flow.html">
+              <p class="text-xs uppercase tracking-wider text-slate-500">runtime</p>
+              <h3 class="font-semibold">Camera Source Runtime Flow</h3>
+              <p class="mt-1 text-sm text-slate-600">Camera Source creation, duplicate discovery, Camera Workspace projection, and tile feed requests.</p>
+            </a>
+            <a class="rounded-xl border border-slate-200 p-4 hover:border-indigo-300 hover:bg-indigo-50" href="usb-shared-owner-flow.html">
+              <p class="text-xs uppercase tracking-wider text-slate-500">deep module</p>
+              <h3 class="font-semibold">USB Shared Owner Flow</h3>
+              <p class="mt-1 text-sm text-slate-600">One USB Camera Source owner, multiple leases, latest snapshots, status, restart.</p>
+            </a>
+            <a class="rounded-xl border border-slate-200 p-4 hover:border-indigo-300 hover:bg-indigo-50" href="camera-tile-playback-flow.html">
+              <p class="text-xs uppercase tracking-wider text-slate-500">playback</p>
+              <h3 class="font-semibold">Camera Tile Playback Flow</h3>
+              <p class="mt-1 text-sm text-slate-600">Raw feed consumers, debug suppression, video file and USB playback paths.</p>
+            </a>
+            <a class="rounded-xl border border-slate-200 p-4 hover:border-indigo-300 hover:bg-indigo-50" href="selected-vision-pipeline-flow.html">
+              <p class="text-xs uppercase tracking-wider text-slate-500">Vision Pipeline</p>
+              <h3 class="font-semibold">Selected Vision Pipeline Flow</h3>
+              <p class="mt-1 text-sm text-slate-600">Single-selected-camera processing, background sampling, preview frames.</p>
+            </a>
+            <a class="rounded-xl border border-red-200 p-4 hover:border-red-300 hover:bg-red-50" href="debug-view-routing-flow.html">
+              <p class="text-xs uppercase tracking-wider text-red-600">current leakage</p>
+              <h3 class="font-semibold">Debug View Routing Flow</h3>
+              <p class="mt-1 text-sm text-slate-600">Multiple debug-requested Camera Sources, one active debug frame route.</p>
+            </a>
+            <a class="rounded-xl border border-slate-200 p-4 hover:border-indigo-300 hover:bg-indigo-50" href="usb-capture-settings-flow.html">
+              <p class="text-xs uppercase tracking-wider text-slate-500">settings</p>
+              <h3 class="font-semibold">USB Capture Settings Flow</h3>
+              <p class="mt-1 text-sm text-slate-600">Requested settings, Apply/Revert, pending Vision Pipeline restart, stable raw tile baseline.</p>
+            </a>
+          </div>
+        </article>
+
+        <article class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div class="flex flex-wrap gap-2 mb-4">
+            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">Strong</span>
+            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">in-process</span>
+          </div>
+          <h2 class="text-2xl font-semibold">Current runtime mass</h2>
+          <div class="mt-5 grid gap-6 md:grid-cols-2">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-3">large interface surface</p>
+              <div class="space-y-3">
+                <div class="h-16 rounded border border-slate-400 bg-white p-2 text-xs">MainWindow.axaml.cs<br><span class="text-slate-500">UI, Session, settings, Camera Source, tile playback, Vision Pipeline</span></div>
+                <div class="h-10 rounded border border-slate-300 bg-white p-2 text-xs">BackgroundEstimationEngine</div>
+                <div class="h-10 rounded border border-slate-300 bg-white p-2 text-xs">CameraTileFeedCoordinator</div>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-500 mb-3">deeper current modules</p>
+              <div class="space-y-3">
+                <div class="h-20 rounded deep p-3 text-xs text-white">UsbCameraOwnerManager<br><span class="text-slate-300">one interface, owner lifecycle, latest snapshot, status</span></div>
+                <div class="h-14 rounded border border-slate-300 bg-slate-50 p-2 text-xs">UsbCaptureSettingsProjection</div>
+                <div class="h-14 rounded border border-slate-300 bg-slate-50 p-2 text-xs">CameraSourceStatusProjection</div>
+              </div>
+            </div>
+          </div>
+          <p class="mt-5 text-sm"><strong>Problem.</strong> MainWindow still carries broad implementation for Camera Source flow and debug routing.</p>
+          <p class="mt-1 text-sm"><strong>Solution.</strong> Use these reports to point at the exact seam before deepening one module.</p>
+          <ul class="mt-4 grid gap-2 text-sm md:grid-cols-3">
+            <li>locality: named flows</li>
+            <li>leverage: shared diagrams</li>
+            <li>depth: owner isolated</li>
+          </ul>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

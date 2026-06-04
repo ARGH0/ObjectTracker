@@ -1367,9 +1367,12 @@ public partial class MainWindow : AppWindow
                     settings.MorphKernelSize,
                     settings.ColorCalibrations);
 
-                var result = await engine.ProcessUsbCameraAsync(
-                    usbCamera.CameraIndex,
-                    usbCamera.Api,
+                var key = new UsbCameraKey(usbCamera.CameraIndex, usbCamera.Api.ToString().ToUpperInvariant());
+                var startupSettings = ToUsbCaptureSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id));
+                var result = await engine.ProcessUsbCameraSourceAsync(
+                    usbCameraOwnerManager,
+                    key,
+                    startupSettings,
                     camera.DisplayName,
                     settings.SampleCount,
                     settings.Threshold,

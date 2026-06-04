@@ -51,12 +51,14 @@ internal sealed class OpenCvUsbCaptureSession : IUsbCaptureSession
         }
 
         Cv2.ImEncode(".jpg", frame, out var bytes, [new ImageEncodingParam(ImwriteFlags.JpegQuality, 80)]);
+        var actualFps = capture.Get(VideoCaptureProperties.Fps);
         return ValueTask.FromResult<UsbCapturedFrame?>(new UsbCapturedFrame(
             UsbCameraSourceId.Format(key),
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             frame.Width,
             frame.Height,
-            bytes));
+            bytes,
+            actualFps > 0 ? actualFps : null));
     }
 
     public ValueTask DisposeAsync()

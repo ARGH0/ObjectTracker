@@ -13,12 +13,12 @@ Protect USB capture setting changes while the Vision Pipeline is actively proces
 
 ## Acceptance criteria
 
-- [ ] Applying USB capture settings while that Camera Source is actively processed by the Vision Pipeline does not restart the physical source immediately.
-- [ ] The requested settings are persisted and shown in controls while active runtime mode remains visible as status.
-- [ ] Pending USB capture settings mark pending Vision Pipeline restart in the existing pending-restart signaling.
-- [ ] When the Vision Pipeline stops and the camera is still visible, pending settings apply by restarting only that USB owner.
-- [ ] If the camera is hidden and excluded when processing stops, no owner is started until the next visibility or processing need.
-- [ ] Tests cover protected apply, requested-vs-active display, pending restart signaling, safe apply after stop, and hidden/excluded deferred start.
+- [x] Applying USB capture settings while that Camera Source is actively processed by the Vision Pipeline does not restart the physical source immediately.
+- [x] The requested settings are persisted and shown in controls while active runtime mode remains visible as status.
+- [x] Pending USB capture settings mark pending Vision Pipeline restart in the existing pending-restart signaling.
+- [x] When the Vision Pipeline stops and the camera is still visible, pending settings apply by restarting only that USB owner.
+- [x] If the camera is hidden and excluded when processing stops, no owner is started until the next visibility or processing need.
+- [x] Tests cover protected apply, requested-vs-active display, pending restart signaling, safe apply after stop, and hidden/excluded deferred start.
 
 ## Blocked by
 

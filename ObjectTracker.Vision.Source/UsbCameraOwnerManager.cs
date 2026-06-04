@@ -12,7 +12,8 @@ public readonly record struct UsbCapturedFrame(
     long TimestampUtcMs,
     int Width,
     int Height,
-    byte[] EncodedJpeg);
+    byte[] EncodedJpeg,
+    double? ActualFps = null);
 
 public readonly record struct UsbFrameSnapshot(
     string SourceId,
@@ -186,11 +187,16 @@ internal sealed class UsbCameraOwner
     private long frameVersion;
     private UsbCameraOwnerState state = UsbCameraOwnerState.Stopped;
     private string? failureMessage;
+    private double? actualFps;
+    private UsbCaptureSettings activeSettings;
+    private bool fallbackAttempted;
+    private int emptyFrameReads;
 
     public UsbCameraOwner(UsbCameraKey key, UsbCaptureSettings settings, IUsbCaptureBackend backend, SemaphoreSlim startupLock)
     {
         this.key = key;
         this.settings = settings;
+        activeSettings = settings;
         this.backend = backend;
         this.startupLock = startupLock;
     }
@@ -224,7 +230,7 @@ internal sealed class UsbCameraOwner
                 latestFrame.Value.Height,
                 frameAgeMs,
                 failureMessage,
-                settings.TargetFps);
+                actualFps);
         }
     }
 
@@ -244,7 +250,10 @@ internal sealed class UsbCameraOwner
 
             try
             {
-                session = await backend.OpenAsync(key, settings, cancellationToken);
+                activeSettings = settings;
+                fallbackAttempted = false;
+                emptyFrameReads = 0;
+                session = await backend.OpenAsync(key, activeSettings, cancellationToken);
                 cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 readTask = Task.Run(() => ReadLoopAsync(cts.Token), cts.Token);
             }
@@ -344,9 +353,18 @@ internal sealed class UsbCameraOwner
             var frame = await session.ReadFrameAsync(cancellationToken);
             if (frame is null)
             {
+                emptyFrameReads++;
+                if (emptyFrameReads >= 10 && !fallbackAttempted && activeSettings != UsbCaptureSettings.Default)
+                {
+                    await ReopenWithStableBaselineAsync(cancellationToken);
+                    continue;
+                }
+
                 await Task.Delay(10, cancellationToken);
                 continue;
             }
+
+            emptyFrameReads = 0;
 
             var snapshot = new UsbFrameSnapshot(
                 frame.Value.SourceId,
@@ -362,11 +380,25 @@ internal sealed class UsbCameraOwner
                 latestFrame = snapshot;
                 state = UsbCameraOwnerState.Running;
                 failureMessage = null;
+                actualFps = frame.Value.ActualFps;
                 completedSignal = nextFrameAvailable;
                 nextFrameAvailable = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
             }
 
             completedSignal.TrySetResult(null);
         }
+    }
+
+    private async Task ReopenWithStableBaselineAsync(CancellationToken cancellationToken)
+    {
+        fallbackAttempted = true;
+        emptyFrameReads = 0;
+        if (session is not null)
+        {
+            await session.DisposeAsync();
+        }
+
+        activeSettings = UsbCaptureSettings.Default;
+        session = await backend.OpenAsync(key, activeSettings, cancellationToken);
     }
 }

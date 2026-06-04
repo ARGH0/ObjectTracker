@@ -407,6 +407,7 @@ public partial class MainWindow : AppWindow
     private readonly Dictionary<string, Image> cameraTileImagesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, CameraRenderMode> cameraTileRenderModesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DebugTileImageSet> cameraTileDebugImagesById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> pendingUsbCaptureSettingsCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
     private Task? runTask;
     private long lastPreviewRenderTick;
     private int previewRenderBusy;
@@ -1196,6 +1197,7 @@ public partial class MainWindow : AppWindow
 
             sessionAuditLogger.StopSession();
             SetRunState(isRunning: false);
+            await ApplyPendingUsbCaptureSettingsAfterVisionPipelineStopAsync();
         }
     }
 
@@ -1278,6 +1280,35 @@ public partial class MainWindow : AppWindow
         {
             // Ignore stop-time exceptions.
         }
+
+        await ApplyPendingUsbCaptureSettingsAfterVisionPipelineStopAsync();
+    }
+
+    private async Task ApplyPendingUsbCaptureSettingsAfterVisionPipelineStopAsync()
+    {
+        if (pendingUsbCaptureSettingsCameraSourceIds.Count == 0)
+        {
+            return;
+        }
+
+        var pending = pendingUsbCaptureSettingsCameraSourceIds.ToList();
+        pendingUsbCaptureSettingsCameraSourceIds.Clear();
+
+        foreach (var cameraSourceId in pending)
+        {
+            if (!TryGetCameraById(cameraSourceId, out var camera) ||
+                !camera.IsVisible ||
+                camera.UsbCamera is not { } usb)
+            {
+                continue;
+            }
+
+            var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
+            await usbCameraOwnerManager.RestartAsync(key, ToUsbCaptureSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id)), CancellationToken.None);
+        }
+
+        hasPendingVisionPipelineRestart = false;
+        UpdateBottomStatusBar();
     }
 
     private async Task RunCameraSelectionAsync(int startCameraIndex, bool loopCameraVideos, CancellationToken cancellationToken)
@@ -2067,11 +2098,23 @@ public partial class MainWindow : AppWindow
 
         var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
         var status = usbCameraOwnerManager.GetStatus(key, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        var decision = UsbCaptureSettingsProjection.BuildApplyDecision(camera.Value.IsUsbCamera, camera.Value.IsVisible, status);
+        var decision = UsbCaptureSettingsProjection.BuildApplyDecision(
+            camera.Value.IsUsbCamera,
+            camera.Value.IsVisible,
+            camera.Value.IsIncludedInVisionPipeline,
+            string.Equals(activeVisionPipelineCameraId, camera.Value.Id, StringComparison.OrdinalIgnoreCase),
+            status);
         if (decision.ShouldRestartCameraSource)
         {
             await usbCameraOwnerManager.RestartAsync(key, ToUsbCaptureSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Value.Id)), CancellationToken.None);
             SetStatus($"Status: applied USB capture settings for {camera.Value.DisplayName}.");
+        }
+        else if (decision.RequiresVisionPipelineRestart)
+        {
+            pendingUsbCaptureSettingsCameraSourceIds.Add(camera.Value.Id);
+            hasPendingVisionPipelineRestart = true;
+            UpdateBottomStatusBar();
+            SetStatus($"Status: {decision.Message}");
         }
         else if (!string.IsNullOrWhiteSpace(decision.Message))
         {

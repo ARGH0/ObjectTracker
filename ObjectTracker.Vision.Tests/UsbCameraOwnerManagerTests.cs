@@ -176,6 +176,20 @@ public sealed class UsbCameraOwnerManagerTests
     }
 
     [Fact]
+    public async Task AcquireAsync_WhenRequestedModeOpensButProducesNoFrames_RetriesStableBaselineMode()
+    {
+        var backend = new FallbackModeUsbCaptureBackend();
+        await using var manager = new UsbCameraOwnerManager(backend);
+        var key = new UsbCameraKey(1, "ANY");
+
+        await using var lease = await manager.AcquireAsync(key, new UsbCaptureSettings(640, 480, 60), CancellationToken.None);
+        var frame = await lease.WaitForNextFrameAsync(previousVersion: 0, TimeSpan.FromSeconds(1), CancellationToken.None);
+
+        Assert.NotNull(frame);
+        Assert.Equal(new[] { 60, 20 }, backend.OpenedTargetFps.ToArray());
+    }
+
+    [Fact]
     public async Task StopAllAsync_DisposesActivePhysicalOwners()
     {
         var backend = new FakeUsbCaptureBackend();
@@ -313,5 +327,17 @@ public sealed class UsbCameraOwnerManagerTests
         public Task WaitForOpenAttemptAsync() => openAttempted.Task;
 
         public void CompleteOpen() => completeOpen.TrySetResult(null);
+    }
+
+    private sealed class FallbackModeUsbCaptureBackend : IUsbCaptureBackend
+    {
+        public List<int> OpenedTargetFps { get; } = new();
+
+        public ValueTask<IUsbCaptureSession> OpenAsync(UsbCameraKey key, UsbCaptureSettings settings, CancellationToken cancellationToken)
+        {
+            OpenedTargetFps.Add(settings.TargetFps);
+            var frames = settings.TargetFps == 20 ? 1 : 0;
+            return ValueTask.FromResult<IUsbCaptureSession>(new FakeUsbCaptureSession(key, frames, frameDelay: null, onDispose: () => { }));
+        }
     }
 }

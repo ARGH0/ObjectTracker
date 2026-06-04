@@ -4,7 +4,11 @@ namespace ObjectTracker.UI.Desktop;
 
 public readonly record struct UsbCaptureSettingsView(bool IsVisible, string ModeStatusText);
 
-public readonly record struct UsbCaptureSettingsApplyDecision(bool ShouldRestartCameraSource, string Message);
+public readonly record struct UsbCaptureSettingsApplyDecision(
+    bool ShouldRestartCameraSource,
+    bool RequiresVisionPipelineRestart,
+    bool ShouldDeferUntilNextOwnerStart,
+    string Message);
 
 public static class UsbCaptureSettingsProjection
 {
@@ -31,20 +35,33 @@ public static class UsbCaptureSettingsProjection
     public static UsbCaptureSettingsApplyDecision BuildApplyDecision(
         bool isUsbCameraSource,
         bool isVisible,
+        bool isIncludedInVisionPipeline,
+        bool isActivelyProcessedByVisionPipeline,
         UsbCameraRuntimeStatus status)
     {
         if (!isUsbCameraSource)
         {
-            return new UsbCaptureSettingsApplyDecision(false, string.Empty);
+            return new UsbCaptureSettingsApplyDecision(false, false, false, string.Empty);
+        }
+
+        if (isActivelyProcessedByVisionPipeline)
+        {
+            return new UsbCaptureSettingsApplyDecision(
+                ShouldRestartCameraSource: false,
+                RequiresVisionPipelineRestart: true,
+                ShouldDeferUntilNextOwnerStart: false,
+                Message: "USB capture settings saved, pending Vision Pipeline restart.");
         }
 
         if (status.State == UsbCameraOwnerState.Failed)
         {
-            return new UsbCaptureSettingsApplyDecision(false, "Use Restart Camera Source to retry failed USB hardware.");
+            return new UsbCaptureSettingsApplyDecision(false, false, false, "Use Restart Camera Source to retry failed USB hardware.");
         }
 
         return new UsbCaptureSettingsApplyDecision(
             ShouldRestartCameraSource: isVisible && status.State == UsbCameraOwnerState.Running,
+            RequiresVisionPipelineRestart: false,
+            ShouldDeferUntilNextOwnerStart: !isVisible && !isIncludedInVisionPipeline,
             Message: string.Empty);
     }
 }

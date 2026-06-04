@@ -37,7 +37,8 @@ public readonly record struct UsbCameraRuntimeStatus(
     int? Width,
     int? Height,
     long? FrameAgeMs,
-    string? FailureMessage);
+    string? FailureMessage,
+    double? ActualFps = null);
 
 public interface IUsbCaptureBackend
 {
@@ -222,7 +223,8 @@ internal sealed class UsbCameraOwner
                 latestFrame.Value.Width,
                 latestFrame.Value.Height,
                 frameAgeMs,
-                failureMessage);
+                failureMessage,
+                settings.TargetFps);
         }
     }
 

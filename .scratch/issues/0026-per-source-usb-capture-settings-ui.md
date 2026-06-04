@@ -13,15 +13,15 @@ Add persisted per-USB-Camera-Source capture settings in the selected Camera Pane
 
 ## Acceptance criteria
 
-- [ ] USB capture settings are stored separately from runtime processing settings and persisted per USB Camera Source.
-- [ ] The selected Camera Panel shows USB capture settings only for USB Camera Sources.
-- [ ] Resolution presets are 640x480, 1280x720, and 1920x1080, with target FPS choices 30 and 60.
-- [ ] Capture settings edits are batched behind explicit Apply and Revert controls.
-- [ ] Apply persists requested settings immediately; Revert restores the last persisted requested settings.
-- [ ] Requested settings remain distinct from actual runtime mode, and fallback actual mode is shown when the camera runs differently than requested.
-- [ ] Applying settings to a visible-only running USB source restarts only that source owner.
-- [ ] Applying settings to a failed USB source does not auto-restart it; the operator must use Restart Camera Source.
-- [ ] Tests cover persistence, USB-only UI projection, Apply/Revert behavior, requested-vs-actual mode, visible-only restart, and failed-source no-auto-restart.
+- [x] USB capture settings are stored separately from runtime processing settings and persisted per USB Camera Source.
+- [x] The selected Camera Panel shows USB capture settings only for USB Camera Sources.
+- [x] Resolution presets are 640x480, 1280x720, and 1920x1080, with target FPS choices 30 and 60.
+- [x] Capture settings edits are batched behind explicit Apply and Revert controls.
+- [x] Apply persists requested settings immediately; Revert restores the last persisted requested settings.
+- [x] Requested settings remain distinct from actual runtime mode, and fallback actual mode is shown when the camera runs differently than requested.
+- [x] Applying settings to a visible-only running USB source restarts only that source owner.
+- [x] Applying settings to a failed USB source does not auto-restart it; the operator must use Restart Camera Source.
+- [x] Tests cover persistence, USB-only UI projection, Apply/Revert behavior, requested-vs-actual mode, visible-only restart, and failed-source no-auto-restart.
 
 ## Blocked by
 

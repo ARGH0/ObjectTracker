@@ -149,7 +149,28 @@
                                 <Button x:Name="RestartUsbCameraSourceButton"
                                         Classes="ghost"
                                         Content="Restart Camera Source" />
-                                 <ComboBox x:Name="CameraZoneComboBox" />
+                                <StackPanel x:Name="UsbCaptureSettingsPanel"
+                                            Spacing="6"
+                                            IsVisible="False">
+                                    <TextBlock Text="USB Capture Settings"
+                                               Classes="sectionTitle" />
+                                    <ComboBox x:Name="UsbResolutionComboBox" />
+                                    <ComboBox x:Name="UsbTargetFpsComboBox" />
+                                    <TextBlock x:Name="UsbCaptureModeStatusText"
+                                               Classes="muted"
+                                               TextWrapping="Wrap" />
+                                    <Grid ColumnDefinitions="*,8,*">
+                                        <Button x:Name="ApplyUsbCaptureSettingsButton"
+                                                Grid.Column="0"
+                                                Classes="primary"
+                                                Content="Apply" />
+                                        <Button x:Name="RevertUsbCaptureSettingsButton"
+                                                Grid.Column="2"
+                                                Classes="ghost"
+                                                Content="Revert" />
+                                    </Grid>
+                                </StackPanel>
+                                  <ComboBox x:Name="CameraZoneComboBox" />
                                 <Button x:Name="ToggleGridEditorButton"
                                         Classes="ghost"
                                         Content="Open Grid Region Editor" />

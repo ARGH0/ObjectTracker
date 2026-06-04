@@ -13,14 +13,14 @@ Add per-camera USB Camera Source runtime status and a targeted Restart Camera So
 
 ## Acceptance criteria
 
-- [ ] USB owner runtime status is projected per Camera Source as stopped, starting, running, failed, and derived stale status after about one second without a successful frame.
-- [ ] Starting and restarting USB tiles show a placeholder rather than stale live video.
-- [ ] Failed USB tiles show a prominent failed state while retaining the Camera Source in the Session list.
-- [ ] Frame age is shown only for stale or failed USB sources, not normal running feeds.
-- [ ] USB source failures are per-camera status only and do not raise an Ambiguity Alert.
-- [ ] Restart Camera Source exists in the selected Camera Panel for USB sources and is disabled while that source is actively processed by the Vision Pipeline.
-- [ ] Restart preserves previous failure details while starting and updates status on success or new failure.
-- [ ] Tests cover status projection, stale derivation, failed placeholders, Ambiguity Alert non-interaction, and restart enablement/behavior.
+- [x] USB owner runtime status is projected per Camera Source as stopped, starting, running, failed, and derived stale status after about one second without a successful frame.
+- [x] Starting and restarting USB tiles show a placeholder rather than stale live video.
+- [x] Failed USB tiles show a prominent failed state while retaining the Camera Source in the Session list.
+- [x] Frame age is shown only for stale or failed USB sources, not normal running feeds.
+- [x] USB source failures are per-camera status only and do not raise an Ambiguity Alert.
+- [x] Restart Camera Source exists in the selected Camera Panel for USB sources and is disabled while that source is actively processed by the Vision Pipeline.
+- [x] Restart preserves previous failure details while starting and updates status on success or new failure.
+- [x] Tests cover status projection, stale derivation, failed placeholders, Ambiguity Alert non-interaction, and restart enablement/behavior.
 
 ## Blocked by
 

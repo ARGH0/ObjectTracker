@@ -22,6 +22,23 @@ public readonly record struct UsbFrameSnapshot(
     byte[] EncodedJpeg,
     long FrameVersion);
 
+public enum UsbCameraOwnerState
+{
+    Stopped,
+    Starting,
+    Running,
+    Failed
+}
+
+public readonly record struct UsbCameraRuntimeStatus(
+    UsbCameraOwnerState State,
+    bool IsStale,
+    long? LatestFrameVersion,
+    int? Width,
+    int? Height,
+    long? FrameAgeMs,
+    string? FailureMessage);
+
 public interface IUsbCaptureBackend
 {
     ValueTask<IUsbCaptureSession> OpenAsync(UsbCameraKey key, UsbCaptureSettings settings, CancellationToken cancellationToken);
@@ -89,6 +106,33 @@ public sealed class UsbCameraOwnerManager : IAsyncDisposable
         }
     }
 
+    public async Task RestartAsync(UsbCameraKey key, UsbCaptureSettings settings, CancellationToken cancellationToken)
+    {
+        UsbCameraOwner owner;
+        lock (sync)
+        {
+            if (!owners.TryGetValue(key, out owner!))
+            {
+                owner = new UsbCameraOwner(key, settings, backend, startupLock);
+                owners[key] = owner;
+            }
+        }
+
+        await owner.StopAsync(cancellationToken);
+        await owner.StartAsync(cancellationToken);
+        await owner.WaitForNextFrameAsync(0, TimeSpan.FromMilliseconds(250), cancellationToken);
+    }
+
+    public UsbCameraRuntimeStatus GetStatus(UsbCameraKey key, long nowUtcMs)
+    {
+        lock (sync)
+        {
+            return owners.TryGetValue(key, out var owner)
+                ? owner.GetStatus(nowUtcMs)
+                : new UsbCameraRuntimeStatus(UsbCameraOwnerState.Stopped, false, null, null, null, null, null);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         await StopAllAsync(CancellationToken.None);
@@ -139,6 +183,8 @@ internal sealed class UsbCameraOwner
     private int leaseCount;
     private UsbFrameSnapshot? latestFrame;
     private long frameVersion;
+    private UsbCameraOwnerState state = UsbCameraOwnerState.Stopped;
+    private string? failureMessage;
 
     public UsbCameraOwner(UsbCameraKey key, UsbCaptureSettings settings, IUsbCaptureBackend backend, SemaphoreSlim startupLock)
     {
@@ -159,6 +205,27 @@ internal sealed class UsbCameraOwner
         }
     }
 
+    public UsbCameraRuntimeStatus GetStatus(long nowUtcMs)
+    {
+        lock (sync)
+        {
+            if (latestFrame is null)
+            {
+                return new UsbCameraRuntimeStatus(state, false, null, null, null, null, failureMessage);
+            }
+
+            var frameAgeMs = Math.Max(0, nowUtcMs - latestFrame.Value.TimestampUtcMs);
+            return new UsbCameraRuntimeStatus(
+                state,
+                IsStale: frameAgeMs > 1000,
+                latestFrame.Value.FrameVersion,
+                latestFrame.Value.Width,
+                latestFrame.Value.Height,
+                frameAgeMs,
+                failureMessage);
+        }
+    }
+
     public void AddLease() => leaseCount++;
 
     public void ReleaseLease() => leaseCount--;
@@ -168,9 +235,27 @@ internal sealed class UsbCameraOwner
         await startupLock.WaitAsync(cancellationToken);
         try
         {
-            session = await backend.OpenAsync(key, settings, cancellationToken);
-            cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            readTask = Task.Run(() => ReadLoopAsync(cts.Token), cts.Token);
+            lock (sync)
+            {
+                state = UsbCameraOwnerState.Starting;
+            }
+
+            try
+            {
+                session = await backend.OpenAsync(key, settings, cancellationToken);
+                cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                readTask = Task.Run(() => ReadLoopAsync(cts.Token), cts.Token);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                lock (sync)
+                {
+                    state = UsbCameraOwnerState.Failed;
+                    failureMessage = ex.Message;
+                }
+
+                throw;
+            }
         }
         finally
         {
@@ -200,6 +285,10 @@ internal sealed class UsbCameraOwner
 
         cts?.Dispose();
         cts = null;
+        lock (sync)
+        {
+            state = UsbCameraOwnerState.Stopped;
+        }
     }
 
     public async Task<UsbFrameSnapshot?> WaitForNextFrameAsync(long previousVersion, TimeSpan timeout, CancellationToken cancellationToken)
@@ -269,6 +358,8 @@ internal sealed class UsbCameraOwner
             lock (sync)
             {
                 latestFrame = snapshot;
+                state = UsbCameraOwnerState.Running;
+                failureMessage = null;
                 completedSignal = nextFrameAvailable;
                 nextFrameAvailable = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
             }

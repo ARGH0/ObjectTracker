@@ -495,6 +495,7 @@ public partial class MainWindow : AppWindow
         CameraVisibilityCheckBox.IsCheckedChanged += CameraVisibilityCheckBoxOnChanged;
         VisionPipelineInclusionCheckBox.IsCheckedChanged += VisionPipelineInclusionCheckBoxOnChanged;
         CameraDebugViewCheckBox.IsCheckedChanged += CameraDebugViewCheckBoxOnChanged;
+        RestartUsbCameraSourceButton.Click += RestartUsbCameraSourceButtonOnClick;
         ToggleGridEditorButton.Click += ToggleGridEditorButtonOnClick;
         AddLayerButton.Click += AddLayerButtonOnClick;
         DeleteLayerButton.Click += DeleteLayerButtonOnClick;
@@ -1032,6 +1033,7 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(camera.Value.IsIncludedInVisionPipeline, camera.Value.DebugViewEnabled);
             applyingCameraDebugViewUi = false;
             CameraDebugViewCheckBox.IsEnabled = camera.Value.IsIncludedInVisionPipeline;
+            RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
             UpdateCameraZoneSelectionUi(camera.Value.Id);
             RefreshLayerEditorUiForSelectedCamera();
         }
@@ -1569,6 +1571,9 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsChecked = false;
             applyingCameraDebugViewUi = false;
             CameraDebugViewCheckBox.IsEnabled = false;
+            UsbCameraSourceStatusText.Text = "USB Camera Source: -";
+            RestartUsbCameraSourceButton.IsVisible = false;
+            RestartUsbCameraSourceButton.IsEnabled = false;
             CameraZoneComboBox.SelectedIndex = -1;
             LayersListBox.ItemsSource = null;
             RegionsListBox.ItemsSource = null;
@@ -1594,6 +1599,7 @@ public partial class MainWindow : AppWindow
         applyingCameraDebugViewUi = true;
         CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(selected.IsIncludedInVisionPipeline, selected.DebugViewEnabled);
         applyingCameraDebugViewUi = false;
+        RefreshSelectedUsbCameraSourceStatusUi(selected);
         UpdateCameraZoneSelectionUi(selected.Id);
         RefreshLayerEditorUiForSelectedCamera();
     }
@@ -1873,6 +1879,28 @@ public partial class MainWindow : AppWindow
 
             panel.Children.Add(modeBadgeOverlay);
 
+            if (TryGetCameraById(cameraId, out var tileCamera))
+            {
+                var statusView = BuildUsbCameraSourceStatusView(tileCamera);
+                if (statusView.ShowPlaceholder)
+                {
+                    panel.Children.Add(new Border
+                    {
+                        Background = Avalonia.Media.Brush.Parse("#CC111820"),
+                        Child = new TextBlock
+                        {
+                            Text = statusView.StatusText,
+                            Foreground = Avalonia.Media.Brush.Parse("#EAF4FF"),
+                            FontWeight = Avalonia.Media.FontWeight.SemiBold,
+                            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                            HorizontalAlignment = HorizontalAlignment.Center,
+                            VerticalAlignment = VerticalAlignment.Center,
+                            Margin = new Thickness(12)
+                        }
+                    });
+                }
+            }
+
             if (viewState.RenderModes[i] != CameraRenderMode.RawFeed)
             {
                 var title = new TextBlock
@@ -1920,6 +1948,84 @@ public partial class MainWindow : AppWindow
         }
 
         RefreshCameraUi();
+    }
+
+    private async void RestartUsbCameraSourceButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        var camera = GetSelectedCamera();
+        if (camera is not { IsUsbCamera: true, UsbCamera: { } usb })
+        {
+            return;
+        }
+
+        if (string.Equals(activeVisionPipelineCameraId, camera.Value.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            SetStatus("Status: stop Vision Pipeline to restart this camera source.");
+            return;
+        }
+
+        var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
+        try
+        {
+            SetStatus($"Status: restarting {camera.Value.DisplayName}...");
+            RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
+            await usbCameraOwnerManager.RestartAsync(key, UsbCaptureSettings.Default, CancellationToken.None);
+            RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
+            RefreshCameraUi();
+            SetStatus($"Status: restarted {camera.Value.DisplayName}.");
+        }
+        catch (Exception ex)
+        {
+            RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
+            RefreshCameraUi();
+            SetStatus($"Status: failed to restart {camera.Value.DisplayName} - {ex.Message}");
+        }
+    }
+
+    private void RefreshSelectedUsbCameraSourceStatusUi(CameraProfile camera)
+    {
+        var statusView = BuildUsbCameraSourceStatusView(camera);
+        UsbCameraSourceStatusText.IsVisible = camera.IsUsbCamera;
+        RestartUsbCameraSourceButton.IsVisible = camera.IsUsbCamera;
+        UsbCameraSourceStatusText.Text = statusView.StatusText;
+        RestartUsbCameraSourceButton.IsEnabled = statusView.RestartEnabled;
+        RestartUsbCameraSourceButton.Tag = statusView.RestartDisabledReason;
+    }
+
+    private CameraSourceStatusView BuildUsbCameraSourceStatusView(CameraProfile camera)
+    {
+        if (!camera.IsUsbCamera || camera.UsbCamera is not { } usb)
+        {
+            return CameraSourceStatusProjection.BuildUsbStatus(
+                isUsbCameraSource: false,
+                isActivelyProcessedByVisionPipeline: false,
+                new UsbCameraRuntimeStatus(UsbCameraOwnerState.Stopped, false, null, null, null, null, null));
+        }
+
+        var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
+        var status = usbCameraOwnerManager.GetStatus(key, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        return CameraSourceStatusProjection.BuildUsbStatus(
+            isUsbCameraSource: true,
+            isActivelyProcessedByVisionPipeline: string.Equals(activeVisionPipelineCameraId, camera.Id, StringComparison.OrdinalIgnoreCase),
+            status);
+    }
+
+    private bool TryGetCameraById(string cameraId, out CameraProfile camera)
+    {
+        lock (cameraSync)
+        {
+            foreach (var candidate in cameras)
+            {
+                if (string.Equals(candidate.Id, cameraId, StringComparison.OrdinalIgnoreCase))
+                {
+                    camera = candidate;
+                    return true;
+                }
+            }
+        }
+
+        camera = default;
+        return false;
     }
 
     private void VisionPipelineInclusionCheckBoxOnChanged(object? sender, RoutedEventArgs e)

@@ -17,6 +17,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Windowing;
 using ObjectTracker.Core.Domain;
+using ObjectTracker.Vision.Source;
 using OpenCvSharp;
 using VideoCapture = OpenCvSharp.VideoCapture;
 using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
@@ -388,6 +389,7 @@ public partial class MainWindow : AppWindow
     private readonly LayerTypeSettingsStore layerTypeSettingsStore = new();
     private readonly CameraZoneLayerRepository cameraZoneLayerRepository = new();
     private readonly AppSettingsStore appSettingsStore = new();
+    private readonly UsbCameraOwnerManager usbCameraOwnerManager = new(new OpenCvUsbCaptureBackend());
     private readonly CameraZoneLayerEditorService cameraZoneLayerEditorService = new();
     private readonly EffectiveZoneCompositionService effectiveZoneCompositionService = new();
     private readonly SessionAuditLogger sessionAuditLogger = new();
@@ -468,6 +470,7 @@ public partial class MainWindow : AppWindow
     {
         await StopCameraTilePreviewAsync();
         await StopProcessingAsync();
+        await usbCameraOwnerManager.StopAllAsync(CancellationToken.None);
         PersistCameraSettings();
         sessionAuditLogger.Dispose();
         base.OnClosing(e);
@@ -976,6 +979,8 @@ public partial class MainWindow : AppWindow
             cameraSettings.Clear();
             selectedCameraIndex = -1;
         }
+
+        await usbCameraOwnerManager.StopAllAsync(CancellationToken.None);
 
         PersistCameraSettings();
         PersistCameraZones();
@@ -1677,22 +1682,23 @@ public partial class MainWindow : AppWindow
         {
             if (camera.IsUsbCamera && camera.UsbCamera is { } usb)
             {
-                using var capture = new VideoCapture(usb.CameraIndex, usb.Api);
-                if (!capture.IsOpened())
-                {
-                    return;
-                }
-
-                using var frame = new Mat();
+                var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
+                await using var lease = await usbCameraOwnerManager.AcquireAsync(key, UsbCaptureSettings.Default, cancellationToken);
+                var previousVersion = 0L;
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    if (!capture.Read(frame) || frame.Empty())
+                    var snapshot = await lease.WaitForNextFrameAsync(previousVersion, TimeSpan.FromMilliseconds(250), cancellationToken);
+                    if (snapshot is null)
                     {
-                        await DelayIgnoringCancellationAsync(50, cancellationToken);
-                        continue;
+                        snapshot = lease.LatestFrame;
                     }
 
-                    RenderRawFrameToTile(target, frame);
+                    if (snapshot is not null)
+                    {
+                        previousVersion = snapshot.Value.FrameVersion;
+                        RenderUsbSnapshotToTile(target, snapshot.Value);
+                    }
+
                     await DelayIgnoringCancellationAsync(PreviewIntervalMs, cancellationToken);
                 }
 
@@ -1748,6 +1754,13 @@ public partial class MainWindow : AppWindow
     private void RenderRawFrameToTile(Image target, Mat frame)
     {
         var bitmap = ConvertMatToBitmap(frame);
+        Dispatcher.UIThread.Post(() => UpdatePreviewBitmap(target, bitmap), DispatcherPriority.Background);
+    }
+
+    private void RenderUsbSnapshotToTile(Image target, UsbFrameSnapshot snapshot)
+    {
+        using var stream = new MemoryStream(snapshot.EncodedJpeg);
+        var bitmap = new Bitmap(stream);
         Dispatcher.UIThread.Post(() => UpdatePreviewBitmap(target, bitmap), DispatcherPriority.Background);
     }
 

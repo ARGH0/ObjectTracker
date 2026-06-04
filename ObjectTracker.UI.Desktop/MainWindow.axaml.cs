@@ -789,7 +789,8 @@ public partial class MainWindow : AppWindow
     private async Task AddUsbCameraAsync()
     {
         SetStatus("Status: scanning USB cameras...");
-        var usbOptions = await Task.Run(DiscoverUsbCameraOptions);
+        var alreadyAddedSourceIds = GetAddedUsbCameraSourceIds();
+        var usbOptions = await Task.Run(() => DiscoverUsbCameraOptions(alreadyAddedSourceIds));
         if (usbOptions.Count == 0)
         {
             SetStatus("Status: no USB cameras detected.");
@@ -1800,6 +1801,11 @@ public partial class MainWindow : AppWindow
             cameraTileRenderModesById[cameraId] = viewState.RenderModes[i];
 
             var panel = new Panel();
+            if (image.Parent is Panel currentParent)
+            {
+                currentParent.Children.Remove(image);
+            }
+
             panel.Children.Add(image);
 
             if (viewState.RenderModes[i] == CameraRenderMode.DebugView)
@@ -2873,34 +2879,36 @@ public partial class MainWindow : AppWindow
         }
     }
 
-    private static IReadOnlyList<UsbCameraOption> DiscoverUsbCameraOptions()
+    private IReadOnlyList<string> GetAddedUsbCameraSourceIds()
+    {
+        lock (cameraSync)
+        {
+            return cameras
+                .Where(camera => camera.IsUsbCamera)
+                .Select(camera => camera.Id)
+                .ToList();
+        }
+    }
+
+    private static IReadOnlyList<UsbCameraOption> DiscoverUsbCameraOptions(IReadOnlyCollection<string> alreadyAddedSourceIds)
     {
         var api = GetDefaultUsbCaptureApi();
-        var options = new List<UsbCameraOption>();
+        var discovery = new UsbCameraDiscoveryService(MaxUsbCameraProbeIndex, api, cameraIndex => ProbeUsbCamera(cameraIndex, api));
+        return discovery.DiscoverUsbCameraOptions(alreadyAddedSourceIds);
+    }
 
-        for (var cameraIndex = 0; cameraIndex <= MaxUsbCameraProbeIndex; cameraIndex++)
+    private static UsbCameraProbeResult ProbeUsbCamera(int cameraIndex, VideoCaptureAPIs api)
+    {
+        using var capture = new VideoCapture(cameraIndex, api);
+        capture.Set(VideoCaptureProperties.BufferSize, 1);
+        if (!capture.IsOpened())
         {
-            using var capture = new VideoCapture(cameraIndex, api);
-            capture.Set(VideoCaptureProperties.BufferSize, 1);
-            if (!capture.IsOpened())
-            {
-                continue;
-            }
-
-            var width = (int)Math.Round(capture.Get(VideoCaptureProperties.FrameWidth));
-            var height = (int)Math.Round(capture.Get(VideoCaptureProperties.FrameHeight));
-            var sizeSuffix = width > 0 && height > 0
-                ? $" ({width}x{height})"
-                : string.Empty;
-
-            options.Add(new UsbCameraOption(
-                $"usb:{cameraIndex}:{api.ToString().ToUpperInvariant()}",
-                $"USB camera {cameraIndex}{sizeSuffix}",
-                cameraIndex,
-                api));
+            return UsbCameraProbeResult.Unavailable;
         }
 
-        return options;
+        var width = (int)Math.Round(capture.Get(VideoCaptureProperties.FrameWidth));
+        var height = (int)Math.Round(capture.Get(VideoCaptureProperties.FrameHeight));
+        return new UsbCameraProbeResult(true, width, height);
     }
 
     private static VideoCaptureAPIs GetDefaultUsbCaptureApi()

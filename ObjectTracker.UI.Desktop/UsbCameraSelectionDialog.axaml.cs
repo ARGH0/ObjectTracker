@@ -17,9 +17,13 @@ internal partial class UsbCameraSelectionDialog : Window
             ? "No USB cameras were detected on this machine right now."
             : "Choose the live camera source you want to add to the workspace.";
 
-        CameraListBox.ItemsSource = options.Select(o => o.DisplayName).ToList();
-        CameraListBox.SelectedIndex = options.Count > 0 ? 0 : -1;
-        AddButton.IsEnabled = options.Count > 0;
+        CameraListBox.ItemsSource = options.Select(o => o.IsAvailable ? o.DisplayName : $"{o.DisplayName} - {o.Status}").ToList();
+        CameraListBox.SelectedIndex = options.ToList().FindIndex(option => option.IsAvailable);
+        AddButton.IsEnabled = CameraListBox.SelectedIndex >= 0;
+        CameraListBox.SelectionChanged += (_, _) =>
+        {
+            AddButton.IsEnabled = UsbCameraSelectionPolicy.ResolveSelectableOption(options, CameraListBox.SelectedIndex) is not null;
+        };
 
         AddButton.Click += (_, _) => ConfirmSelection();
         CancelButton.Click += (_, _) => Close();
@@ -33,6 +37,12 @@ internal partial class UsbCameraSelectionDialog : Window
             return;
         }
 
-        Close(options[idx]);
+        var selected = UsbCameraSelectionPolicy.ResolveSelectableOption(options, idx);
+        if (selected is null)
+        {
+            return;
+        }
+
+        Close(selected.Value);
     }
 }

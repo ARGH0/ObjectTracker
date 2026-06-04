@@ -13,11 +13,11 @@ Update USB Camera Source discovery and add-camera selection so already-added USB
 
 ## Acceptance criteria
 
-- [ ] USB discovery receives the set of already-added USB source identities and avoids probing those devices.
-- [ ] The add USB camera dialog shows already-added USB Camera Sources as disabled or otherwise clearly unavailable with “already added” status.
-- [ ] Duplicate USB Camera Sources are blocked by source identity.
-- [ ] Unknown candidate USB indices are still probed and can be added when available.
-- [ ] Tests cover already-added source display, no-probe behavior for added sources, duplicate blocking, and successful discovery of unknown candidates.
+- [x] USB discovery receives the set of already-added USB source identities and avoids probing those devices.
+- [x] The add USB camera dialog shows already-added USB Camera Sources as disabled or otherwise clearly unavailable with “already added” status.
+- [x] Duplicate USB Camera Sources are blocked by source identity.
+- [x] Unknown candidate USB indices are still probed and can be added when available.
+- [x] Tests cover already-added source display, no-probe behavior for added sources, duplicate blocking, and successful discovery of unknown candidates.
 
 ## Blocked by
 

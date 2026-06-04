@@ -8,4 +8,10 @@ internal enum CameraAddChoice
     UsbCamera
 }
 
-internal readonly record struct UsbCameraOption(string Id, string DisplayName, int CameraIndex, VideoCaptureAPIs Api);
+public readonly record struct UsbCameraOption(
+    string Id,
+    string DisplayName,
+    int CameraIndex,
+    VideoCaptureAPIs Api,
+    bool IsAvailable = true,
+    string Status = "Available");

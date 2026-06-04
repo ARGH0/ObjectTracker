@@ -7,7 +7,7 @@ namespace ObjectTracker.UI.Desktop;
 
 public readonly record struct UsbCaptureSettingsRequest(int Width, int Height, int TargetFps)
 {
-    public static UsbCaptureSettingsRequest Default { get; } = new(640, 480, 20);
+    public static UsbCaptureSettingsRequest Default { get; } = new(640, 480, 30);
 }
 
 public sealed class UsbCaptureSettingsStore

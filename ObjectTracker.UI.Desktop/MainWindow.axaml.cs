@@ -1716,8 +1716,8 @@ public partial class MainWindow : AppWindow
             if (camera.IsUsbCamera && camera.UsbCamera is { } usb)
             {
                 var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
-                var captureSettings = ToUsbCaptureSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id));
-                await using var lease = await usbCameraOwnerManager.AcquireAsync(key, captureSettings, cancellationToken);
+                var startupSettings = UsbCaptureSettingsProjection.BuildRawTileStartupSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id));
+                await using var lease = await usbCameraOwnerManager.AcquireAsync(key, startupSettings, cancellationToken);
                 var previousVersion = 0L;
                 while (!cancellationToken.IsCancellationRequested)
                 {

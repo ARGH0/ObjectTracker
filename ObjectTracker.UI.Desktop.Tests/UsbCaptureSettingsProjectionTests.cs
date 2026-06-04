@@ -87,4 +87,13 @@ public sealed class UsbCaptureSettingsProjectionTests
         Assert.True(decision.ShouldDeferUntilNextOwnerStart);
         Assert.False(decision.RequiresVisionPipelineRestart);
     }
+
+    [Fact]
+    public void BuildRawTileStartupSettings_UsesStableBaselineRegardlessOfRequestedSettings()
+    {
+        var startupSettings = UsbCaptureSettingsProjection.BuildRawTileStartupSettings(
+            requested: new UsbCaptureSettingsRequest(1920, 1080, 60));
+
+        Assert.Equal(new ObjectTracker.Vision.Source.UsbCaptureSettings(640, 480, 20), startupSettings);
+    }
 }

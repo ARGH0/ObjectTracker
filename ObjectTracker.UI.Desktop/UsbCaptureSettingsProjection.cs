@@ -12,6 +12,11 @@ public readonly record struct UsbCaptureSettingsApplyDecision(
 
 public static class UsbCaptureSettingsProjection
 {
+    public static UsbCaptureSettings BuildRawTileStartupSettings(UsbCaptureSettingsRequest requested)
+    {
+        return UsbCaptureSettings.Default;
+    }
+
     public static UsbCaptureSettingsView Build(
         bool isUsbCameraSource,
         bool isVisible,

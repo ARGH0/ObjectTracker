@@ -12,7 +12,7 @@ public sealed class UsbCaptureSettingsServiceTests
 
         var settings = service.GetRequestedSettings("usb:0:ANY");
 
-        Assert.Equal(new UsbCaptureSettingsRequest(640, 480, 20), settings);
+        Assert.Equal(new UsbCaptureSettingsRequest(640, 480, 30), settings);
     }
 
     [Fact]

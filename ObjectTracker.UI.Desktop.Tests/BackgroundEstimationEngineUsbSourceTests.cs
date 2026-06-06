@@ -25,13 +25,14 @@ public sealed class BackgroundEstimationEngineUsbSourceTests
             threshold: 25,
             BackgroundEstimationEngine.ProcessingOptions.Default,
             bakeImagePath: null,
-            onFrame: _ =>
+            onDebugFrames: _ =>
             {
                 processedFrames++;
                 return Task.CompletedTask;
             },
             onStatus: _ => Task.CompletedTask,
             getLiveTuning: null,
+            shouldPublishDebugFrames: () => true,
             shouldStopEarly: () => processedFrames >= 2,
             CancellationToken.None);
 
@@ -60,13 +61,14 @@ public sealed class BackgroundEstimationEngineUsbSourceTests
             threshold: 25,
             BackgroundEstimationEngine.ProcessingOptions.Default,
             bakeImagePath: null,
-            onFrame: _ =>
+            onDebugFrames: _ =>
             {
                 Interlocked.Increment(ref processedFrames);
                 return Task.CompletedTask;
             },
             onStatus: _ => Task.CompletedTask,
             getLiveTuning: null,
+            shouldPublishDebugFrames: () => true,
             shouldStopEarly: () => Volatile.Read(ref processedFrames) >= 3,
             CancellationToken.None);
 

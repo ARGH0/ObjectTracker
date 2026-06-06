@@ -1,7 +1,7 @@
 # Debug Frames Replace PreviewFrameSet
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,11 +13,11 @@ Move Debug View output to named Debug Frames on PipelineSnapshot. Debug Frames s
 
 ## Acceptance criteria
 
-- [ ] PipelineSnapshot can carry named Debug Frames.
-- [ ] Debug Frames are emitted only when Debug View is enabled for the Camera Source.
-- [ ] Debug View can render from Debug Frames rather than PreviewFrameSet.
-- [ ] PreviewFrameSet does not cross the Vision Pipeline-to-UI seam.
-- [ ] Tests cover Debug View enabled and disabled snapshot output.
+- [x] PipelineSnapshot can carry named Debug Frames.
+- [x] Debug Frames are emitted only when Debug View is enabled for the Camera Source.
+- [x] Debug View can render from Debug Frames rather than PreviewFrameSet.
+- [x] PreviewFrameSet does not cross the Vision Pipeline-to-UI seam.
+- [x] Tests cover Debug View enabled and disabled snapshot output.
 
 ## Blocked by
 

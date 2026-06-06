@@ -15,6 +15,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     private readonly SemaphoreSlim lifecycleLock = new(1, 1);
     private readonly Lock overlaySettingsLock = new();
     private readonly Dictionary<string, RgbColor> overlayColors = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> debugViewCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
 
     private IFrameSource? activeSource;
     private CancellationTokenSource? loopCts;
@@ -167,6 +168,26 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         _ = PublishStatusAsync($"Kleurkalibraties bijgewerkt: {snapshot.Count}", CancellationToken.None);
     }
 
+    public void SetDebugViewEnabled(string cameraSourceId, bool enabled)
+    {
+        if (string.IsNullOrWhiteSpace(cameraSourceId))
+        {
+            return;
+        }
+
+        lock (overlaySettingsLock)
+        {
+            if (enabled)
+            {
+                debugViewCameraSourceIds.Add(cameraSourceId);
+            }
+            else
+            {
+                debugViewCameraSourceIds.Remove(cameraSourceId);
+            }
+        }
+    }
+
     public void SetOverlayLineThickness(int thickness)
     {
         lock (overlaySettingsLock)
@@ -231,7 +252,17 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
             var fps = CalculateFps(frame.TimestampUtcMs);
             var renderedFrame = RenderDetections(frame, detections);
-            var snapshot = new PipelineSnapshot(renderedFrame, detections, trainStates, detectorManager.ActiveMode, fps, sw.Elapsed.TotalMilliseconds);
+            var debugFrames = BuildDebugFrames(frame);
+            var snapshot = new PipelineSnapshot(
+                frame.SourceId,
+                frame,
+                renderedFrame,
+                [],
+                detections.Select(ToTrainObservation).ToList(),
+                trainStates,
+                debugFrames,
+                detectorManager.ActiveMode,
+                new PipelineSnapshotTiming(frame.TimestampUtcMs, fps, sw.Elapsed.TotalMilliseconds));
 
             foreach (var output in outputs)
             {
@@ -252,6 +283,31 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         {
             await output.PublishStatusAsync(status, cancellationToken);
         }
+    }
+
+    private static TrainObservation ToTrainObservation(Detection detection) => new(
+        detection.SourceId,
+        detection.TimestampUtcMs,
+        detection.Kind,
+        detection.X,
+        detection.Y,
+        detection.BoxX,
+        detection.BoxY,
+        detection.BoxWidth,
+        detection.BoxHeight,
+        detection.Confidence);
+
+    private IReadOnlyList<DebugFrame> BuildDebugFrames(FramePacket sourceFrame)
+    {
+        lock (overlaySettingsLock)
+        {
+            if (!debugViewCameraSourceIds.Contains(sourceFrame.SourceId))
+            {
+                return [];
+            }
+        }
+
+        return [new DebugFrame("source", sourceFrame)];
     }
 
     private FramePacket RenderDetections(FramePacket frame, IReadOnlyList<Detection> detections)

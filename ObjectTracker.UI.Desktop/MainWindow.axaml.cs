@@ -1430,13 +1430,14 @@ public partial class MainWindow : AppWindow
                     settings.Threshold,
                     options,
                     GetBakeImagePath(settings),
-                    onFrame: frameSet =>
+                    onDebugFrames: debugFrames =>
                     {
-                        QueuePreviewFrame(frameSet, cancellationToken);
+                        QueueDebugFrames(debugFrames, cancellationToken);
                         return Task.CompletedTask;
                     },
                     onStatus: async message => await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {message}")),
                     getLiveTuning: () => GetLiveTuningForCamera(camera.Id),
+                    shouldPublishDebugFrames: () => IsDebugViewEnabled(camera.Id),
                     shouldStopEarly: HasPendingCameraSwitchRequest,
                     cancellationToken: cancellationToken);
 
@@ -1477,13 +1478,14 @@ public partial class MainWindow : AppWindow
                     settings.Threshold,
                     options,
                     GetBakeImagePath(settings),
-                    onFrame: frameSet =>
+                    onDebugFrames: debugFrames =>
                     {
-                        QueuePreviewFrame(frameSet, cancellationToken);
+                        QueueDebugFrames(debugFrames, cancellationToken);
                         return Task.CompletedTask;
                     },
                     onStatus: async message => await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {message}")),
                     getLiveTuning: () => GetLiveTuningForCamera(camera.Id),
+                    shouldPublishDebugFrames: () => IsDebugViewEnabled(camera.Id),
                     shouldStopEarly: HasPendingCameraSwitchRequest,
                     cancellationToken: cancellationToken);
 
@@ -1561,7 +1563,7 @@ public partial class MainWindow : AppWindow
         }
     }
 
-    private void QueuePreviewFrame(BackgroundEstimationEngine.PreviewFrameSet frameSet, CancellationToken cancellationToken)
+    private void QueueDebugFrames(IReadOnlyList<DebugFrame> debugFrames, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested)
         {
@@ -1589,7 +1591,7 @@ public partial class MainWindow : AppWindow
                     return;
                 }
 
-                await Dispatcher.UIThread.InvokeAsync(() => RenderFrameSet(frameSet));
+                await Dispatcher.UIThread.InvokeAsync(() => RenderDebugFrames(debugFrames));
                 Interlocked.Exchange(ref lastPreviewRenderTick, Environment.TickCount64);
             }
             catch
@@ -1603,7 +1605,7 @@ public partial class MainWindow : AppWindow
         }, cancellationToken);
     }
 
-    private void RenderFrameSet(BackgroundEstimationEngine.PreviewFrameSet frameSet)
+    private void RenderDebugFrames(IReadOnlyList<DebugFrame> debugFrames)
     {
         var cameraId = activeVisionPipelineCameraId;
         if (string.IsNullOrWhiteSpace(cameraId))
@@ -1616,10 +1618,22 @@ public partial class MainWindow : AppWindow
             return;
         }
 
-        UpdatePreviewImage(debugImages.Background, frameSet.BackgroundMaskJpeg);
-        UpdatePreviewImage(debugImages.Moving, frameSet.MovingColorJpeg);
-        UpdatePreviewImage(debugImages.Color, frameSet.ColorDetectionJpeg);
-        UpdatePreviewImage(debugImages.Motion, frameSet.MotionJpeg);
+        foreach (var debugFrame in debugFrames)
+        {
+            var target = debugFrame.Name switch
+            {
+                "background-mask" => debugImages.Background,
+                "moving-color" => debugImages.Moving,
+                "color-detection" => debugImages.Color,
+                "motion" => debugImages.Motion,
+                _ => null
+            };
+
+            if (target is not null)
+            {
+                UpdatePreviewImage(target, debugFrame.Frame.EncodedJpeg);
+            }
+        }
     }
 
     private static void UpdatePreviewImage(Image target, byte[] imageBytes)
@@ -2842,6 +2856,16 @@ public partial class MainWindow : AppWindow
             settings.ColorMinPixels,
             settings.MorphKernelSize,
             settings.ColorCalibrations);
+    }
+
+    private bool IsDebugViewEnabled(string cameraId)
+    {
+        lock (cameraSync)
+        {
+            return cameras.Any(camera =>
+                string.Equals(camera.Id, cameraId, StringComparison.OrdinalIgnoreCase) &&
+                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled));
+        }
     }
 
     private void PersistCameraSettings()

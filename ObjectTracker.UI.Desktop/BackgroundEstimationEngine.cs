@@ -27,9 +27,10 @@ internal sealed class BackgroundEstimationEngine
         int threshold,
         ProcessingOptions options,
         string? bakeImagePath,
-        Func<PreviewFrameSet, Task> onFrame,
+        Func<IReadOnlyList<DebugFrame>, Task> onDebugFrames,
         Func<string, Task> onStatus,
         Func<LiveTuning>? getLiveTuning,
+        Func<bool>? shouldPublishDebugFrames,
         Func<bool>? shouldStopEarly,
         CancellationToken cancellationToken)
     {
@@ -79,9 +80,10 @@ internal sealed class BackgroundEstimationEngine
             railRoiMask,
             threshold,
             options,
-            onFrame,
+            onDebugFrames,
             onStatus,
             getLiveTuning,
+            shouldPublishDebugFrames,
             shouldStopEarly,
             cancellationToken,
             pacePlayback: true);
@@ -96,9 +98,10 @@ internal sealed class BackgroundEstimationEngine
         int threshold,
         ProcessingOptions options,
         string? bakeImagePath,
-        Func<PreviewFrameSet, Task> onFrame,
+        Func<IReadOnlyList<DebugFrame>, Task> onDebugFrames,
         Func<string, Task> onStatus,
         Func<LiveTuning>? getLiveTuning,
+        Func<bool>? shouldPublishDebugFrames,
         Func<bool>? shouldStopEarly,
         CancellationToken cancellationToken)
     {
@@ -134,9 +137,10 @@ internal sealed class BackgroundEstimationEngine
             railRoiMask,
             threshold,
             options,
-            onFrame,
+            onDebugFrames,
             onStatus,
             getLiveTuning,
+            shouldPublishDebugFrames,
             shouldStopEarly,
             cancellationToken);
     }
@@ -149,9 +153,10 @@ internal sealed class BackgroundEstimationEngine
         Mat railRoiMask,
         int threshold,
         ProcessingOptions options,
-        Func<PreviewFrameSet, Task> onFrame,
+        Func<IReadOnlyList<DebugFrame>, Task> onDebugFrames,
         Func<string, Task> onStatus,
         Func<LiveTuning>? getLiveTuning,
+        Func<bool>? shouldPublishDebugFrames,
         Func<bool>? shouldStopEarly,
         CancellationToken cancellationToken,
         bool pacePlayback)
@@ -233,8 +238,11 @@ internal sealed class BackgroundEstimationEngine
             var timestampSec = capture.PosMsec / 1000.0;
             RenderMotionOverlay(motionView, movingRects, timestampSec, ref previousTracks, ref nextTrackId);
 
-            var preview = BuildPreviewFrameSet(refinedMask, movingColor, colorDetections, motionView);
-            await onFrame(preview);
+            if (shouldPublishDebugFrames?.Invoke() == true)
+            {
+                var debugFrames = BuildDebugFrames(sourceLabel, (long)Math.Round((double)capture.PosMsec), refinedMask, movingColor, colorDetections, motionView);
+                await onDebugFrames(debugFrames);
+            }
 
             frameIndex++;
             if (frameIndex % 20 == 0)
@@ -347,9 +355,10 @@ internal sealed class BackgroundEstimationEngine
         Mat railRoiMask,
         int threshold,
         ProcessingOptions options,
-        Func<PreviewFrameSet, Task> onFrame,
+        Func<IReadOnlyList<DebugFrame>, Task> onDebugFrames,
         Func<string, Task> onStatus,
         Func<LiveTuning>? getLiveTuning,
+        Func<bool>? shouldPublishDebugFrames,
         Func<bool>? shouldStopEarly,
         CancellationToken cancellationToken)
     {
@@ -429,8 +438,11 @@ internal sealed class BackgroundEstimationEngine
             colorResized.CopyTo(motionView);
             RenderMotionOverlay(motionView, movingRects, snapshot.Value.TimestampUtcMs / 1000.0, ref previousTracks, ref nextTrackId);
 
-            var preview = BuildPreviewFrameSet(refinedMask, movingColor, colorDetections, motionView);
-            await onFrame(preview);
+            if (shouldPublishDebugFrames?.Invoke() == true)
+            {
+                var debugFrames = BuildDebugFrames(sourceLabel, snapshot.Value.TimestampUtcMs, refinedMask, movingColor, colorDetections, motionView);
+                await onDebugFrames(debugFrames);
+            }
 
             frameIndex++;
             if (frameIndex % 20 == 0)
@@ -797,25 +809,6 @@ internal sealed class BackgroundEstimationEngine
 
     private readonly record struct UsbBackgroundSample(Mat MedianBackground, long LastFrameVersion);
 
-    internal readonly struct PreviewFrameSet
-    {
-        public PreviewFrameSet(byte[] backgroundMaskJpeg, byte[] movingColorJpeg, byte[] colorDetectionJpeg, byte[] motionJpeg)
-        {
-            BackgroundMaskJpeg = backgroundMaskJpeg;
-            MovingColorJpeg = movingColorJpeg;
-            ColorDetectionJpeg = colorDetectionJpeg;
-            MotionJpeg = motionJpeg;
-        }
-
-        public byte[] BackgroundMaskJpeg { get; }
-
-        public byte[] MovingColorJpeg { get; }
-
-        public byte[] ColorDetectionJpeg { get; }
-
-        public byte[] MotionJpeg { get; }
-    }
-
     private static double GetPacingFps(double sourceFps)
     {
         if (double.IsNaN(sourceFps) || double.IsInfinity(sourceFps) || sourceFps <= 0)
@@ -879,13 +872,17 @@ internal sealed class BackgroundEstimationEngine
         }
     }
 
-    private static PreviewFrameSet BuildPreviewFrameSet(Mat backgroundMask, Mat movingColor, Mat colorDetections, Mat motionView)
-    {
-        Cv2.ImEncode(".jpg", backgroundMask, out var backgroundMaskJpeg, new[] { (int)ImwriteFlags.JpegQuality, 80 });
-        Cv2.ImEncode(".jpg", movingColor, out var movingColorJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
-        Cv2.ImEncode(".jpg", colorDetections, out var colorDetectionJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
-        Cv2.ImEncode(".jpg", motionView, out var motionJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
+    private static IReadOnlyList<DebugFrame> BuildDebugFrames(string sourceId, long timestampUtcMs, Mat backgroundMask, Mat movingColor, Mat colorDetections, Mat motionView) =>
+    [
+        EncodeDebugFrame("background-mask", sourceId, timestampUtcMs, backgroundMask, 80),
+        EncodeDebugFrame("moving-color", sourceId, timestampUtcMs, movingColor, 75),
+        EncodeDebugFrame("color-detection", sourceId, timestampUtcMs, colorDetections, 75),
+        EncodeDebugFrame("motion", sourceId, timestampUtcMs, motionView, 75)
+    ];
 
-        return new PreviewFrameSet(backgroundMaskJpeg, movingColorJpeg, colorDetectionJpeg, motionJpeg);
+    private static DebugFrame EncodeDebugFrame(string name, string sourceId, long timestampUtcMs, Mat frame, int jpegQuality)
+    {
+        Cv2.ImEncode(".jpg", frame, out var encodedJpeg, new[] { (int)ImwriteFlags.JpegQuality, jpegQuality });
+        return new DebugFrame(name, new FramePacket(sourceId, timestampUtcMs, frame.Width, frame.Height, encodedJpeg));
     }
 }

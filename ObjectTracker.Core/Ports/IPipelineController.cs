@@ -34,6 +34,8 @@ public interface IPipelineController
 
     void SetColorCalibrations(IEnumerable<ColorCalibrationProfile> calibrations);
 
+    void SetDebugViewEnabled(string cameraSourceId, bool enabled);
+
     void SetOverlayLineThickness(int thickness);
 
     void SetOverlayColor(string kind, byte r, byte g, byte b);

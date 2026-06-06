@@ -1,7 +1,7 @@
 # Visual Observation Snapshot Adapter
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,12 +13,12 @@ Adapt current Calibration, Rail ROI, moving object, Train Color, annotation, and
 
 ## Acceptance criteria
 
-- [ ] Current visual processing can emit Source Frame and Annotated Frame through PipelineSnapshot.
-- [ ] Moving Object Observations and Train Observations are represented separately from Train State.
-- [ ] Annotated Frame draws Train State by default, not raw observations.
-- [ ] Debug Frames expose visual observation phases when Debug View is enabled.
-- [ ] Existing Calibration and Rail ROI behavior is preserved through the adapter-first path.
-- [ ] Tests verify snapshot content without relying on UI callbacks.
+- [x] Current visual processing can emit Source Frame and Annotated Frame through PipelineSnapshot.
+- [x] Moving Object Observations and Train Observations are represented separately from Train State.
+- [x] Annotated Frame draws Train State by default, not raw observations.
+- [x] Debug Frames expose visual observation phases when Debug View is enabled.
+- [x] Existing Calibration and Rail ROI behavior is preserved through the adapter-first path.
+- [x] Tests verify snapshot content without relying on UI callbacks.
 
 ## Blocked by
 

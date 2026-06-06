@@ -110,11 +110,6 @@ public sealed class SimpleTracker : ITracker
             return false;
         }
 
-        if (!string.Equals(track.State.SourceId, detection.SourceId, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
         return true;
     }
 

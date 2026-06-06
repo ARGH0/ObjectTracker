@@ -13,6 +13,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     private readonly IReadOnlyList<IOutputPort> outputs;
     private readonly IClock clock;
     private readonly SemaphoreSlim lifecycleLock = new(1, 1);
+    private readonly Lock trackerLock = new();
     private readonly Lock overlaySettingsLock = new();
     private readonly Dictionary<string, RgbColor> overlayColors = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> debugViewCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
@@ -155,7 +156,10 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 await StopLaneAsync(lane.Key, lane.Value, cancellationToken);
             }
 
-            tracker.Reset();
+            lock (trackerLock)
+            {
+                tracker.Reset();
+            }
             await PublishStatusAsync("Pipeline gestopt.", cancellationToken);
         }
         finally
@@ -325,18 +329,24 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 var cycleStartedAt = Stopwatch.GetTimestamp();
                 var sw = Stopwatch.StartNew();
                 var detections = await detectorManager.DetectAsync(frame, cancellationToken);
-                var trainStates = tracker.Update(detections, frame.TimestampUtcMs);
+                IReadOnlyList<TrainState> trainStates;
+                lock (trackerLock)
+                {
+                    trainStates = tracker.Update(detections, frame.TimestampUtcMs);
+                }
                 sw.Stop();
 
                 var fps = CalculateFps(frame.TimestampUtcMs, ref framesInWindow, ref windowStartMs);
-                var renderedFrame = RenderDetections(frame, detections);
-                var debugFrames = BuildDebugFrames(frame);
+                var renderedFrame = RenderTrainStates(frame, trainStates);
+                var movingObjectObservations = detections.Where(IsMovingObjectObservation).Select(ToMovingObjectObservation).ToList();
+                var trainObservations = detections.Where(detection => !IsMovingObjectObservation(detection)).Select(ToTrainObservation).ToList();
+                var debugFrames = BuildDebugFrames(frame, movingObjectObservations, trainObservations, trainStates);
                 var snapshot = new PipelineSnapshot(
                     frame.SourceId,
                     frame,
                     renderedFrame,
-                    [],
-                    detections.Select(ToTrainObservation).ToList(),
+                    movingObjectObservations,
+                    trainObservations,
                     trainStates,
                     debugFrames,
                     detectorManager.ActiveMode,
@@ -424,7 +434,28 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         detection.BoxHeight,
         detection.Confidence);
 
-    private IReadOnlyList<DebugFrame> BuildDebugFrames(FramePacket sourceFrame)
+    private static MovingObjectObservation ToMovingObjectObservation(Detection detection) => new(
+        detection.SourceId,
+        detection.TimestampUtcMs,
+        detection.X,
+        detection.Y,
+        detection.BoxX,
+        detection.BoxY,
+        detection.BoxWidth,
+        detection.BoxHeight,
+        detection.Confidence);
+
+    private static bool IsMovingObjectObservation(Detection detection)
+    {
+        return detection.Kind.Equals("moving-object", StringComparison.OrdinalIgnoreCase) ||
+            detection.Kind.Equals("motion", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private IReadOnlyList<DebugFrame> BuildDebugFrames(
+        FramePacket sourceFrame,
+        IReadOnlyList<MovingObjectObservation> movingObjectObservations,
+        IReadOnlyList<TrainObservation> trainObservations,
+        IReadOnlyList<TrainState> trainStates)
     {
         lock (overlaySettingsLock)
         {
@@ -434,12 +465,28 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
             }
         }
 
-        return [new DebugFrame("source", sourceFrame)];
+        var frames = new List<DebugFrame> { new("source", sourceFrame) };
+        if (movingObjectObservations.Count > 0)
+        {
+            frames.Add(new DebugFrame("moving-object-observation", sourceFrame));
+        }
+
+        if (trainObservations.Count > 0)
+        {
+            frames.Add(new DebugFrame("train-observation", sourceFrame));
+        }
+
+        if (trainStates.Count > 0)
+        {
+            frames.Add(new DebugFrame("train-tracking", sourceFrame));
+        }
+
+        return frames;
     }
 
-    private FramePacket RenderDetections(FramePacket frame, IReadOnlyList<Detection> detections)
+    private FramePacket RenderTrainStates(FramePacket frame, IReadOnlyList<TrainState> trainStates)
     {
-        if (detections.Count == 0)
+        if (trainStates.Count == 0)
         {
             return frame;
         }
@@ -458,20 +505,21 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
             return frame;
         }
 
-        foreach (var detection in detections)
+        foreach (var trainState in trainStates)
         {
-            var color = GetColorForKind(detection.Kind, colors);
+            var color = GetColorForKind(trainState.TrainColor ?? string.Empty, colors);
+            var center = new Cv.Point((int)trainState.X, (int)trainState.Y);
             var rect = new Cv.Rect(
-                (int)detection.BoxX,
-                (int)detection.BoxY,
-                Math.Max(1, (int)detection.BoxWidth),
-                Math.Max(1, (int)detection.BoxHeight));
+                Math.Max(0, center.X - 6),
+                Math.Max(0, center.Y - 6),
+                12,
+                12);
 
             Cv.Cv2.Rectangle(image, rect, color, lineThickness);
             var labelPoint = new Cv.Point(rect.X, Math.Max(12, rect.Y - 6));
             Cv.Cv2.PutText(
                 image,
-                detection.Kind,
+                string.IsNullOrWhiteSpace(trainState.TrainColor) ? trainState.LocalTrainId : $"{trainState.LocalTrainId} {trainState.TrainColor}",
                 labelPoint,
                 Cv.HersheyFonts.HersheySimplex,
                 0.55,

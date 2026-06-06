@@ -253,6 +253,71 @@ public sealed class PipelineControllerLaneReconciliationTests
         Assert.All(snapshots, snapshot => Assert.Equal(1, snapshot.Timing.FramesPerSecond));
     }
 
+    [Fact]
+    public async Task TrainTracking_KeepsLocalTrainIdWhenTrainMovesAcrossCameraSources()
+    {
+        var source1 = new ControlledFrameSource("camera-1", [Frame("camera-1", 1000)]);
+        var source2 = new ControlledFrameSource("camera-2", [Frame("camera-2", 2000)]);
+        var factory = new MultiFrameSourceFactory(source1, source2);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            factory,
+            new SourceAwareDetectorManager(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["camera-1"] = [Detection("camera-1", 1000, 10, 10, "Red")],
+                ["camera-2"] = [Detection("camera-2", 2000, 20, 12, "Red")]
+            }),
+            new SimpleTracker(),
+            [output],
+            new IncrementingClock());
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        await controller.StartAsync(CancellationToken.None);
+        var firstSnapshot = await output.WaitForSnapshotAsync();
+
+        controller.SetVisionPipelineInclusion("camera-2", included: true);
+        var snapshots = await output.WaitForSnapshotsAsync(2);
+        await controller.StopAsync(CancellationToken.None);
+
+        var secondSnapshot = snapshots.Last(snapshot => snapshot.CameraSourceId == "camera-2");
+        var firstTrainState = Assert.Single(firstSnapshot.TrainStates);
+        var secondTrainState = Assert.Single(secondSnapshot.TrainStates);
+        Assert.Equal("camera-1", firstTrainState.SourceId);
+        Assert.Equal("camera-2", secondTrainState.SourceId);
+        Assert.Equal(firstTrainState.LocalTrainId, secondTrainState.LocalTrainId);
+    }
+
+    [Fact]
+    public async Task TrainTracking_ContinuesTrainStateWhenNoNewObservationAppears()
+    {
+        var source = new ControlledFrameSource("camera-1", [Frame("camera-1", 1000)]);
+        var factory = new MultiFrameSourceFactory(source);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            factory,
+            new SequenceDetectorManager([
+                [Detection("camera-1", 1000, 10, 10, "Red")],
+                []
+            ]),
+            new SimpleTracker(),
+            [output],
+            new IncrementingClock());
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        await controller.StartAsync(CancellationToken.None);
+        var firstSnapshot = await output.WaitForSnapshotAsync();
+
+        source.Enqueue(Frame("camera-1", 2000));
+        var snapshots = await output.WaitForSnapshotsAsync(2);
+        await controller.StopAsync(CancellationToken.None);
+
+        var firstTrainState = Assert.Single(firstSnapshot.TrainStates);
+        var secondTrainState = Assert.Single(snapshots.Last().TrainStates);
+        Assert.Equal(firstTrainState.LocalTrainId, secondTrainState.LocalTrainId);
+        Assert.Equal(TrainMotionState.Uncertain, secondTrainState.MotionState);
+        Assert.True(secondTrainState.Confidence < firstTrainState.Confidence);
+    }
+
     private static PipelineController CreateController(IFrameSourceFactory factory, IOutputPort output, ITracker? tracker = null) => new(
         factory,
         new StubDetectorManager(),
@@ -261,6 +326,19 @@ public sealed class PipelineControllerLaneReconciliationTests
         new IncrementingClock());
 
     private static FramePacket Frame(string sourceId, long timestamp) => new(sourceId, timestamp, 2, 2, [1, 2, 3]);
+
+    private static Detection Detection(string sourceId, long timestamp, float x, float y, string trainColor) => new(
+        $"{sourceId}-{trainColor}-{timestamp}",
+        x,
+        y,
+        x - 2,
+        y - 2,
+        4,
+        4,
+        0.9f,
+        trainColor,
+        sourceId,
+        timestamp);
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
@@ -367,6 +445,58 @@ public sealed class PipelineControllerLaneReconciliationTests
         public void SetColorCalibrations(IEnumerable<ColorCalibrationProfile> calibrations) { }
 
         public Task<IReadOnlyList<Detection>> DetectAsync(FramePacket frame, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<Detection>>([]);
+    }
+
+    private sealed class SourceAwareDetectorManager(IReadOnlyDictionary<string, Detection[]> detectionsBySourceId) : IDetectorManager
+    {
+        public DetectorMode ActiveMode => DetectorMode.Color;
+
+        public IReadOnlyList<DetectorMode> SupportedModes => [DetectorMode.Color];
+
+        public IReadOnlyList<string> AvailableColorFilters => [];
+
+        public IReadOnlyList<string> EnabledColorFilters => [];
+
+        public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations => [];
+
+        public void SwitchMode(DetectorMode mode) { }
+
+        public void SetEnabledColorFilters(IEnumerable<string> colors) { }
+
+        public void SetColorCalibrations(IEnumerable<ColorCalibrationProfile> calibrations) { }
+
+        public Task<IReadOnlyList<Detection>> DetectAsync(FramePacket frame, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<Detection>>(
+                detectionsBySourceId.TryGetValue(frame.SourceId, out var detections) ? detections : []);
+        }
+    }
+
+    private sealed class SequenceDetectorManager(IReadOnlyList<IReadOnlyList<Detection>> detectionsByCall) : IDetectorManager
+    {
+        private int callIndex;
+
+        public DetectorMode ActiveMode => DetectorMode.Color;
+
+        public IReadOnlyList<DetectorMode> SupportedModes => [DetectorMode.Color];
+
+        public IReadOnlyList<string> AvailableColorFilters => [];
+
+        public IReadOnlyList<string> EnabledColorFilters => [];
+
+        public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations => [];
+
+        public void SwitchMode(DetectorMode mode) { }
+
+        public void SetEnabledColorFilters(IEnumerable<string> colors) { }
+
+        public void SetColorCalibrations(IEnumerable<ColorCalibrationProfile> calibrations) { }
+
+        public Task<IReadOnlyList<Detection>> DetectAsync(FramePacket frame, CancellationToken cancellationToken)
+        {
+            var index = Math.Min(Interlocked.Increment(ref callIndex) - 1, detectionsByCall.Count - 1);
+            return Task.FromResult(detectionsByCall[index]);
+        }
     }
 
     private sealed class StubTracker : ITracker

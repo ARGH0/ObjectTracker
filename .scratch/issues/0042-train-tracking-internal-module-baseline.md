@@ -1,7 +1,7 @@
 # Train Tracking Internal Module Baseline
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,11 +13,11 @@ Introduce Train Tracking as a distinct internal module under the Vision Pipeline
 
 ## Acceptance criteria
 
-- [ ] Train Tracking is distinct from per-Camera Source visual observation lanes.
-- [ ] Local Train IDs are shared across Camera Sources inside one Processing Unit.
-- [ ] Relevant Train States appear in per-Camera Source PipelineSnapshots.
-- [ ] Train State can continue across frames when no new observation appears.
-- [ ] Tests cover Local Train ID continuity across at least two Camera Sources.
+- [x] Train Tracking is distinct from per-Camera Source visual observation lanes.
+- [x] Local Train IDs are shared across Camera Sources inside one Processing Unit.
+- [x] Relevant Train States appear in per-Camera Source PipelineSnapshots.
+- [x] Train State can continue across frames when no new observation appears.
+- [x] Tests cover Local Train ID continuity across at least two Camera Sources.
 
 ## Blocked by
 

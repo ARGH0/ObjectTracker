@@ -1,5 +1,6 @@
 using ObjectTracker.Core.Domain;
 using ObjectTracker.Core.Ports;
+using Cv = OpenCvSharp;
 using Xunit;
 
 namespace ObjectTracker.Vision.Tests;
@@ -68,14 +69,52 @@ public sealed class PipelineControllerSnapshotTests
     }
 
     [Fact]
-    public async Task StartAsync_WhenDebugViewEnabled_PublishesNamedDebugFrames()
+    public async Task StartAsync_SeparatesMovingObjectObservationsFromTrainObservations()
     {
-        var sourceFrame = new FramePacket("camera-1", 1234, 2, 2, [1, 2, 3]);
+        var sourceFrame = new FramePacket("camera-1", 2100, 2, 2, [1, 2, 3]);
+        var movingEvidence = new Detection("motion-1", 5, 6, 1, 2, 3, 4, 0.5f, "moving-object", "camera-1", sourceFrame.TimestampUtcMs);
+        var trainColorEvidence = new Detection("red-1", 10, 20, 8, 18, 12, 14, 0.75f, "Red", "camera-1", sourceFrame.TimestampUtcMs);
         var output = new RecordingOutputPort();
         await using var controller = new PipelineController(
             new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
-            new StubDetectorManager([]),
+            new StubDetectorManager([movingEvidence, trainColorEvidence]),
             new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        var movingObservation = Assert.Single(snapshot.MovingObjectObservations);
+        Assert.Equal("camera-1", movingObservation.SourceId);
+        Assert.Equal(5, movingObservation.X);
+        var trainObservation = Assert.Single(snapshot.TrainObservations);
+        Assert.Equal("Red", trainObservation.TrainColor);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenDebugViewEnabled_PublishesNamedDebugFrames()
+    {
+        var sourceFrame = new FramePacket("camera-1", 1234, 2, 2, [1, 2, 3]);
+        var detection = new Detection("red-1", 10, 20, 8, 18, 12, 14, 0.75f, "Red", "camera-1", sourceFrame.TimestampUtcMs);
+        var trainState = new TrainState(
+            "local-train-1",
+            "Red",
+            10,
+            20,
+            3,
+            90,
+            0.8f,
+            TrainMotionState.Moving,
+            CollisionWarningState.None,
+            "camera-1",
+            sourceFrame.TimestampUtcMs);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new StubDetectorManager([detection]),
+            new StubTracker([trainState]),
             [output],
             new StubClock(sourceFrame.TimestampUtcMs));
 
@@ -85,9 +124,9 @@ public sealed class PipelineControllerSnapshotTests
         var snapshot = await output.WaitForSnapshotAsync();
         await controller.StopAsync(CancellationToken.None);
 
-        var debugFrame = Assert.Single(snapshot.DebugFrames);
-        Assert.Equal("source", debugFrame.Name);
-        Assert.Same(sourceFrame, debugFrame.Frame);
+        Assert.Contains(snapshot.DebugFrames, frame => frame.Name == "source");
+        Assert.Contains(snapshot.DebugFrames, frame => frame.Name == "train-observation");
+        Assert.Contains(snapshot.DebugFrames, frame => frame.Name == "train-tracking");
     }
 
     [Fact]
@@ -107,6 +146,60 @@ public sealed class PipelineControllerSnapshotTests
         await controller.StopAsync(CancellationToken.None);
 
         Assert.Empty(snapshot.DebugFrames);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenTrainObservationHasNoTrainState_DoesNotDrawObservationOnAnnotatedFrame()
+    {
+        var sourceFrame = JpegFrame("camera-1", 1234);
+        var observation = new Detection("red-1", 10, 10, 4, 4, 8, 8, 0.75f, "Red", "camera-1", sourceFrame.TimestampUtcMs);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new StubDetectorManager([observation]),
+            new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Single(snapshot.TrainObservations);
+        Assert.Empty(snapshot.TrainStates);
+        Assert.Equal(sourceFrame.EncodedJpeg, snapshot.AnnotatedFrame.EncodedJpeg);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenTrainStateExists_DrawsTrainStateOnAnnotatedFrame()
+    {
+        var sourceFrame = JpegFrame("camera-1", 1234);
+        var trainState = new TrainState(
+            "local-train-1",
+            "Red",
+            10,
+            10,
+            3,
+            90,
+            0.8f,
+            TrainMotionState.Moving,
+            CollisionWarningState.None,
+            "camera-1",
+            sourceFrame.TimestampUtcMs);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new StubDetectorManager([]),
+            new StubTracker([trainState]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Same(trainState, Assert.Single(snapshot.TrainStates));
+        Assert.NotEqual(sourceFrame.EncodedJpeg, snapshot.AnnotatedFrame.EncodedJpeg);
     }
 
     private sealed class SingleFrameSourceFactory(IFrameSource source) : IFrameSourceFactory
@@ -177,5 +270,12 @@ public sealed class PipelineControllerSnapshotTests
     private sealed class StubClock(long timestamp) : IClock
     {
         public long UtcNowMs() => timestamp;
+    }
+
+    private static FramePacket JpegFrame(string sourceId, long timestampUtcMs)
+    {
+        using var image = new Cv.Mat(24, 24, Cv.MatType.CV_8UC3, Cv.Scalar.Black);
+        Cv.Cv2.ImEncode(".jpg", image, out var encoded, [new Cv.ImageEncodingParam(Cv.ImwriteFlags.JpegQuality, 90)]);
+        return new FramePacket(sourceId, timestampUtcMs, image.Width, image.Height, encoded);
     }
 }

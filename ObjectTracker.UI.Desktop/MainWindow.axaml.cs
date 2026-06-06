@@ -17,6 +17,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Windowing;
 using ObjectTracker.Core.Domain;
+using ObjectTracker.Core.Ports;
 using ObjectTracker.Vision.Source;
 using OpenCvSharp;
 using VideoCapture = OpenCvSharp.VideoCapture;
@@ -25,7 +26,7 @@ using VideoCaptureProperties = OpenCvSharp.VideoCaptureProperties;
 
 namespace ObjectTracker.UI.Desktop;
 
-public partial class MainWindow : AppWindow
+public partial class MainWindow : AppWindow, IOutputPort
 {
     public enum Workspace
     {
@@ -95,11 +96,22 @@ public partial class MainWindow : AppWindow
 
     public readonly record struct CameraWorkspaceTile(string CameraId, string DisplayName, int Index, CameraRenderMode RenderMode);
 
+    public readonly record struct CameraTileFrameRoute(string CameraId, CameraTileFrameSource FrameSource);
+
+    public readonly record struct CameraTileFrameRouting(IReadOnlyList<CameraTileFrameRoute> Routes);
+
     public enum CameraRenderMode
     {
         LiveAnnotated,
         DebugView,
         RawFeed
+    }
+
+    public enum CameraTileFrameSource
+    {
+        RawCameraSourceFeed,
+        PipelineSnapshotAnnotatedFrame,
+        PipelineSnapshotDebugFrames
     }
 
     public enum SettingsNavigationDecision
@@ -266,6 +278,25 @@ public partial class MainWindow : AppWindow
         return new CameraTileViewState(projection.Rows, projection.Columns, titles, ids, modes);
     }
 
+    public static CameraTileFrameRouting BuildCameraTileFrameRouting(CameraGridProjection projection)
+    {
+        var routes = projection.Tiles
+            .Select(tile => new CameraTileFrameRoute(tile.CameraId, GetCameraTileFrameSource(tile.RenderMode)))
+            .ToList();
+
+        return new CameraTileFrameRouting(routes);
+    }
+
+    private static CameraTileFrameSource GetCameraTileFrameSource(CameraRenderMode renderMode)
+    {
+        return renderMode switch
+        {
+            CameraRenderMode.DebugView => CameraTileFrameSource.PipelineSnapshotDebugFrames,
+            CameraRenderMode.LiveAnnotated => CameraTileFrameSource.PipelineSnapshotAnnotatedFrame,
+            _ => CameraTileFrameSource.RawCameraSourceFeed
+        };
+    }
+
     public static SelectionMode GetCameraListSelectionMode()
     {
         return SelectionMode.Single;
@@ -417,6 +448,7 @@ public partial class MainWindow : AppWindow
     private readonly UsbCameraOwnerManager usbCameraOwnerManager = new(new OpenCvUsbCaptureBackend());
     private readonly FileCameraSourceFeedManager fileCameraSourceFeedManager = new(new OpenCvFileCameraSourcePlaybackBackend());
     private readonly CameraTileRawFeedConsumer cameraTileRawFeedConsumer = new();
+    private readonly CameraTilePipelineSnapshotRenderer cameraTilePipelineSnapshotRenderer = new();
     private readonly UsbCaptureSettingsService usbCaptureSettingsService;
     private readonly CameraZoneLayerEditorService cameraZoneLayerEditorService = new();
     private readonly EffectiveZoneCompositionService effectiveZoneCompositionService = new();
@@ -1636,6 +1668,82 @@ public partial class MainWindow : AppWindow
         }
     }
 
+    public async Task PublishSnapshotAsync(PipelineSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        var routing = BuildCurrentCameraTileFrameRouting(isVisionPipelineRunning: true);
+        await cameraTilePipelineSnapshotRenderer.RenderSnapshotAsync(
+            snapshot,
+            routing,
+            frame => Dispatcher.UIThread.InvokeAsync(() => RenderPipelineSnapshotFrame(frame)).GetTask(),
+            debugFrame => Dispatcher.UIThread.InvokeAsync(() => RenderPipelineSnapshotDebugFrame(debugFrame)).GetTask(),
+            cancellationToken);
+    }
+
+    public Task PublishStatusAsync(string status, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.CompletedTask;
+        }
+
+        return Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {status}")).GetTask();
+    }
+
+    private CameraTileFrameRouting BuildCurrentCameraTileFrameRouting(bool isVisionPipelineRunning)
+    {
+        List<CameraProfile> snapshot;
+        lock (cameraSync)
+        {
+            snapshot = cameras.ToList();
+        }
+
+        var projection = BuildCameraGridProjection(snapshot
+            .Select(camera => new CameraWorkspaceCamera(
+                camera.Id,
+                camera.DisplayName,
+                camera.IsVisible,
+                camera.IsIncludedInVisionPipeline,
+                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled)))
+            .ToList(),
+            isVisionPipelineRunning);
+
+        return BuildCameraTileFrameRouting(projection);
+    }
+
+    private void RenderPipelineSnapshotFrame(CameraTileRawFrameSnapshot frame)
+    {
+        if (!cameraTileImagesById.TryGetValue(frame.CameraId, out var target))
+        {
+            return;
+        }
+
+        UpdatePreviewImage(target, frame.EncodedJpeg);
+    }
+
+    private void RenderPipelineSnapshotDebugFrame(CameraTileDebugFrameSnapshot debugFrame)
+    {
+        if (!cameraTileDebugImagesById.TryGetValue(debugFrame.CameraId, out var debugImages))
+        {
+            return;
+        }
+
+        var target = debugFrame.Name switch
+        {
+            "background-mask" => debugImages.Background,
+            "moving-color" => debugImages.Moving,
+            "color-detection" => debugImages.Color,
+            "motion" => debugImages.Motion,
+            _ => debugImages.Background
+        };
+
+        UpdatePreviewImage(target, debugFrame.EncodedJpeg);
+    }
+
     private static void UpdatePreviewImage(Image target, byte[] imageBytes)
     {
         using var ms = new MemoryStream(imageBytes);
@@ -1741,13 +1849,14 @@ public partial class MainWindow : AppWindow
 
     private void StartCameraTilePreview(IReadOnlyList<CameraProfile> orderedCameras, CameraGridProjection projection)
     {
-        var visibleIds = projection.Tiles.Select(tile => tile.CameraId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var rawFeedIds = BuildCameraTileFrameRouting(projection)
+            .Routes
+            .Where(route => route.FrameSource == CameraTileFrameSource.RawCameraSourceFeed)
+            .Select(route => route.CameraId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var feedCameras = orderedCameras
-            .Where(camera => visibleIds.Contains(camera.Id))
-            .Where(camera =>
-                !cameraTileRenderModesById.TryGetValue(camera.Id, out var mode) ||
-                mode != CameraRenderMode.DebugView)
+            .Where(camera => rawFeedIds.Contains(camera.Id))
             .ToList();
 
         cameraTileFeedCamerasById.Clear();

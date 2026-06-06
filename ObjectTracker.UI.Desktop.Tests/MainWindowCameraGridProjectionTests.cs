@@ -171,6 +171,113 @@ public sealed class MainWindowCameraGridProjectionTests
     }
 
     [Fact]
+    public void CameraTileFrameRouting_WhenVisibleIncludedAndRunning_UsesPipelineSnapshotAnnotatedFrame()
+    {
+        var projection = MainWindow.BuildCameraGridProjection(new[]
+        {
+            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false)
+        }, isVisionPipelineRunning: true);
+
+        var routing = MainWindow.BuildCameraTileFrameRouting(projection);
+
+        Assert.Collection(
+            routing.Routes,
+            route =>
+            {
+                Assert.Equal("cam-a", route.CameraId);
+                Assert.Equal(MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame, route.FrameSource);
+            });
+    }
+
+    [Fact]
+    public void CameraTileFrameRouting_WhenDebugViewVisibleIncludedAndRunning_UsesPipelineSnapshotDebugFrames()
+    {
+        var projection = MainWindow.BuildCameraGridProjection(new[]
+        {
+            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: true)
+        }, isVisionPipelineRunning: true);
+
+        var routing = MainWindow.BuildCameraTileFrameRouting(projection);
+
+        Assert.Collection(
+            routing.Routes,
+            route => Assert.Equal(MainWindow.CameraTileFrameSource.PipelineSnapshotDebugFrames, route.FrameSource));
+    }
+
+    [Theory]
+    [InlineData(false, true, true)]
+    [InlineData(false, false, false)]
+    [InlineData(true, true, false)]
+    public void CameraTileFrameRouting_WhenVisibleTileIsExcludedOrStopped_UsesRawCameraSourceFeed(
+        bool isIncludedInVisionPipeline,
+        bool debugViewEnabled,
+        bool isVisionPipelineRunning)
+    {
+        var projection = MainWindow.BuildCameraGridProjection(new[]
+        {
+            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: true, isIncludedInVisionPipeline, debugViewEnabled)
+        }, isVisionPipelineRunning);
+
+        var routing = MainWindow.BuildCameraTileFrameRouting(projection);
+
+        Assert.Collection(
+            routing.Routes,
+            route => Assert.Equal(MainWindow.CameraTileFrameSource.RawCameraSourceFeed, route.FrameSource));
+    }
+
+    [Fact]
+    public void CameraTileFrameRouting_WhenCameraSourceIsHiddenAndIncluded_HasNoTileRoute()
+    {
+        var projection = MainWindow.BuildCameraGridProjection(new[]
+        {
+            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: false, IsIncludedInVisionPipeline: true, DebugViewEnabled: true)
+        }, isVisionPipelineRunning: true);
+
+        var routing = MainWindow.BuildCameraTileFrameRouting(projection);
+
+        Assert.Empty(routing.Routes);
+    }
+
+    [Fact]
+    public void CameraTileFrameRouting_CoversCameraVisibilityInclusionRunningAndDebugViewCombinations()
+    {
+        var combinations = from isVisible in new[] { false, true }
+            from isIncludedInVisionPipeline in new[] { false, true }
+            from isVisionPipelineRunning in new[] { false, true }
+            from debugViewEnabled in new[] { false, true }
+            select new { isVisible, isIncludedInVisionPipeline, isVisionPipelineRunning, debugViewEnabled };
+
+        foreach (var combination in combinations)
+        {
+            var projection = MainWindow.BuildCameraGridProjection(new[]
+            {
+                new MainWindow.CameraWorkspaceCamera(
+                    "cam-a",
+                    "Camera A",
+                    combination.isVisible,
+                    combination.isIncludedInVisionPipeline,
+                    combination.debugViewEnabled)
+            }, combination.isVisionPipelineRunning);
+
+            var routing = MainWindow.BuildCameraTileFrameRouting(projection);
+
+            if (!combination.isVisible)
+            {
+                Assert.Empty(routing.Routes);
+                continue;
+            }
+
+            var route = Assert.Single(routing.Routes);
+            var expected = combination.isIncludedInVisionPipeline && combination.isVisionPipelineRunning
+                ? combination.debugViewEnabled
+                    ? MainWindow.CameraTileFrameSource.PipelineSnapshotDebugFrames
+                    : MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame
+                : MainWindow.CameraTileFrameSource.RawCameraSourceFeed;
+            Assert.Equal(expected, route.FrameSource);
+        }
+    }
+
+    [Fact]
     public void CameraGridProjection_WhenVisionPipelineStopped_RendersIncludedDebugCameraAsRawFeed()
     {
         var projection = MainWindow.BuildCameraGridProjection(new[]

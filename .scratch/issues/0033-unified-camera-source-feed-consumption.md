@@ -1,7 +1,7 @@
 # Unified Camera Source Feed Consumption
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Make raw feed display consume session-owned Camera Source feeds for both USB and
 
 ## Acceptance criteria
 
-- [ ] Visible excluded USB and file-based Camera Sources render from session-owned feeds.
-- [ ] Visible included Camera Sources render raw feed while the Vision Pipeline is stopped.
-- [ ] USB Camera Sources still use one owning feed and do not open duplicate physical captures.
-- [ ] Tests cover USB and file-based raw feed consumers through the same feed-consumption behavior.
+- [x] Visible excluded USB and file-based Camera Sources render from session-owned feeds.
+- [x] Visible included Camera Sources render raw feed while the Vision Pipeline is stopped.
+- [x] USB Camera Sources still use one owning feed and do not open duplicate physical captures.
+- [x] Tests cover USB and file-based raw feed consumers through the same feed-consumption behavior.
 
 ## Blocked by
 

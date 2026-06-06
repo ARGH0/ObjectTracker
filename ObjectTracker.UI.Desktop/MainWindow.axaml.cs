@@ -406,6 +406,7 @@ public partial class MainWindow : AppWindow
     private readonly AppSettingsStore appSettingsStore = new();
     private readonly UsbCameraOwnerManager usbCameraOwnerManager = new(new OpenCvUsbCaptureBackend());
     private readonly FileCameraSourceFeedManager fileCameraSourceFeedManager = new(new OpenCvFileCameraSourcePlaybackBackend());
+    private readonly CameraTileRawFeedConsumer cameraTileRawFeedConsumer = new();
     private readonly UsbCaptureSettingsService usbCaptureSettingsService;
     private readonly CameraZoneLayerEditorService cameraZoneLayerEditorService = new();
     private readonly EffectiveZoneCompositionService effectiveZoneCompositionService = new();
@@ -1767,20 +1768,19 @@ public partial class MainWindow : AppWindow
                 var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
                 var startupSettings = UsbCaptureSettingsProjection.BuildRawTileStartupSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id));
                 await using var lease = await usbCameraOwnerManager.AcquireAsync(key, startupSettings, cancellationToken);
+                var feed = new UsbCameraTileRawFrameFeed(lease);
                 var previousVersion = 0L;
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    var snapshot = await lease.WaitForNextFrameAsync(previousVersion, TimeSpan.FromMilliseconds(250), cancellationToken);
-                    if (snapshot is null)
-                    {
-                        snapshot = lease.LatestFrame;
-                    }
-
-                    if (snapshot is not null)
-                    {
-                        previousVersion = snapshot.Value.FrameVersion;
-                        RenderUsbSnapshotToTile(target, snapshot.Value);
-                    }
+                    previousVersion = await cameraTileRawFeedConsumer.RenderNextFrameAsync(
+                        feed,
+                        previousVersion,
+                        frame =>
+                        {
+                            RenderEncodedRawFrameToTile(target, frame.EncodedJpeg);
+                            return Task.CompletedTask;
+                        },
+                        cancellationToken);
 
                     await DelayIgnoringCancellationAsync(PreviewIntervalMs, cancellationToken);
                 }
@@ -1793,28 +1793,26 @@ public partial class MainWindow : AppWindow
                 return;
             }
 
-            using var videoCapture = new VideoCapture(camera.VideoPath);
-            if (!videoCapture.IsOpened())
-            {
-                return;
-            }
-
-            var sourceFps = videoCapture.Get(VideoCaptureProperties.Fps);
-            var frameIntervalMs = sourceFps > 0.1
-                ? Math.Max(1, (int)Math.Round(1000d / sourceFps))
-                : PreviewIntervalMs;
-
-            using var videoFrame = new Mat();
-            var playbackSession = new FileCameraSourcePlaybackSession(camera.LoopVideo, new VideoCaptureFrameReader(videoCapture, videoFrame));
+            var fileKey = new FileCameraSourceKey(camera.Id, camera.VideoPath);
+            await using var fileLease = await fileCameraSourceFeedManager.AcquireAsync(
+                fileKey,
+                new FileCameraSourcePlaybackSettings(camera.LoopVideo),
+                cancellationToken);
+            var fileFeed = new FileCameraTileRawFrameFeed(fileLease);
+            var filePreviousVersion = 0L;
             while (!cancellationToken.IsCancellationRequested)
             {
-                if (playbackSession.ReadNextFrame() == FileCameraSourcePlaybackStep.Ended)
-                {
-                    return;
-                }
+                filePreviousVersion = await cameraTileRawFeedConsumer.RenderNextFrameAsync(
+                    fileFeed,
+                    filePreviousVersion,
+                    frame =>
+                    {
+                        RenderEncodedRawFrameToTile(target, frame.EncodedJpeg);
+                        return Task.CompletedTask;
+                    },
+                    cancellationToken);
 
-                RenderRawFrameToTile(target, videoFrame);
-                await DelayIgnoringCancellationAsync(frameIntervalMs, cancellationToken);
+                await DelayIgnoringCancellationAsync(PreviewIntervalMs, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -1833,43 +1831,11 @@ public partial class MainWindow : AppWindow
         await Task.Delay(milliseconds);
     }
 
-    private void RenderRawFrameToTile(Image target, Mat frame)
+    private void RenderEncodedRawFrameToTile(Image target, byte[] encodedJpeg)
     {
-        var bitmap = ConvertMatToBitmap(frame);
-        Dispatcher.UIThread.Post(() => UpdatePreviewBitmap(target, bitmap), DispatcherPriority.Background);
-    }
-
-    private void RenderUsbSnapshotToTile(Image target, UsbFrameSnapshot snapshot)
-    {
-        using var stream = new MemoryStream(snapshot.EncodedJpeg);
+        using var stream = new MemoryStream(encodedJpeg);
         var bitmap = new Bitmap(stream);
         Dispatcher.UIThread.Post(() => UpdatePreviewBitmap(target, bitmap), DispatcherPriority.Background);
-    }
-
-    private static Bitmap ConvertMatToBitmap(Mat frame)
-    {
-        using var rgb = new Mat();
-        Cv2.CvtColor(frame, rgb, ColorConversionCodes.BGR2RGB);
-
-        var pixelSize = new PixelSize(rgb.Width, rgb.Height);
-        var dpi = new Vector(96, 96);
-        var bitmap = new WriteableBitmap(pixelSize, dpi, PixelFormats.Rgb24, AlphaFormat.Opaque);
-
-        using var locked = bitmap.Lock();
-        var bytesPerRow = rgb.Width * 3;
-        var sourceStride = (int)rgb.Step();
-        var destinationStride = locked.RowBytes;
-        var rowBuffer = new byte[bytesPerRow];
-
-        for (var row = 0; row < rgb.Height; row++)
-        {
-            var sourceRow = rgb.Data + (row * sourceStride);
-            var destinationRow = locked.Address + (row * destinationStride);
-            Marshal.Copy(sourceRow, rowBuffer, 0, bytesPerRow);
-            Marshal.Copy(rowBuffer, 0, destinationRow, bytesPerRow);
-        }
-
-        return bitmap;
     }
 
     private static void UpdatePreviewBitmap(Image target, Bitmap bitmap)
@@ -3584,19 +3550,6 @@ public partial class MainWindow : AppWindow
             => new(id, displayName, true, true, false, CameraSourceKind.UsbCamera, string.Empty, false, new UsbCameraSource(cameraIndex, api));
     }
 
-    private sealed class VideoCaptureFrameReader(VideoCapture videoCapture, Mat frame) : IVideoFrameReader
-    {
-        public bool TryReadFrame()
-        {
-            return videoCapture.Read(frame) && !frame.Empty();
-        }
-
-        public void Restart()
-        {
-            videoCapture.Set(VideoCaptureProperties.PosFrames, 0);
-        }
-    }
-
     internal readonly record struct RuntimeProcessingSettings(
         int SampleCount,
         int Threshold,
@@ -3639,6 +3592,40 @@ public partial class MainWindow : AppWindow
     private readonly record struct RegionListItem(string RegionId, string Name, int? Code, string CellsText)
     {
         public override string ToString() => Code is null ? Name : $"{Name} [{Code}]";
+    }
+
+    private sealed class UsbCameraTileRawFrameFeed(UsbCameraLease lease) : ICameraTileRawFrameFeed
+    {
+        public CameraTileRawFrameSnapshot? LatestFrame => ToRawFrame(lease.LatestFrame);
+
+        public async Task<CameraTileRawFrameSnapshot?> WaitForNextFrameAsync(long previousVersion, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            return ToRawFrame(await lease.WaitForNextFrameAsync(previousVersion, timeout, cancellationToken));
+        }
+
+        private static CameraTileRawFrameSnapshot? ToRawFrame(UsbFrameSnapshot? snapshot)
+        {
+            return snapshot is { } frame
+                ? new CameraTileRawFrameSnapshot(frame.SourceId, frame.FrameVersion, frame.Width, frame.Height, frame.EncodedJpeg)
+                : null;
+        }
+    }
+
+    private sealed class FileCameraTileRawFrameFeed(FileCameraSourceFeedLease lease) : ICameraTileRawFrameFeed
+    {
+        public CameraTileRawFrameSnapshot? LatestFrame => ToRawFrame(lease.LatestFrame);
+
+        public async Task<CameraTileRawFrameSnapshot?> WaitForNextFrameAsync(long previousVersion, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            return ToRawFrame(await lease.WaitForNextFrameAsync(previousVersion, timeout, cancellationToken));
+        }
+
+        private static CameraTileRawFrameSnapshot? ToRawFrame(FileCameraSourceFrameSnapshot? snapshot)
+        {
+            return snapshot is { } frame
+                ? new CameraTileRawFrameSnapshot(frame.SourceId, frame.FrameVersion, frame.Width, frame.Height, frame.EncodedJpeg)
+                : null;
+        }
     }
 
     private sealed class CameraTileFeedConsumer(CancellationTokenSource cts, Task task) : IAsyncDisposable

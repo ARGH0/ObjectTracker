@@ -1,7 +1,7 @@
 # Session-Owned Video Camera Source Feed
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Add a session-owned feed for file-based Camera Sources so raw display and later 
 
 ## Acceptance criteria
 
-- [ ] A file-based Camera Source has one session-owned playback feed during a Session.
-- [ ] Multiple consumers observe the same playback timeline without independently advancing the video.
-- [ ] Camera Source Status can be reported for file-based playback.
-- [ ] Tests use fake file feed adapters and do not depend on real-time playback.
+- [x] A file-based Camera Source has one session-owned playback feed during a Session.
+- [x] Multiple consumers observe the same playback timeline without independently advancing the video.
+- [x] Camera Source Status can be reported for file-based playback.
+- [x] Tests use fake file feed adapters and do not depend on real-time playback.
 
 ## Blocked by
 

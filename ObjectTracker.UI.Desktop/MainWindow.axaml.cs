@@ -491,7 +491,6 @@ public partial class MainWindow : AppWindow
         DeleteSelectedCameraMenuItem.Click += RemoveCameraButtonOnClick;
         MoveCameraUpButton.Click += MoveCameraUpButtonOnClick;
         MoveCameraDownButton.Click += MoveCameraDownButtonOnClick;
-        ClearPlaylistButton.Click += ClearCamerasButtonOnClick;
         ClearCamerasMenuItem.Click += ClearCamerasButtonOnClick;
         PreviousVideoButton.Click += PreviousCameraButtonOnClick;
         NextVideoButton.Click += NextCameraButtonOnClick;
@@ -1747,16 +1746,16 @@ public partial class MainWindow : AppWindow
                 return;
             }
 
-        using var videoCapture = new VideoCapture(camera.PrimaryVideoPath);
-        if (!videoCapture.IsOpened())
-        {
-            return;
-        }
+            using var videoCapture = new VideoCapture(camera.PrimaryVideoPath);
+            if (!videoCapture.IsOpened())
+            {
+                return;
+            }
 
-        var sourceFps = videoCapture.Get(VideoCaptureProperties.Fps);
-        var frameIntervalMs = sourceFps > 0.1
-            ? Math.Max(1, (int)Math.Round(1000d / sourceFps))
-            : PreviewIntervalMs;
+            var sourceFps = videoCapture.Get(VideoCaptureProperties.Fps);
+            var frameIntervalMs = sourceFps > 0.1
+                ? Math.Max(1, (int)Math.Round(1000d / sourceFps))
+                : PreviewIntervalMs;
 
             using var videoFrame = new Mat();
             while (!cancellationToken.IsCancellationRequested)
@@ -2400,7 +2399,6 @@ public partial class MainWindow : AppWindow
         StopVisionPipelineMenuItem.IsEnabled = menuState.StopEnabled;
         AddVideosButton.IsEnabled = !isRunning && !ambiguityActive;
         RemoveSelectedButton.IsEnabled = !isRunning && !ambiguityActive;
-        ClearPlaylistButton.IsEnabled = !isRunning && !ambiguityActive;
         LoopPlaylistCheckBox.IsEnabled = !isRunning && !ambiguityActive;
         MarkAmbiguityButton.IsEnabled = !ambiguityActive;
 
@@ -2436,7 +2434,6 @@ public partial class MainWindow : AppWindow
 
         RemoveSelectedButton.IsEnabled = state.DeleteSelectedEnabled;
         DeleteSelectedCameraMenuItem.IsEnabled = state.DeleteSelectedEnabled;
-        ClearPlaylistButton.IsEnabled = state.ClearAllEnabled;
         ClearCamerasMenuItem.IsEnabled = state.ClearAllEnabled;
     }
 

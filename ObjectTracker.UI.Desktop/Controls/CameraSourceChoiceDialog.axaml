@@ -6,8 +6,7 @@
         SizeToContent="Height"
         CanResize="False"
         ShowInTaskbar="False"
-        WindowStartupLocation="CenterOwner"
-        Background="{StaticResource AppBackgroundBrush}">
+        WindowStartupLocation="CenterOwner">
 
     <Grid RowDefinitions="*,Auto" Margin="18">
 

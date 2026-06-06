@@ -23,6 +23,17 @@ public sealed class MainWindowCameraGridProjectionTests
     }
 
     [Fact]
+    public void CameraRenderMode_WhenVisionPipelineStopped_IsRawFeedEvenIfDebugEnabled()
+    {
+        var mode = MainWindow.GetCameraRenderMode(
+            isIncludedInVisionPipeline: true,
+            debugViewEnabled: true,
+            isVisionPipelineRunning: false);
+
+        Assert.Equal(MainWindow.CameraRenderMode.RawFeed, mode);
+    }
+
+    [Fact]
     public void CameraRenderMode_WhenIncludedAndDebugDisabled_IsLiveAnnotated()
     {
         var mode = MainWindow.GetCameraRenderMode(isIncludedInVisionPipeline: true, debugViewEnabled: false);
@@ -157,6 +168,19 @@ public sealed class MainWindowCameraGridProjectionTests
             MainWindow.CameraRenderMode.DebugView,
             MainWindow.CameraRenderMode.LiveAnnotated
         }, viewState.RenderModes.ToArray());
+    }
+
+    [Fact]
+    public void CameraGridProjection_WhenVisionPipelineStopped_RendersIncludedDebugCameraAsRawFeed()
+    {
+        var projection = MainWindow.BuildCameraGridProjection(new[]
+        {
+            new MainWindow.CameraWorkspaceCamera("usb:0:ANY", "USB Camera", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: true)
+        }, isVisionPipelineRunning: false);
+
+        var viewState = MainWindow.BuildCameraTileViewState(projection);
+
+        Assert.Equal(new[] { MainWindow.CameraRenderMode.RawFeed }, viewState.RenderModes.ToArray());
     }
 
     [Theory]

@@ -54,7 +54,10 @@ internal sealed class OpenCvFileCameraSourcePlaybackSession : IFileCameraSourceP
     {
         if (!firstFrame)
         {
-            await Task.Delay(frameIntervalMs, cancellationToken);
+            if (await DelayUntilNextFrameOrCancellationAsync(frameIntervalMs, cancellationToken))
+            {
+                return null;
+            }
         }
 
         firstFrame = false;
@@ -80,6 +83,21 @@ internal sealed class OpenCvFileCameraSourcePlaybackSession : IFileCameraSourceP
             frame.Width,
             frame.Height,
             encoded);
+    }
+
+    private static async Task<bool> DelayUntilNextFrameOrCancellationAsync(int delayMs, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return true;
+        }
+
+        var cancellationSignal = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var registration = cancellationToken.UnsafeRegister(
+            static state => ((TaskCompletionSource<object?>)state!).TrySetResult(null),
+            cancellationSignal);
+        var completed = await Task.WhenAny(Task.Delay(delayMs), cancellationSignal.Task);
+        return completed == cancellationSignal.Task;
     }
 
     public ValueTask DisposeAsync()

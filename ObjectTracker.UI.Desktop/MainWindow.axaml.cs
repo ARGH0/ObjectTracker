@@ -191,6 +191,11 @@ public partial class MainWindow : AppWindow
 
     public static CameraGridProjection BuildCameraGridProjection(IReadOnlyList<CameraWorkspaceCamera> cameras)
     {
+        return BuildCameraGridProjection(cameras, isVisionPipelineRunning: true);
+    }
+
+    public static CameraGridProjection BuildCameraGridProjection(IReadOnlyList<CameraWorkspaceCamera> cameras, bool isVisionPipelineRunning)
+    {
         var visible = cameras.Where(camera => camera.IsVisible).ToList();
         var (rows, columns) = ComputeCameraGridDimensions(visible.Count);
         var tiles = visible
@@ -198,7 +203,7 @@ public partial class MainWindow : AppWindow
                 camera.CameraId,
                 camera.DisplayName,
                 index,
-                GetCameraRenderMode(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled)))
+                GetCameraRenderMode(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled, isVisionPipelineRunning)))
             .ToList();
 
         return new CameraGridProjection(visible.Count, rows, columns, tiles);
@@ -211,7 +216,12 @@ public partial class MainWindow : AppWindow
 
     public static CameraRenderMode GetCameraRenderMode(bool isIncludedInVisionPipeline, bool debugViewEnabled)
     {
-        if (!isIncludedInVisionPipeline)
+        return GetCameraRenderMode(isIncludedInVisionPipeline, debugViewEnabled, isVisionPipelineRunning: true);
+    }
+
+    public static CameraRenderMode GetCameraRenderMode(bool isIncludedInVisionPipeline, bool debugViewEnabled, bool isVisionPipelineRunning)
+    {
+        if (!isIncludedInVisionPipeline || !isVisionPipelineRunning)
         {
             return CameraRenderMode.RawFeed;
         }
@@ -1707,7 +1717,8 @@ public partial class MainWindow : AppWindow
                 camera.IsVisible,
                 camera.IsIncludedInVisionPipeline,
                 NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled)))
-            .ToList());
+            .ToList(),
+            isVisionPipelineRunning: runTask is not null);
 
         var viewState = BuildCameraTileViewState(projection);
         ApplyCameraTileViewState(viewState);

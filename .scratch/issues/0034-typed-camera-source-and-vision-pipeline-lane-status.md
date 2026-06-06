@@ -1,7 +1,7 @@
 # Typed Camera Source And Vision Pipeline Lane Status
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,11 +13,11 @@ Introduce distinct typed status flows for Camera Source Status and Vision Pipeli
 
 ## Acceptance criteria
 
-- [ ] Camera Source Status and Vision Pipeline Lane Status are distinct typed values.
-- [ ] Both status types use starting, running, stale, failed, and stopped states.
-- [ ] Camera Panel projection can show both statuses for the selected Camera Source.
-- [ ] Visible tile projection can show compact status without mixing feed and lane state.
-- [ ] Tests assert typed status values without parsing free-form runtime log text.
+- [x] Camera Source Status and Vision Pipeline Lane Status are distinct typed values.
+- [x] Both status types use starting, running, stale, failed, and stopped states.
+- [x] Camera Panel projection can show both statuses for the selected Camera Source.
+- [x] Visible tile projection can show compact status without mixing feed and lane state.
+- [x] Tests assert typed status values without parsing free-form runtime log text.
 
 ## Blocked by
 

@@ -308,10 +308,23 @@ internal sealed class FileCameraSourceFeedOwner
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var frame = await session.ReadFrameAsync(cancellationToken);
+            FileCameraSourceFrame? frame;
+            try
+            {
+                frame = await session.ReadFrameAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
             if (frame is null)
             {
-                await Task.Delay(10, cancellationToken);
+                if (await DelayUntilNextReadOrCancellationAsync(cancellationToken))
+                {
+                    return;
+                }
+
                 continue;
             }
 
@@ -335,5 +348,20 @@ internal sealed class FileCameraSourceFeedOwner
 
             completedSignal.TrySetResult(null);
         }
+    }
+
+    private static async Task<bool> DelayUntilNextReadOrCancellationAsync(CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return true;
+        }
+
+        var cancellationSignal = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var registration = cancellationToken.UnsafeRegister(
+            static state => ((TaskCompletionSource<object?>)state!).TrySetResult(null),
+            cancellationSignal);
+        var completed = await Task.WhenAny(Task.Delay(10), cancellationSignal.Task);
+        return completed == cancellationSignal.Task;
     }
 }

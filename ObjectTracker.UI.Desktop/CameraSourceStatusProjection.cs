@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ObjectTracker.Vision.Source;
 
 namespace ObjectTracker.UI.Desktop;
@@ -12,6 +13,16 @@ public readonly record struct CameraSourceStatusView(
 
 public static class CameraSourceStatusProjection
 {
+    public static string GetStateName(CameraSourceStatusState state)
+    {
+        return TypedStatusStateNames.GetName(state);
+    }
+
+    public static IReadOnlyList<string> GetCanonicalStateNames()
+    {
+        return TypedStatusStateNames.CanonicalStateNames;
+    }
+
     public static CameraSourceStatusView BuildUsbStatus(
         bool isUsbCameraSource,
         bool isActivelyProcessedByVisionPipeline,

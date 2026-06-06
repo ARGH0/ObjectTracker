@@ -15,7 +15,7 @@ The operator-recognized visual identity of a Train, currently expected to be uni
 _Avoid_: Appearance class, label
 
 **Local Train ID**:
-The identifier assigned to a Train within one processing unit. It only needs to be stable inside that unit's scope.
+The identifier assigned to a Train within one Processing Unit. It is shared across that Processing Unit's Camera Sources and should remain stable as a Train moves between Camera Zones, but it does not need to match Local Train IDs used by other Processing Units.
 _Avoid_: Global ID, universal ID
 
 **PLC ID**:
@@ -36,6 +36,10 @@ _Avoid_: Setup, bootstrapping
 The reported state of a Train on each update: identity, color, image position, direction, speed, confidence, motion state, and collision warning state.
 _Avoid_: Detection, blob output
 
+**Train Tracking**:
+The continuity process that turns observations from one or more Camera Sources into Train State with stable Local Train IDs inside a Processing Unit.
+_Avoid_: Detection pipeline, vision logic, tracker ID assignment
+
 **Motion State**:
 The coarse behavioral state of a Train. Canonical states are `moving`, `stationary`, `uncertain`, and `gone-from-track`.
 _Avoid_: Presence flag, active flag
@@ -47,6 +51,30 @@ _Avoid_: Certainty, health
 **Vision Pipeline**:
 The runtime flow that produces Train State from camera input during a Session. It can be running or stopped; configuration changes may be saved but not applied until the Vision Pipeline is restarted.
 _Avoid_: Engine, processing unit (when referring to start/stop runtime control)
+
+**Debug Frames**:
+Intermediate visual outputs from the Vision Pipeline used to explain how a Train State was produced. Debug Frames are for operator and developer inspection, not separate Train State.
+_Avoid_: Preview frames, diagnostic images, intermediate phase frames
+
+**Source Frame**:
+The unannotated frame from a Camera Source in the coordinate space used by the Vision Pipeline for Train State and annotations. It may reflect capture normalization and should not be assumed to be the original camera bytes.
+_Avoid_: Raw frame, unprocessed frame, unannotated frame
+
+**Annotated Frame**:
+The operator-facing frame produced by the Vision Pipeline with visual annotations for the current Train State. It is the default visual output for included Camera Sources when Debug View is not shown.
+_Avoid_: Processed frame, rendered frame, output frame
+
+**Moving Object Observation**:
+Visual evidence that something is moving in a Source Frame, before it has been identified as a Train. It may explain later Train State, but it is not itself Train State.
+_Avoid_: Moving object detection, blob, motion hit
+
+**Train Observation**:
+Visual evidence that a Train or Train Color is present in a Source Frame. It contributes to Train State but does not by itself decide identity continuity, Motion State, or safety.
+_Avoid_: Train detection, appearance detection, label
+
+**Vision Pipeline Lane Status**:
+The runtime state of Vision Pipeline processing for one included Camera Source. It is separate from processed frame output and can report states such as starting, running, stale, failed, or stopped for that Camera Source's processing lane.
+_Avoid_: Camera health, snapshot status, pipeline frame state
 
 ### Layout And Coverage
 
@@ -65,6 +93,10 @@ _Avoid_: Screen, viewport
 **Camera Source**:
 The physical or file-based feed that provides images for one Camera Zone during a Session. A live physical camera source should have one owning feed even when multiple parts of the system view or process it.
 _Avoid_: Stream, playback, device handle
+
+**Camera Source Status**:
+The runtime state of a Camera Source feed, such as starting, running, stale, failed, or stopped. It is separate from Vision Pipeline Lane Status and is not part of Train State or processed frame output.
+_Avoid_: Pipeline status, snapshot status, tile status
 
 **Camera Visibility**:
 Whether a camera tile is shown in the Camera workspace. Canonical states are `visible` and `hidden`.

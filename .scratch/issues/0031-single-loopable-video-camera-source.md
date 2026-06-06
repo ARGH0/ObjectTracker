@@ -1,7 +1,7 @@
 # Single Loopable Video Camera Source
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Replace file-based Camera Source playlist semantics with one loopable video sour
 
 ## Acceptance criteria
 
-- [ ] A file-based Camera Source has one video path and one per-source loop setting.
-- [ ] Playlist progression no longer drives operator-facing runtime behavior.
-- [ ] Existing raw tile playback works for loop and no-loop file-based Camera Sources.
-- [ ] Tests cover persistence/projection and runtime playback behavior for the single loopable video source model.
+- [x] A file-based Camera Source has one video path and one per-source loop setting.
+- [x] Playlist progression no longer drives operator-facing runtime behavior.
+- [x] Existing raw tile playback works for loop and no-loop file-based Camera Sources.
+- [x] Tests cover persistence/projection and runtime playback behavior for the single loopable video source model.
 
 ## Blocked by
 

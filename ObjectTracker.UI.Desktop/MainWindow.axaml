@@ -251,7 +251,7 @@
                                     <StackPanel Spacing="8">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <CheckBox x:Name="LoopPlaylistCheckBox"
-                                                      Content="Loop camera videos"
+                                                      Content="Loop this video source"
                                                       IsChecked="True" />
                                             <Border Background="#26323B"
                                                     BorderBrush="#3C4F5E"

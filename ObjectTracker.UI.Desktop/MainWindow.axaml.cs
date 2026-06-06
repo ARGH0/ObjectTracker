@@ -85,6 +85,14 @@ public partial class MainWindow : AppWindow
         bool IsIncludedInVisionPipeline,
         bool DebugViewEnabled);
 
+    public readonly record struct FileCameraSource(
+        string CameraId,
+        string DisplayName,
+        string VideoPath,
+        bool LoopVideo);
+
+    public readonly record struct FileCameraSourceProjection(IReadOnlyList<FileCameraSource> Sources);
+
     public readonly record struct CameraWorkspaceTile(string CameraId, string DisplayName, int Index, CameraRenderMode RenderMode);
 
     public enum CameraRenderMode
@@ -194,6 +202,11 @@ public partial class MainWindow : AppWindow
             .ToList();
 
         return new CameraGridProjection(visible.Count, rows, columns, tiles);
+    }
+
+    public static FileCameraSourceProjection BuildFileCameraSourceProjection(IReadOnlyList<FileCameraSource> sources)
+    {
+        return new FileCameraSourceProjection(sources.ToList());
     }
 
     public static CameraRenderMode GetCameraRenderMode(bool isIncludedInVisionPipeline, bool debugViewEnabled)
@@ -385,6 +398,7 @@ public partial class MainWindow : AppWindow
 
     private readonly BackgroundEstimationEngine engine = new();
     private readonly CameraSettingsStore cameraSettingsStore = new();
+    private readonly FileCameraSourceStore fileCameraSourceStore = new();
     private readonly UsbCaptureSettingsStore usbCaptureSettingsStore = new();
     private readonly CameraZoneBindingStore cameraZoneBindingStore = new();
     private readonly LayerTypeSettingsStore layerTypeSettingsStore = new();
@@ -420,6 +434,7 @@ public partial class MainWindow : AppWindow
     private bool applyingCameraVisibilityUi;
     private bool applyingCameraInclusionUi;
     private bool applyingCameraDebugViewUi;
+    private bool applyingVideoLoopUi;
     private bool applyingUsbCaptureSettingsUi;
     private bool gridEditorVisible;
     private bool hasPendingVisionPipelineRestart;
@@ -447,6 +462,20 @@ public partial class MainWindow : AppWindow
         foreach (var (cameraId, settings) in cameraSettingsStore.Load())
         {
             cameraSettings[cameraId] = settings;
+        }
+
+        foreach (var source in fileCameraSourceStore.Load())
+        {
+            cameras.Add(CameraProfile.CreateVideo(source.CameraId, source.DisplayName, source.VideoPath, source.LoopVideo));
+            if (!cameraSettings.ContainsKey(source.CameraId))
+            {
+                cameraSettings[source.CameraId] = RuntimeProcessingSettings.Default;
+            }
+        }
+
+        if (cameras.Count > 0)
+        {
+            selectedCameraIndex = 0;
         }
 
         usbCaptureSettingsService = new UsbCaptureSettingsService(usbCaptureSettingsStore.Load());
@@ -480,6 +509,7 @@ public partial class MainWindow : AppWindow
         await StopProcessingAsync();
         await usbCameraOwnerManager.StopAllAsync(CancellationToken.None);
         PersistCameraSettings();
+        PersistFileCameraSources();
         sessionAuditLogger.Dispose();
         base.OnClosing(e);
     }
@@ -520,6 +550,7 @@ public partial class MainWindow : AppWindow
         BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
         SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
         ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
+        LoopPlaylistCheckBox.IsCheckedChanged += LoopVideoCheckBoxOnChanged;
         MarkAmbiguityButton.Click += MarkAmbiguityButtonOnClick;
         ResolveRemovedButton.Click += ResolveRemovedButtonOnClick;
         ResolveRelinkButton.Click += ResolveRelinkButtonOnClick;
@@ -767,7 +798,7 @@ public partial class MainWindow : AppWindow
 
                 var cameraId = path;
                 var displayName = BuildCameraName(path, cameras.Count + 1);
-                cameras.Add(CameraProfile.CreateVideo(cameraId, displayName, new List<string> { path }));
+                cameras.Add(CameraProfile.CreateVideo(cameraId, displayName, path, loopVideo: true));
                 cameraZoneIdentityService.AssignSourceToZone(cameraId, requestedZoneName: displayName);
 
                 if (!cameraSettings.ContainsKey(cameraId))
@@ -785,6 +816,7 @@ public partial class MainWindow : AppWindow
         }
 
         PersistCameraSettings();
+        PersistFileCameraSources();
         PersistCameraZones();
         RefreshCameraUi();
         SetStatus(added == 0
@@ -846,6 +878,7 @@ public partial class MainWindow : AppWindow
         }
 
         PersistCameraSettings();
+        PersistFileCameraSources();
         PersistCameraZones();
         RefreshCameraUi();
         SetStatus($"Status: added {option.DisplayName}.");
@@ -952,6 +985,7 @@ public partial class MainWindow : AppWindow
         }
 
         PersistCameraSettings();
+        PersistFileCameraSources();
         PersistCameraZones();
         RefreshCameraUi();
 
@@ -997,6 +1031,7 @@ public partial class MainWindow : AppWindow
         await usbCameraOwnerManager.StopAllAsync(CancellationToken.None);
 
         PersistCameraSettings();
+        PersistFileCameraSources();
         PersistCameraZones();
         RefreshCameraUi();
         SetStatus("Status: all cameras cleared.");
@@ -1043,6 +1078,10 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(camera.Value.IsIncludedInVisionPipeline, camera.Value.DebugViewEnabled);
             applyingCameraDebugViewUi = false;
             CameraDebugViewCheckBox.IsEnabled = camera.Value.IsIncludedInVisionPipeline;
+            applyingVideoLoopUi = true;
+            LoopPlaylistCheckBox.IsChecked = camera.Value.LoopVideo;
+            applyingVideoLoopUi = false;
+            LoopPlaylistCheckBox.IsVisible = !camera.Value.IsUsbCamera;
             RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
             RefreshUsbCaptureSettingsUi(camera.Value);
             UpdateCameraZoneSelectionUi(camera.Value.Id);
@@ -1107,6 +1146,7 @@ public partial class MainWindow : AppWindow
             selectedCameraIndex = target;
         }
 
+        PersistFileCameraSources();
         RefreshCameraUi();
     }
 
@@ -1132,7 +1172,6 @@ public partial class MainWindow : AppWindow
         UpdateSelectedCameraSettingsFromUi(logChange: false);
 
         var startIndex = selectedCameraIndex >= 0 ? selectedCameraIndex : 0;
-        var loopCameraVideos = LoopPlaylistCheckBox.IsChecked == true;
         var runStopwatch = Stopwatch.StartNew();
         var stopReason = "completed";
 
@@ -1145,7 +1184,7 @@ public partial class MainWindow : AppWindow
             "Processing run started.",
             ("cameraCount", GetCameraCount().ToString()),
             ("startIndex", startIndex.ToString()),
-            ("loopVideos", loopCameraVideos.ToString()),
+            ("loopVideos", selectedCamera?.LoopVideo.ToString() ?? string.Empty),
             ("startCameraId", selectedCamera?.Id ?? string.Empty),
             ("startCameraName", selectedCamera?.DisplayName ?? string.Empty));
 
@@ -1157,7 +1196,7 @@ public partial class MainWindow : AppWindow
         hasPendingVisionPipelineRestart = false;
         SetRunState(isRunning: true);
         StartBakeForAllCameras(token);
-        runTask = Task.Run(() => RunCameraSelectionAsync(startIndex, loopCameraVideos, token), token);
+        runTask = Task.Run(() => RunCameraSelectionAsync(startIndex, token), token);
 
         try
         {
@@ -1310,7 +1349,7 @@ public partial class MainWindow : AppWindow
         UpdateBottomStatusBar();
     }
 
-    private async Task RunCameraSelectionAsync(int startCameraIndex, bool loopCameraVideos, CancellationToken cancellationToken)
+    private async Task RunCameraSelectionAsync(int startCameraIndex, CancellationToken cancellationToken)
     {
         var cameraIndex = startCameraIndex;
 
@@ -1333,7 +1372,7 @@ public partial class MainWindow : AppWindow
                 OpenBakedMaskButton.IsEnabled = camera.CanOpenBakedMask;
             });
 
-            await ProcessCameraAsync(camera, loopCameraVideos, cancellationToken);
+            await ProcessCameraAsync(camera, cancellationToken);
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -1351,7 +1390,7 @@ public partial class MainWindow : AppWindow
         }
     }
 
-    private async Task ProcessCameraAsync(CameraProfile camera, bool loopCameraVideos, CancellationToken cancellationToken)
+    private async Task ProcessCameraAsync(CameraProfile camera, CancellationToken cancellationToken)
     {
         activeVisionPipelineCameraId = camera.Id;
         try
@@ -1395,7 +1434,7 @@ public partial class MainWindow : AppWindow
                 return;
             }
 
-            for (var videoIndex = 0; !cancellationToken.IsCancellationRequested; videoIndex++)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 if (TryConsumeCameraSwitchRequest(out var _))
                 {
@@ -1410,17 +1449,12 @@ public partial class MainWindow : AppWindow
                     settings.MorphKernelSize,
                     settings.ColorCalibrations);
 
-                if (videoIndex >= camera.VideoPaths.Count)
+                if (string.IsNullOrWhiteSpace(camera.VideoPath))
                 {
-                    if (!loopCameraVideos)
-                    {
-                        break;
-                    }
-
-                    videoIndex = 0;
+                    break;
                 }
 
-                var videoPath = camera.VideoPaths[videoIndex];
+                var videoPath = camera.VideoPath;
                 await Dispatcher.UIThread.InvokeAsync(() => CurrentVideoText.Text = BuildCurrentSourceText(camera, Path.GetFileName(videoPath)));
 
                 var result = await engine.ProcessVideoAsync(
@@ -1447,6 +1481,11 @@ public partial class MainWindow : AppWindow
                 if (TryConsumeCameraSwitchRequest(out var _))
                 {
                     return;
+                }
+
+                if (!camera.LoopVideo)
+                {
+                    break;
                 }
             }
         }
@@ -1482,14 +1521,14 @@ public partial class MainWindow : AppWindow
                 settings.MorphKernelSize,
                 settings.ColorCalibrations);
 
-            foreach (var videoPath in camera.VideoPaths)
+            if (!string.IsNullOrWhiteSpace(camera.VideoPath))
             {
                 _ = Task.Run(async () =>
                 {
                     try
                     {
                         await engine.EnsureBakedBackgroundAsync(
-                            videoPath,
+                            camera.VideoPath,
                             settings.SampleCount,
                             options,
                             GetBakeImagePath(settings),
@@ -1615,6 +1654,7 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsChecked = false;
             applyingCameraDebugViewUi = false;
             CameraDebugViewCheckBox.IsEnabled = false;
+            LoopPlaylistCheckBox.IsVisible = false;
             UsbCameraSourceStatusText.Text = "USB Camera Source: -";
             RestartUsbCameraSourceButton.IsVisible = false;
             RestartUsbCameraSourceButton.IsEnabled = false;
@@ -1644,6 +1684,10 @@ public partial class MainWindow : AppWindow
         applyingCameraDebugViewUi = true;
         CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(selected.IsIncludedInVisionPipeline, selected.DebugViewEnabled);
         applyingCameraDebugViewUi = false;
+        applyingVideoLoopUi = true;
+        LoopPlaylistCheckBox.IsChecked = selected.LoopVideo;
+        applyingVideoLoopUi = false;
+        LoopPlaylistCheckBox.IsVisible = !selected.IsUsbCamera;
         RefreshSelectedUsbCameraSourceStatusUi(selected);
         RefreshUsbCaptureSettingsUi(selected);
         UpdateCameraZoneSelectionUi(selected.Id);
@@ -1741,12 +1785,12 @@ public partial class MainWindow : AppWindow
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(camera.PrimaryVideoPath))
+            if (string.IsNullOrWhiteSpace(camera.VideoPath))
             {
                 return;
             }
 
-            using var videoCapture = new VideoCapture(camera.PrimaryVideoPath);
+            using var videoCapture = new VideoCapture(camera.VideoPath);
             if (!videoCapture.IsOpened())
             {
                 return;
@@ -1758,13 +1802,12 @@ public partial class MainWindow : AppWindow
                 : PreviewIntervalMs;
 
             using var videoFrame = new Mat();
+            var playbackSession = new FileCameraSourcePlaybackSession(camera.LoopVideo, new VideoCaptureFrameReader(videoCapture, videoFrame));
             while (!cancellationToken.IsCancellationRequested)
             {
-                if (!videoCapture.Read(videoFrame) || videoFrame.Empty())
+                if (playbackSession.ReadNextFrame() == FileCameraSourcePlaybackStep.Ended)
                 {
-                    videoCapture.Set(VideoCaptureProperties.PosFrames, 0);
-                    await DelayIgnoringCancellationAsync(10, cancellationToken);
-                    continue;
+                    return;
                 }
 
                 RenderRawFrameToTile(target, videoFrame);
@@ -1994,6 +2037,33 @@ public partial class MainWindow : AppWindow
             cameras[selectedCameraIndex] = selected with { IsVisible = isVisible };
         }
 
+        RefreshCameraUi();
+    }
+
+    private void LoopVideoCheckBoxOnChanged(object? sender, RoutedEventArgs e)
+    {
+        if (applyingVideoLoopUi)
+        {
+            return;
+        }
+
+        lock (cameraSync)
+        {
+            if (selectedCameraIndex < 0 || selectedCameraIndex >= cameras.Count)
+            {
+                return;
+            }
+
+            var selected = cameras[selectedCameraIndex];
+            if (selected.IsUsbCamera)
+            {
+                return;
+            }
+
+            cameras[selectedCameraIndex] = selected with { LoopVideo = LoopPlaylistCheckBox.IsChecked == true };
+        }
+
+        PersistFileCameraSources();
         RefreshCameraUi();
     }
 
@@ -2805,6 +2875,20 @@ public partial class MainWindow : AppWindow
         cameraSettingsStore.Save(snapshot);
     }
 
+    private void PersistFileCameraSources()
+    {
+        List<FileCameraSource> snapshot;
+        lock (cameraSync)
+        {
+            snapshot = cameras
+                .Where(camera => !camera.IsUsbCamera)
+                .Select(camera => new FileCameraSource(camera.Id, camera.DisplayName, camera.VideoPath, camera.LoopVideo))
+                .ToList();
+        }
+
+        fileCameraSourceStore.Save(snapshot);
+    }
+
     private void PersistCameraZones()
     {
         cameraZoneBindingStore.Save(cameraZoneIdentityService.CameraZones, cameraZoneIdentityService.SourceBindings);
@@ -3476,10 +3560,11 @@ public partial class MainWindow : AppWindow
         bool IsIncludedInVisionPipeline,
         bool DebugViewEnabled,
         CameraSourceKind SourceKind,
-        List<string> VideoPaths,
+        string VideoPath,
+        bool LoopVideo,
         UsbCameraSource? UsbCamera)
     {
-        public string PrimaryVideoPath => VideoPaths.Count > 0 ? VideoPaths[0] : string.Empty;
+        public string PrimaryVideoPath => VideoPath;
 
         public bool IsUsbCamera => SourceKind == CameraSourceKind.UsbCamera && UsbCamera is not null;
 
@@ -3489,11 +3574,24 @@ public partial class MainWindow : AppWindow
             ? $"USB camera {usbCamera.CameraIndex}"
             : (string.IsNullOrWhiteSpace(PrimaryVideoPath) ? DisplayName : Path.GetFileName(PrimaryVideoPath));
 
-        public static CameraProfile CreateVideo(string id, string displayName, List<string> videoPaths)
-            => new(id, displayName, true, true, false, CameraSourceKind.VideoFiles, videoPaths, null);
+        public static CameraProfile CreateVideo(string id, string displayName, string videoPath, bool loopVideo)
+            => new(id, displayName, true, true, false, CameraSourceKind.VideoFiles, videoPath, loopVideo, null);
 
         public static CameraProfile CreateUsb(string id, string displayName, int cameraIndex, VideoCaptureAPIs api)
-            => new(id, displayName, true, true, false, CameraSourceKind.UsbCamera, new List<string>(), new UsbCameraSource(cameraIndex, api));
+            => new(id, displayName, true, true, false, CameraSourceKind.UsbCamera, string.Empty, false, new UsbCameraSource(cameraIndex, api));
+    }
+
+    private sealed class VideoCaptureFrameReader(VideoCapture videoCapture, Mat frame) : IVideoFrameReader
+    {
+        public bool TryReadFrame()
+        {
+            return videoCapture.Read(frame) && !frame.Empty();
+        }
+
+        public void Restart()
+        {
+            videoCapture.Set(VideoCaptureProperties.PosFrames, 0);
+        }
     }
 
     internal readonly record struct RuntimeProcessingSettings(

@@ -70,6 +70,33 @@ public sealed class MainWindowEndToEndRegressionTests
     }
 
     [Fact]
+    public void FileBasedCameraSources_EndToEnd_ProjectOneVideoPathAndPerSourceLoopBehavior()
+    {
+        var projection = MainWindow.BuildFileCameraSourceProjection(new[]
+        {
+            new MainWindow.FileCameraSource("source-bridge", "Bridge Camera", "/videos/bridge.mp4", LoopVideo: true),
+            new MainWindow.FileCameraSource("source-yard", "Yard Camera", "/videos/yard.mp4", LoopVideo: false)
+        });
+
+        Assert.Collection(
+            projection.Sources,
+            bridge =>
+            {
+                Assert.Equal("source-bridge", bridge.CameraId);
+                Assert.Equal("Bridge Camera", bridge.DisplayName);
+                Assert.Equal("/videos/bridge.mp4", bridge.VideoPath);
+                Assert.True(bridge.LoopVideo);
+            },
+            yard =>
+            {
+                Assert.Equal("source-yard", yard.CameraId);
+                Assert.Equal("Yard Camera", yard.DisplayName);
+                Assert.Equal("/videos/yard.mp4", yard.VideoPath);
+                Assert.False(yard.LoopVideo);
+            });
+    }
+
+    [Fact]
     public void LayersAndSettings_EndToEnd_BlockInUseLayerTypeDeleteAndSignalPendingRestart()
     {
         var usage = MainWindow.BuildLayerTypeUsageProjection(

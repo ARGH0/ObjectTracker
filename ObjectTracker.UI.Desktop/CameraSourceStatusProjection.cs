@@ -66,4 +66,53 @@ public static class CameraSourceStatusProjection
                 RaisesAmbiguityAlert: false)
         };
     }
+
+    public static CameraSourceStatusView BuildFileStatus(
+        bool isFileCameraSource,
+        FileCameraSourceRuntimeStatus status)
+    {
+        if (!isFileCameraSource)
+        {
+            return new CameraSourceStatusView(string.Empty, false, false, false, string.Empty, false);
+        }
+
+        return status.State switch
+        {
+            FileCameraSourceFeedState.Failed => new CameraSourceStatusView(
+                $"File Camera Source: failed - {status.FailureMessage ?? "unknown error"}",
+                ShowFrameAge: status.FrameAgeMs is not null,
+                ShowPlaceholder: true,
+                RestartEnabled: false,
+                RestartDisabledReason: string.Empty,
+                RaisesAmbiguityAlert: false),
+            FileCameraSourceFeedState.Starting => new CameraSourceStatusView(
+                "File Camera Source: starting",
+                ShowFrameAge: false,
+                ShowPlaceholder: true,
+                RestartEnabled: false,
+                RestartDisabledReason: string.Empty,
+                RaisesAmbiguityAlert: false),
+            FileCameraSourceFeedState.Running when status.IsStale => new CameraSourceStatusView(
+                $"File Camera Source: stale ({status.FrameAgeMs ?? 0} ms since last frame)",
+                ShowFrameAge: true,
+                ShowPlaceholder: false,
+                RestartEnabled: false,
+                RestartDisabledReason: string.Empty,
+                RaisesAmbiguityAlert: false),
+            FileCameraSourceFeedState.Running => new CameraSourceStatusView(
+                "File Camera Source: running",
+                ShowFrameAge: false,
+                ShowPlaceholder: false,
+                RestartEnabled: false,
+                RestartDisabledReason: string.Empty,
+                RaisesAmbiguityAlert: false),
+            _ => new CameraSourceStatusView(
+                "File Camera Source: stopped",
+                ShowFrameAge: false,
+                ShowPlaceholder: false,
+                RestartEnabled: false,
+                RestartDisabledReason: string.Empty,
+                RaisesAmbiguityAlert: false)
+        };
+    }
 }

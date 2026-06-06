@@ -405,6 +405,7 @@ public partial class MainWindow : AppWindow
     private readonly CameraZoneLayerRepository cameraZoneLayerRepository = new();
     private readonly AppSettingsStore appSettingsStore = new();
     private readonly UsbCameraOwnerManager usbCameraOwnerManager = new(new OpenCvUsbCaptureBackend());
+    private readonly FileCameraSourceFeedManager fileCameraSourceFeedManager = new(new OpenCvFileCameraSourcePlaybackBackend());
     private readonly UsbCaptureSettingsService usbCaptureSettingsService;
     private readonly CameraZoneLayerEditorService cameraZoneLayerEditorService = new();
     private readonly EffectiveZoneCompositionService effectiveZoneCompositionService = new();
@@ -507,6 +508,7 @@ public partial class MainWindow : AppWindow
     {
         await StopCameraTilePreviewAsync();
         await StopProcessingAsync();
+        await fileCameraSourceFeedManager.StopAllAsync(CancellationToken.None);
         await usbCameraOwnerManager.StopAllAsync(CancellationToken.None);
         PersistCameraSettings();
         PersistFileCameraSources();
@@ -1028,6 +1030,7 @@ public partial class MainWindow : AppWindow
         }
 
         await StopCameraTilePreviewAsync();
+        await fileCameraSourceFeedManager.StopAllAsync(CancellationToken.None);
         await usbCameraOwnerManager.StopAllAsync(CancellationToken.None);
 
         PersistCameraSettings();

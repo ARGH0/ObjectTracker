@@ -95,4 +95,16 @@ public sealed class CameraSourceStatusProjectionTests
         Assert.Equal("USB Camera Source: stopped", projection.StatusText);
         Assert.False(projection.ShowPlaceholder);
     }
+
+    [Fact]
+    public void BuildFileStatus_WhenStale_ShowsFrameAgeWithoutAmbiguityAlert()
+    {
+        var projection = CameraSourceStatusProjection.BuildFileStatus(
+            isFileCameraSource: true,
+            new FileCameraSourceRuntimeStatus(FileCameraSourceFeedState.Running, true, 3, 640, 480, 1500, null));
+
+        Assert.Equal("File Camera Source: stale (1500 ms since last frame)", projection.StatusText);
+        Assert.True(projection.ShowFrameAge);
+        Assert.False(projection.RaisesAmbiguityAlert);
+    }
 }

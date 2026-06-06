@@ -16,13 +16,13 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     private readonly Lock overlaySettingsLock = new();
     private readonly Dictionary<string, RgbColor> overlayColors = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> debugViewCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> includedCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, LaneState> activeLanes = new(StringComparer.OrdinalIgnoreCase);
 
-    private IFrameSource? activeSource;
-    private CancellationTokenSource? loopCts;
-    private Task? loopTask;
     private int framesInWindow;
     private long windowStartMs;
     private int overlayLineThickness = 2;
+    private bool isRunning;
 
     public PipelineController(
         IFrameSourceFactory frameSourceFactory,
@@ -40,7 +40,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         ResetOverlaySettings();
     }
 
-    public bool IsRunning => loopTask is { IsCompleted: false };
+    public bool IsRunning => isRunning;
 
     public IReadOnlyList<FrameSourceInfo> AvailableSources => frameSourceFactory.GetAvailableSources();
 
@@ -76,7 +76,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
     public DetectorMode ActiveDetector => detectorManager.ActiveMode;
 
-    public async Task StartAsync(string sourceId, CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         await lifecycleLock.WaitAsync(cancellationToken);
         try
@@ -86,17 +86,57 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 return;
             }
 
-            activeSource = frameSourceFactory.Create(sourceId);
-            await activeSource.StartAsync(cancellationToken);
-
-            loopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            loopTask = Task.Run(() => RunLoopAsync(loopCts.Token), loopCts.Token);
-            await PublishStatusAsync($"Pipeline gestart met bron '{activeSource.DisplayName}'.", cancellationToken);
-            await PublishStatusAsync($"Capture diagnostics: {activeSource.Diagnostics}", cancellationToken);
+            isRunning = true;
+            foreach (var cameraSourceId in includedCameraSourceIds.ToList())
+            {
+                await StartLaneAsync(cameraSourceId, cancellationToken);
+            }
         }
         finally
         {
             lifecycleLock.Release();
+        }
+    }
+
+    public async Task StartAsync(string sourceId, CancellationToken cancellationToken)
+    {
+        SetVisionPipelineInclusion(sourceId, included: true);
+        await StartAsync(cancellationToken);
+    }
+
+    private async Task StartLaneAsync(string sourceId, CancellationToken cancellationToken)
+    {
+        if (activeLanes.ContainsKey(sourceId))
+        {
+            return;
+        }
+
+        var source = frameSourceFactory.Create(sourceId);
+        await source.StartAsync(cancellationToken);
+
+        var laneCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var laneTask = Task.Run(() => RunLoopAsync(source, laneCts.Token), laneCts.Token);
+        activeLanes[sourceId] = new LaneState(source, laneCts, laneTask);
+        await PublishStatusAsync($"Pipeline gestart met bron '{source.DisplayName}'.", cancellationToken);
+        await PublishStatusAsync($"Capture diagnostics: {source.Diagnostics}", cancellationToken);
+    }
+
+    private async Task StopLaneAsync(string sourceId, LaneState lane, CancellationToken cancellationToken)
+    {
+        lane.Cancellation.Cancel();
+        try
+        {
+            await lane.Task;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            activeLanes.Remove(sourceId);
+            await lane.Source.StopAsync(cancellationToken);
+            await lane.Source.DisposeAsync();
+            lane.Cancellation.Dispose();
         }
     }
 
@@ -110,23 +150,9 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 return;
             }
 
-            loopCts?.Cancel();
-            if (loopTask is not null)
+            foreach (var lane in activeLanes.ToList())
             {
-                try
-                {
-                    await loopTask;
-                }
-                catch (OperationCanceledException)
-                {
-                }
-            }
-
-            if (activeSource is not null)
-            {
-                await activeSource.StopAsync(cancellationToken);
-                await activeSource.DisposeAsync();
-                activeSource = null;
+                await StopLaneAsync(lane.Key, lane.Value, cancellationToken);
             }
 
             tracker.Reset();
@@ -134,9 +160,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         }
         finally
         {
-            loopTask = null;
-            loopCts?.Dispose();
-            loopCts = null;
+            isRunning = false;
             lifecycleLock.Release();
         }
     }
@@ -144,7 +168,9 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     public async Task SwitchSourceAsync(string sourceId, CancellationToken cancellationToken)
     {
         await StopAsync(cancellationToken);
-        await StartAsync(sourceId, cancellationToken);
+        includedCameraSourceIds.Clear();
+        SetVisionPipelineInclusion(sourceId, included: true);
+        await StartAsync(cancellationToken);
     }
 
     public void SwitchDetector(DetectorMode mode)
@@ -166,6 +192,53 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         var snapshot = calibrations.ToList();
         detectorManager.SetColorCalibrations(snapshot);
         _ = PublishStatusAsync($"Kleurkalibraties bijgewerkt: {snapshot.Count}", CancellationToken.None);
+    }
+
+    public void SetVisionPipelineInclusion(string cameraSourceId, bool included)
+    {
+        if (string.IsNullOrWhiteSpace(cameraSourceId))
+        {
+            return;
+        }
+
+        if (included)
+        {
+            includedCameraSourceIds.Add(cameraSourceId);
+        }
+        else
+        {
+            includedCameraSourceIds.Remove(cameraSourceId);
+        }
+
+        if (IsRunning)
+        {
+            _ = ReconcileLaneAsync(cameraSourceId, included, CancellationToken.None);
+        }
+    }
+
+    private async Task ReconcileLaneAsync(string cameraSourceId, bool included, CancellationToken cancellationToken)
+    {
+        await lifecycleLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (!IsRunning)
+            {
+                return;
+            }
+
+            if (included)
+            {
+                await StartLaneAsync(cameraSourceId, cancellationToken);
+            }
+            else if (activeLanes.TryGetValue(cameraSourceId, out var lane))
+            {
+                await StopLaneAsync(cameraSourceId, lane, cancellationToken);
+            }
+        }
+        finally
+        {
+            lifecycleLock.Release();
+        }
     }
 
     public void SetDebugViewEnabled(string cameraSourceId, bool enabled)
@@ -228,52 +301,56 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         lifecycleLock.Dispose();
     }
 
-    private async Task RunLoopAsync(CancellationToken cancellationToken)
+    private async Task RunLoopAsync(IFrameSource source, CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            if (activeSource is null)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                await Task.Delay(30, cancellationToken);
-                continue;
+                var frame = await source.ReadFrameAsync(cancellationToken);
+                if (frame is null)
+                {
+                    await Task.Delay(10, cancellationToken);
+                    continue;
+                }
+
+                var sw = Stopwatch.StartNew();
+                var detections = await detectorManager.DetectAsync(frame, cancellationToken);
+                var trainStates = tracker.Update(detections, frame.TimestampUtcMs);
+                sw.Stop();
+
+                var fps = CalculateFps(frame.TimestampUtcMs);
+                var renderedFrame = RenderDetections(frame, detections);
+                var debugFrames = BuildDebugFrames(frame);
+                var snapshot = new PipelineSnapshot(
+                    frame.SourceId,
+                    frame,
+                    renderedFrame,
+                    [],
+                    detections.Select(ToTrainObservation).ToList(),
+                    trainStates,
+                    debugFrames,
+                    detectorManager.ActiveMode,
+                    new PipelineSnapshotTiming(frame.TimestampUtcMs, fps, sw.Elapsed.TotalMilliseconds));
+
+                foreach (var output in outputs)
+                {
+                    await output.PublishSnapshotAsync(snapshot, cancellationToken);
+                }
+
+                var sourceDiagnosticEvent = source.ConsumeDiagnosticEvent();
+                if (!string.IsNullOrWhiteSpace(sourceDiagnosticEvent))
+                {
+                    await PublishStatusAsync(sourceDiagnosticEvent, cancellationToken);
+                }
             }
-
-            var frame = await activeSource.ReadFrameAsync(cancellationToken);
-            if (frame is null)
-            {
-                await Task.Delay(10, cancellationToken);
-                continue;
-            }
-
-            var sw = Stopwatch.StartNew();
-            var detections = await detectorManager.DetectAsync(frame, cancellationToken);
-            var trainStates = tracker.Update(detections, frame.TimestampUtcMs);
-            sw.Stop();
-
-            var fps = CalculateFps(frame.TimestampUtcMs);
-            var renderedFrame = RenderDetections(frame, detections);
-            var debugFrames = BuildDebugFrames(frame);
-            var snapshot = new PipelineSnapshot(
-                frame.SourceId,
-                frame,
-                renderedFrame,
-                [],
-                detections.Select(ToTrainObservation).ToList(),
-                trainStates,
-                debugFrames,
-                detectorManager.ActiveMode,
-                new PipelineSnapshotTiming(frame.TimestampUtcMs, fps, sw.Elapsed.TotalMilliseconds));
-
-            foreach (var output in outputs)
-            {
-                await output.PublishSnapshotAsync(snapshot, cancellationToken);
-            }
-
-            var sourceDiagnosticEvent = activeSource.ConsumeDiagnosticEvent();
-            if (!string.IsNullOrWhiteSpace(sourceDiagnosticEvent))
-            {
-                await PublishStatusAsync(sourceDiagnosticEvent, cancellationToken);
-            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            await PublishStatusAsync($"Vision Pipeline lane '{source.DisplayName}' failed: {ex.Message}", CancellationToken.None);
         }
     }
 
@@ -419,4 +496,6 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
         return (int)(framesInWindow * 1000 / elapsed);
     }
+
+    private sealed record LaneState(IFrameSource Source, CancellationTokenSource Cancellation, Task Task);
 }

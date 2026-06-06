@@ -22,6 +22,8 @@ public interface IPipelineController
 
     DetectorMode ActiveDetector { get; }
 
+    Task StartAsync(CancellationToken cancellationToken);
+
     Task StartAsync(string sourceId, CancellationToken cancellationToken);
 
     Task StopAsync(CancellationToken cancellationToken);
@@ -33,6 +35,8 @@ public interface IPipelineController
     void SetEnabledColorFilters(IEnumerable<string> colors);
 
     void SetColorCalibrations(IEnumerable<ColorCalibrationProfile> calibrations);
+
+    void SetVisionPipelineInclusion(string cameraSourceId, bool included);
 
     void SetDebugViewEnabled(string cameraSourceId, bool enabled);
 

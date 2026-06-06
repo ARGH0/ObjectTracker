@@ -63,4 +63,21 @@ internal sealed class RecordingOutputPort : IOutputPort
 
         return await firstSnapshot.Task;
     }
+
+    public async Task<IReadOnlyList<PipelineSnapshot>> WaitForSnapshotsAsync(int count)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+        while (DateTime.UtcNow < deadline)
+        {
+            var current = Snapshots;
+            if (current.Count >= count)
+            {
+                return current;
+            }
+
+            await Task.Delay(10);
+        }
+
+        throw new TimeoutException($"Expected the Vision Pipeline to publish {count} snapshots.");
+    }
 }

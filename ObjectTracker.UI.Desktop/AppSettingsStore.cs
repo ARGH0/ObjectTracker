@@ -42,7 +42,8 @@ public sealed class AppSettingsStore
 
         return new AppSettings(
             GridColumns: Math.Clamp(dto.GridColumns, AppSettings.MinGridColumns, AppSettings.MaxGridColumns),
-            GridRows: Math.Clamp(dto.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows));
+            GridRows: Math.Clamp(dto.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows),
+            MissingFrameBehavior: dto.MissingFrameBehavior);
     }
 
     public void Save(AppSettings settings)
@@ -50,7 +51,8 @@ public sealed class AppSettingsStore
         var dto = new AppSettingsDto
         {
             GridColumns = Math.Clamp(settings.GridColumns, AppSettings.MinGridColumns, AppSettings.MaxGridColumns),
-            GridRows = Math.Clamp(settings.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows)
+            GridRows = Math.Clamp(settings.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows),
+            MissingFrameBehavior = settings.MissingFrameBehavior
         };
 
         var directory = Path.GetDirectoryName(filePath);
@@ -68,17 +70,23 @@ public sealed class AppSettingsStore
         public int GridColumns { get; set; } = AppSettings.DefaultColumns;
 
         public int GridRows { get; set; } = AppSettings.DefaultRows;
+
+        public CameraTileMissingFrameBehavior MissingFrameBehavior { get; set; } = AppSettings.DefaultMissingFrameBehavior;
     }
 }
 
-public readonly record struct AppSettings(int GridColumns, int GridRows)
+public readonly record struct AppSettings(
+    int GridColumns,
+    int GridRows,
+    CameraTileMissingFrameBehavior MissingFrameBehavior = CameraTileMissingFrameBehavior.RepeatLastFrame)
 {
     public const int DefaultColumns = 32;
     public const int DefaultRows = 18;
+    public const CameraTileMissingFrameBehavior DefaultMissingFrameBehavior = CameraTileMissingFrameBehavior.RepeatLastFrame;
     public const int MinGridColumns = 2;
     public const int MaxGridColumns = 200;
     public const int MinGridRows = 2;
     public const int MaxGridRows = 200;
 
-    public static AppSettings Default => new(DefaultColumns, DefaultRows);
+    public static AppSettings Default => new(DefaultColumns, DefaultRows, DefaultMissingFrameBehavior);
 }

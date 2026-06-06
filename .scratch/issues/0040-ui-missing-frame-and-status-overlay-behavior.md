@@ -1,7 +1,7 @@
 # UI Missing-Frame And Status Overlay Behavior
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,12 +13,12 @@ Add global UI missing-frame behavior for tile display with status overlays. Oper
 
 ## Acceptance criteria
 
-- [ ] UI missing-frame behavior supports repeat-last-frame and black-frame.
-- [ ] repeat-last-frame is the default.
-- [ ] Stale and failed overlays appear regardless of missing-frame behavior.
-- [ ] No-frame-yet state shows a placeholder or black frame rather than stale content.
-- [ ] Behavior works for Annotated Frame, Debug Frames, and raw Camera Source feed display.
-- [ ] Tests cover stale, failed, no-frame-yet, repeat-last-frame, and black-frame scenarios.
+- [x] UI missing-frame behavior supports repeat-last-frame and black-frame.
+- [x] repeat-last-frame is the default.
+- [x] Stale and failed overlays appear regardless of missing-frame behavior.
+- [x] No-frame-yet state shows a placeholder or black frame rather than stale content.
+- [x] Behavior works for Annotated Frame, Debug Frames, and raw Camera Source feed display.
+- [x] Tests cover stale, failed, no-frame-yet, repeat-last-frame, and black-frame scenarios.
 
 ## Blocked by
 

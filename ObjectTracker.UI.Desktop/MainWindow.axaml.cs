@@ -124,7 +124,8 @@ public partial class MainWindow : AppWindow, IOutputPort
     public enum SettingsField
     {
         GridColumns,
-        GridRows
+        GridRows,
+        MissingFrameBehavior
     }
 
     public readonly record struct CameraGridProjection(
@@ -403,6 +404,7 @@ public partial class MainWindow : AppWindow, IOutputPort
         {
             SettingsField.GridColumns => "requires Vision Pipeline restart",
             SettingsField.GridRows => "requires Vision Pipeline restart",
+            SettingsField.MissingFrameBehavior => "applies immediately",
             _ => "applies immediately"
         };
     }
@@ -612,6 +614,7 @@ public partial class MainWindow : AppWindow, IOutputPort
         DiscardSettingsButton.Click += DiscardSettingsButtonOnClick;
         SettingsGridColumnsTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
         SettingsGridRowsTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
+        SettingsMissingFrameBehaviorComboBox.SelectionChanged += SettingsMissingFrameBehaviorComboBoxOnSelectionChanged;
 
         SampleCountTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         ThresholdTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
@@ -766,20 +769,40 @@ public partial class MainWindow : AppWindow, IOutputPort
         RefreshSettingsDraftStatusUi();
     }
 
+    private void SettingsMissingFrameBehaviorComboBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        UpdateDraftAppSettingsFromUi();
+        RefreshSettingsDraftStatusUi();
+    }
+
     private void UpdateDraftAppSettingsFromUi()
     {
         var columns = ParseInt(SettingsGridColumnsTextBox.Text, appSettings.GridColumns, AppSettings.MinGridColumns, AppSettings.MaxGridColumns);
         var rows = ParseInt(SettingsGridRowsTextBox.Text, appSettings.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows);
-        draftAppSettings = new AppSettings(columns, rows);
+        draftAppSettings = new AppSettings(columns, rows, GetSelectedMissingFrameBehavior());
     }
 
     private void RefreshSettingsWorkspaceUi()
     {
         SettingsGridColumnsPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.GridColumns);
         SettingsGridRowsPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.GridRows);
+        SettingsMissingFrameBehaviorPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.MissingFrameBehavior);
+        SettingsMissingFrameBehaviorComboBox.ItemsSource = new[]
+        {
+            "Repeat last frame",
+            "Black frame"
+        };
         SettingsGridColumnsTextBox.Text = draftAppSettings.GridColumns.ToString();
         SettingsGridRowsTextBox.Text = draftAppSettings.GridRows.ToString();
+        SettingsMissingFrameBehaviorComboBox.SelectedIndex = draftAppSettings.MissingFrameBehavior == CameraTileMissingFrameBehavior.BlackFrame ? 1 : 0;
         RefreshSettingsDraftStatusUi();
+    }
+
+    private CameraTileMissingFrameBehavior GetSelectedMissingFrameBehavior()
+    {
+        return SettingsMissingFrameBehaviorComboBox.SelectedIndex == 1
+            ? CameraTileMissingFrameBehavior.BlackFrame
+            : CameraTileMissingFrameBehavior.RepeatLastFrame;
     }
 
     private void RefreshSettingsDraftStatusUi()
@@ -1750,6 +1773,7 @@ public partial class MainWindow : AppWindow, IOutputPort
         var bitmap = new Bitmap(ms);
 
         var previous = target.Source as Bitmap;
+        target.IsVisible = true;
         target.Source = bitmap;
         previous?.Dispose();
     }
@@ -1975,6 +1999,7 @@ public partial class MainWindow : AppWindow, IOutputPort
     private static void UpdatePreviewBitmap(Image target, Bitmap bitmap)
     {
         var previous = target.Source as Bitmap;
+        target.IsVisible = true;
         target.Source = bitmap;
         previous?.Dispose();
     }
@@ -2005,7 +2030,32 @@ public partial class MainWindow : AppWindow, IOutputPort
                 currentParent.Children.Remove(image);
             }
 
+            var displayView = CameraTileDisplayProjection.Build(
+                hasCurrentFrame: image.Source is not null,
+                hasLastFrame: image.Source is not null,
+                missingFrameBehavior: appSettings.MissingFrameBehavior,
+                frameSource: GetCameraTileFrameSource(viewState.RenderModes[i]));
+            image.IsVisible = displayView.FrameDisplay != CameraTileFrameDisplay.BlackFrame;
+
             panel.Children.Add(image);
+
+            if (displayView.FrameDisplay == CameraTileFrameDisplay.Placeholder)
+            {
+                panel.Children.Add(new Border
+                {
+                    Background = Avalonia.Media.Brush.Parse("#CC111820"),
+                    Child = new TextBlock
+                    {
+                        Text = displayView.PlaceholderText,
+                        Foreground = Avalonia.Media.Brush.Parse("#EAF4FF"),
+                        FontWeight = Avalonia.Media.FontWeight.SemiBold,
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(12)
+                    }
+                });
+            }
 
             if (viewState.RenderModes[i] == CameraRenderMode.DebugView)
             {

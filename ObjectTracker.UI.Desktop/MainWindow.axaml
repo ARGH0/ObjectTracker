@@ -770,7 +770,14 @@
                                        Classes="muted" />
                         </StackPanel>
                         <TextBox x:Name="SettingsGridRowsTextBox"
-                                 Watermark="18" />
+                                  Watermark="18" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Missing Frame Behavior"
+                                       Classes="eyebrow" />
+                            <TextBlock x:Name="SettingsMissingFrameBehaviorPolicyText"
+                                       Classes="muted" />
+                        </StackPanel>
+                        <ComboBox x:Name="SettingsMissingFrameBehaviorComboBox" />
                     </StackPanel>
                 </Border>
 

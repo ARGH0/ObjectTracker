@@ -270,6 +270,14 @@ public sealed class MainWindowWorkspaceShellTests
     }
 
     [Fact]
+    public void SettingsApplyPolicyLabel_ForMissingFrameBehavior_AppliesImmediately()
+    {
+        var label = MainWindow.GetSettingsApplyPolicyLabel(MainWindow.SettingsField.MissingFrameBehavior);
+
+        Assert.Equal("applies immediately", label);
+    }
+
+    [Fact]
     public void SettingsSaveImpact_WhenRestartRequiredSettingChangesWhileRunning_MarksPendingRestart()
     {
         var saved = new AppSettings(GridColumns: 32, GridRows: 18);
@@ -280,5 +288,18 @@ public sealed class MainWindowWorkspaceShellTests
         Assert.True(impact.RequiresVisionPipelineRestart);
         Assert.True(impact.HasPendingVisionPipelineRestart);
         Assert.Equal("Settings: saved, pending Vision Pipeline restart", impact.SettingsStatusText);
+    }
+
+    [Fact]
+    public void SettingsSaveImpact_WhenOnlyMissingFrameBehaviorChangesWhileRunning_DoesNotMarkPendingRestart()
+    {
+        var saved = new AppSettings(GridColumns: 32, GridRows: 18, MissingFrameBehavior: CameraTileMissingFrameBehavior.RepeatLastFrame);
+        var draft = new AppSettings(GridColumns: 32, GridRows: 18, MissingFrameBehavior: CameraTileMissingFrameBehavior.BlackFrame);
+
+        var impact = MainWindow.BuildSettingsSaveImpact(saved, draft, isVisionPipelineRunning: true);
+
+        Assert.False(impact.RequiresVisionPipelineRestart);
+        Assert.False(impact.HasPendingVisionPipelineRestart);
+        Assert.Equal("Settings: saved", impact.SettingsStatusText);
     }
 }

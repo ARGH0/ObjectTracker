@@ -17,6 +17,7 @@ public sealed class AppSettingsStoreTests
 
         Assert.Equal(32, settings.GridColumns);
         Assert.Equal(18, settings.GridRows);
+        Assert.Equal(CameraTileMissingFrameBehavior.RepeatLastFrame, settings.MissingFrameBehavior);
     }
 
     [Fact]
@@ -31,6 +32,19 @@ public sealed class AppSettingsStoreTests
 
         Assert.Equal(40, loaded.GridColumns);
         Assert.Equal(24, loaded.GridRows);
+    }
+
+    [Fact]
+    public void Save_ThenLoad_PersistsMissingFrameBehavior()
+    {
+        var path = BuildTempFilePath();
+
+        var store = new AppSettingsStore(path);
+        store.Save(new AppSettings(GridColumns: 40, GridRows: 24, MissingFrameBehavior: CameraTileMissingFrameBehavior.BlackFrame));
+
+        var loaded = store.Load();
+
+        Assert.Equal(CameraTileMissingFrameBehavior.BlackFrame, loaded.MissingFrameBehavior);
     }
 
     [Fact]

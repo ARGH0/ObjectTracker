@@ -1,7 +1,7 @@
 # Global Vision Pipeline Target FPS
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,11 +13,11 @@ Add one global Vision Pipeline target FPS setting that applies immediately to ev
 
 ## Acceptance criteria
 
-- [ ] One global target FPS setting is available for the Vision Pipeline.
-- [ ] Changing target FPS while running updates all lanes without restart or Train State reset.
-- [ ] Lanes process latest available Source Frames rather than a backlog.
-- [ ] PipelineSnapshot or status output reports actual processed FPS per lane separately from configured target FPS.
-- [ ] Tests cover immediate target FPS changes and latest-frame processing behavior.
+- [x] One global target FPS setting is available for the Vision Pipeline.
+- [x] Changing target FPS while running updates all lanes without restart or Train State reset.
+- [x] Lanes process latest available Source Frames rather than a backlog.
+- [x] PipelineSnapshot or status output reports actual processed FPS per lane separately from configured target FPS.
+- [x] Tests cover immediate target FPS changes and latest-frame processing behavior.
 
 ## Blocked by
 

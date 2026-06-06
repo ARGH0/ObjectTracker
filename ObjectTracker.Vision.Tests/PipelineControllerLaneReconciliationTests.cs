@@ -138,10 +138,125 @@ public sealed class PipelineControllerLaneReconciliationTests
         Assert.Equal(0, snapshots.Count(snapshot => snapshot.CameraSourceId == "camera-failing"));
     }
 
-    private static PipelineController CreateController(IFrameSourceFactory factory, IOutputPort output) => new(
+    [Fact]
+    public async Task LaneProcessesLatestAvailableSourceFrameInsteadOfBacklog()
+    {
+        var source = new ControlledFrameSource(
+            "camera-1",
+            [
+                Frame("camera-1", 1000),
+                Frame("camera-1", 1001),
+                Frame("camera-1", 1002)
+            ]);
+        var factory = new MultiFrameSourceFactory(source);
+        var output = new RecordingOutputPort();
+        await using var controller = CreateController(factory, output);
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        await controller.StartAsync(CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Equal(1002, snapshot.SourceFrame.TimestampUtcMs);
+    }
+
+    [Fact]
+    public async Task SnapshotReportsConfiguredTargetFpsSeparatelyFromActualProcessedFps()
+    {
+        var source = new ControlledFrameSource("camera-1", [Frame("camera-1", 1000)]);
+        var factory = new MultiFrameSourceFactory(source);
+        var output = new RecordingOutputPort();
+        await using var controller = CreateController(factory, output);
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        controller.SetTargetFramesPerSecond(12);
+        await controller.StartAsync(CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Equal(12, controller.TargetFramesPerSecond);
+        Assert.Equal(12, snapshot.Timing.TargetFramesPerSecond);
+        Assert.True(snapshot.Timing.FramesPerSecond >= 0);
+    }
+
+    [Fact]
+    public async Task SetTargetFramesPerSecond_WhenRunningUpdatesCadenceWithoutRestartOrTrainTrackingReset()
+    {
+        var source = new ControlledFrameSource("camera-1", [Frame("camera-1", 1000)]);
+        var factory = new MultiFrameSourceFactory(source);
+        var output = new RecordingOutputPort();
+        var tracker = new CountingTracker();
+        await using var controller = CreateController(factory, output, tracker);
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        controller.SetTargetFramesPerSecond(1);
+        await controller.StartAsync(CancellationToken.None);
+        await output.WaitForSnapshotAsync();
+
+        source.Enqueue(Frame("camera-1", 2000));
+        await Task.Delay(150);
+        Assert.Single(output.Snapshots);
+
+        controller.SetTargetFramesPerSecond(60);
+        var snapshots = await output.WaitForSnapshotsAsync(2);
+
+        Assert.Equal(1, source.StartCount);
+        Assert.Equal(0, tracker.ResetCount);
+        Assert.Equal(60, snapshots.Last().Timing.TargetFramesPerSecond);
+
+        await controller.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task SetTargetFramesPerSecond_WhenRunningAppliesToEveryLane()
+    {
+        var source1 = new ControlledFrameSource("camera-1", [Frame("camera-1", 1000)]);
+        var source2 = new ControlledFrameSource("camera-2", [Frame("camera-2", 1000)]);
+        var factory = new MultiFrameSourceFactory(source1, source2);
+        var output = new RecordingOutputPort();
+        await using var controller = CreateController(factory, output);
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        controller.SetVisionPipelineInclusion("camera-2", included: true);
+        controller.SetTargetFramesPerSecond(1);
+        await controller.StartAsync(CancellationToken.None);
+        await output.WaitForSnapshotsAsync(2);
+
+        controller.SetTargetFramesPerSecond(60);
+        source1.Enqueue(Frame("camera-1", 2000));
+        source2.Enqueue(Frame("camera-2", 2000));
+        var snapshots = await output.WaitForSnapshotsAsync(4);
+        await controller.StopAsync(CancellationToken.None);
+
+        var latestByCameraSource = snapshots
+            .GroupBy(snapshot => snapshot.CameraSourceId)
+            .ToDictionary(group => group.Key, group => group.Last());
+        Assert.Equal(60, latestByCameraSource["camera-1"].Timing.TargetFramesPerSecond);
+        Assert.Equal(60, latestByCameraSource["camera-2"].Timing.TargetFramesPerSecond);
+    }
+
+    [Fact]
+    public async Task SnapshotReportsActualProcessedFpsPerLane()
+    {
+        var source1 = new ControlledFrameSource("camera-1", [Frame("camera-1", 2000)]);
+        var source2 = new ControlledFrameSource("camera-2", [Frame("camera-2", 2000)]);
+        var factory = new MultiFrameSourceFactory(source1, source2);
+        var output = new RecordingOutputPort();
+        await using var controller = CreateController(factory, output);
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        controller.SetVisionPipelineInclusion("camera-2", included: true);
+        await controller.StartAsync(CancellationToken.None);
+        var snapshots = await output.WaitForSnapshotsAsync(2);
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.All(snapshots, snapshot => Assert.Equal(1, snapshot.Timing.FramesPerSecond));
+    }
+
+    private static PipelineController CreateController(IFrameSourceFactory factory, IOutputPort output, ITracker? tracker = null) => new(
         factory,
         new StubDetectorManager(),
-        new StubTracker(),
+        tracker ?? new StubTracker(),
         [output],
         new IncrementingClock());
 
@@ -259,6 +374,15 @@ public sealed class PipelineControllerLaneReconciliationTests
         public IReadOnlyList<TrainState> Update(IReadOnlyList<Detection> detections, long frameTimestampUtcMs) => [];
 
         public void Reset() { }
+    }
+
+    private sealed class CountingTracker : ITracker
+    {
+        public int ResetCount { get; private set; }
+
+        public IReadOnlyList<TrainState> Update(IReadOnlyList<Detection> detections, long frameTimestampUtcMs) => [];
+
+        public void Reset() => ResetCount++;
     }
 
     private sealed class IncrementingClock : IClock

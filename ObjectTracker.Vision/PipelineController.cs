@@ -19,9 +19,8 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     private readonly HashSet<string> includedCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, LaneState> activeLanes = new(StringComparer.OrdinalIgnoreCase);
 
-    private int framesInWindow;
-    private long windowStartMs;
     private int overlayLineThickness = 2;
+    private int targetFramesPerSecond = 30;
     private bool isRunning;
 
     public PipelineController(
@@ -36,7 +35,6 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         this.tracker = tracker;
         this.outputs = outputs.ToList();
         this.clock = clock;
-        windowStartMs = this.clock.UtcNowMs();
         ResetOverlaySettings();
     }
 
@@ -75,6 +73,8 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     }
 
     public DetectorMode ActiveDetector => detectorManager.ActiveMode;
+
+    public int TargetFramesPerSecond => Volatile.Read(ref targetFramesPerSecond);
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -194,6 +194,11 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         _ = PublishStatusAsync($"Kleurkalibraties bijgewerkt: {snapshot.Count}", CancellationToken.None);
     }
 
+    public void SetTargetFramesPerSecond(int framesPerSecond)
+    {
+        Volatile.Write(ref targetFramesPerSecond, Math.Clamp(framesPerSecond, 1, 240));
+    }
+
     public void SetVisionPipelineInclusion(string cameraSourceId, bool included)
     {
         if (string.IsNullOrWhiteSpace(cameraSourceId))
@@ -303,23 +308,27 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
     private async Task RunLoopAsync(IFrameSource source, CancellationToken cancellationToken)
     {
+        var framesInWindow = 0;
+        var windowStartMs = clock.UtcNowMs();
+
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var frame = await source.ReadFrameAsync(cancellationToken);
+                var frame = await ReadLatestFrameAsync(source, cancellationToken);
                 if (frame is null)
                 {
                     await Task.Delay(10, cancellationToken);
                     continue;
                 }
 
+                var cycleStartedAt = Stopwatch.GetTimestamp();
                 var sw = Stopwatch.StartNew();
                 var detections = await detectorManager.DetectAsync(frame, cancellationToken);
                 var trainStates = tracker.Update(detections, frame.TimestampUtcMs);
                 sw.Stop();
 
-                var fps = CalculateFps(frame.TimestampUtcMs);
+                var fps = CalculateFps(frame.TimestampUtcMs, ref framesInWindow, ref windowStartMs);
                 var renderedFrame = RenderDetections(frame, detections);
                 var debugFrames = BuildDebugFrames(frame);
                 var snapshot = new PipelineSnapshot(
@@ -331,7 +340,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                     trainStates,
                     debugFrames,
                     detectorManager.ActiveMode,
-                    new PipelineSnapshotTiming(frame.TimestampUtcMs, fps, sw.Elapsed.TotalMilliseconds));
+                    new PipelineSnapshotTiming(frame.TimestampUtcMs, TargetFramesPerSecond, fps, sw.Elapsed.TotalMilliseconds));
 
                 foreach (var output in outputs)
                 {
@@ -343,6 +352,8 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 {
                     await PublishStatusAsync(sourceDiagnosticEvent, cancellationToken);
                 }
+
+                await WaitForTargetCadenceAsync(cycleStartedAt, cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -351,6 +362,45 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         catch (Exception ex)
         {
             await PublishStatusAsync($"Vision Pipeline lane '{source.DisplayName}' failed: {ex.Message}", CancellationToken.None);
+        }
+    }
+
+    private static async Task<FramePacket?> ReadLatestFrameAsync(IFrameSource source, CancellationToken cancellationToken)
+    {
+        var latest = await source.ReadFrameAsync(cancellationToken);
+        if (latest is null)
+        {
+            return null;
+        }
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var next = await source.ReadFrameAsync(cancellationToken);
+            if (next is null)
+            {
+                return latest;
+            }
+
+            latest = next;
+        }
+
+        return latest;
+    }
+
+    private async Task WaitForTargetCadenceAsync(long cycleStartedAt, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var elapsed = Stopwatch.GetElapsedTime(cycleStartedAt);
+            var targetInterval = TimeSpan.FromSeconds(1d / TargetFramesPerSecond);
+            if (elapsed >= targetInterval)
+            {
+                return;
+            }
+
+            var remaining = targetInterval - elapsed;
+            var delay = remaining > TimeSpan.FromMilliseconds(10) ? TimeSpan.FromMilliseconds(10) : remaining;
+            await Task.Delay(delay, cancellationToken);
         }
     }
 
@@ -481,7 +531,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         };
     }
 
-    private int CalculateFps(long nowMs)
+    private static int CalculateFps(long nowMs, ref int framesInWindow, ref long windowStartMs)
     {
         framesInWindow++;
         var elapsed = Math.Max(1, nowMs - windowStartMs);

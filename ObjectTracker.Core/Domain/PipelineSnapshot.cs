@@ -38,5 +38,6 @@ public sealed record TrainObservation(
 
 public sealed record PipelineSnapshotTiming(
     long TimestampUtcMs,
+    int TargetFramesPerSecond,
     int FramesPerSecond,
     double ProcessingMs);

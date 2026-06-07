@@ -94,6 +94,30 @@ public sealed class PipelineControllerSnapshotTests
     }
 
     [Fact]
+    public async Task StartAsync_CanPublishSnapshotFromVisualObservationPipeline()
+    {
+        var sourceFrame = new FramePacket("camera-1", 2200, 2, 2, [1, 2, 3]);
+        var movingObservation = new MovingObjectObservation("camera-1", sourceFrame.TimestampUtcMs, 5, 6, 1, 2, 3, 4, 0.5f);
+        var trainObservation = new TrainObservation("camera-1", sourceFrame.TimestampUtcMs, "Red", 10, 20, 8, 18, 12, 14, 0.75f);
+        var debugFrame = new DebugFrame("moving-object-observation", sourceFrame);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new StubVisualObservationPipeline(new VisualObservationResult([movingObservation], [trainObservation], [debugFrame])),
+            new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Same(movingObservation, Assert.Single(snapshot.MovingObjectObservations));
+        Assert.Same(trainObservation, Assert.Single(snapshot.TrainObservations));
+        Assert.Same(debugFrame, Assert.Single(snapshot.DebugFrames));
+    }
+
+    [Fact]
     public async Task StartAsync_WhenDebugViewEnabled_PublishesNamedDebugFrames()
     {
         var sourceFrame = new FramePacket("camera-1", 1234, 2, 2, [1, 2, 3]);
@@ -252,6 +276,14 @@ public sealed class PipelineControllerSnapshotTests
         public void SetColorCalibrations(IEnumerable<ColorCalibrationProfile> calibrations) { }
 
         public Task<IReadOnlyList<Detection>> DetectAsync(FramePacket frame, CancellationToken cancellationToken) => Task.FromResult(detections);
+    }
+
+    private sealed class StubVisualObservationPipeline(VisualObservationResult result) : IVisualObservationPipeline
+    {
+        public Task<VisualObservationResult> ObserveAsync(
+            FramePacket sourceFrame,
+            VisualObservationSettings settings,
+            CancellationToken cancellationToken) => Task.FromResult(result);
     }
 
     private sealed class StubTracker(IReadOnlyList<TrainState> trainStates) : ITracker

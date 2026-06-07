@@ -11,6 +11,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
     private readonly IFrameSourceFactory frameSourceFactory;
     private readonly IDetectorManager detectorManager;
+    private readonly IVisualObservationPipeline visualObservationPipeline;
     private readonly ITracker tracker;
     private readonly IReadOnlyList<IOutputPort> outputs;
     private readonly IClock clock;
@@ -35,9 +36,31 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         ITracker tracker,
         IEnumerable<IOutputPort> outputs,
         IClock clock)
+        : this(frameSourceFactory, detectorManager, new DetectorVisualObservationPipeline(detectorManager), tracker, outputs, clock)
+    {
+    }
+
+    public PipelineController(
+        IFrameSourceFactory frameSourceFactory,
+        IVisualObservationPipeline visualObservationPipeline,
+        ITracker tracker,
+        IEnumerable<IOutputPort> outputs,
+        IClock clock)
+        : this(frameSourceFactory, EmptyDetectorManager.Instance, visualObservationPipeline, tracker, outputs, clock)
+    {
+    }
+
+    private PipelineController(
+        IFrameSourceFactory frameSourceFactory,
+        IDetectorManager detectorManager,
+        IVisualObservationPipeline visualObservationPipeline,
+        ITracker tracker,
+        IEnumerable<IOutputPort> outputs,
+        IClock clock)
     {
         this.frameSourceFactory = frameSourceFactory;
         this.detectorManager = detectorManager;
+        this.visualObservationPipeline = visualObservationPipeline;
         this.tracker = tracker;
         this.outputs = outputs.ToList();
         this.clock = clock;
@@ -324,30 +347,31 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
                 var cycleStartedAt = Stopwatch.GetTimestamp();
                 var sw = Stopwatch.StartNew();
-                var detections = await detectorManager.DetectAsync(frame, cancellationToken);
+                var observations = await visualObservationPipeline.ObserveAsync(frame, GetVisualObservationSettings(frame.SourceId), cancellationToken);
                 if (cancellationToken.IsCancellationRequested)
                 {
                     return;
                 }
 
+                var trainDetections = observations.TrainObservations.Select(ToDetection).ToList();
                 IReadOnlyList<TrainState> trainStates;
                 lock (trackerLock)
                 {
-                    trainStates = tracker.Update(detections, frame.TimestampUtcMs);
+                    trainStates = tracker.Update(trainDetections, frame.TimestampUtcMs);
                 }
                 sw.Stop();
 
                 var fps = CalculateFps(frame.TimestampUtcMs, ref framesInWindow, ref windowStartMs);
                 var renderedFrame = RenderTrainStates(frame, trainStates);
-                var movingObjectObservations = detections.Where(IsMovingObjectObservation).Select(ToMovingObjectObservation).ToList();
-                var trainObservations = detections.Where(detection => !IsMovingObjectObservation(detection)).Select(ToTrainObservation).ToList();
-                var debugFrames = BuildDebugFrames(frame, movingObjectObservations, trainObservations, trainStates);
+                var debugFrames = observations.DebugFrames
+                    .Concat(BuildDebugFrames(frame, observations.MovingObjectObservations, observations.TrainObservations, trainStates))
+                    .ToList();
                 var snapshot = new PipelineSnapshot(
                     frame.SourceId,
                     frame,
                     renderedFrame,
-                    movingObjectObservations,
-                    trainObservations,
+                    observations.MovingObjectObservations,
+                    observations.TrainObservations,
                     trainStates,
                     debugFrames,
                     new PipelineSnapshotTiming(frame.TimestampUtcMs, TargetFramesPerSecond, fps, sw.Elapsed.TotalMilliseconds));
@@ -402,6 +426,17 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         }
     }
 
+    private VisualObservationSettings GetVisualObservationSettings(string cameraSourceId)
+    {
+        lock (overlaySettingsLock)
+        {
+            return VisualObservationSettings.Default with
+            {
+                DebugViewEnabled = debugViewCameraSourceIds.Contains(cameraSourceId)
+            };
+        }
+    }
+
     private IReadOnlyList<string> GetDuplicateLocalTrainIdsBeyondGrace(IReadOnlyList<TrainState> trainStates)
     {
         var alerts = new List<string>();
@@ -453,34 +488,18 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         }
     }
 
-    private static TrainObservation ToTrainObservation(Detection detection) => new(
-        detection.SourceId,
-        detection.TimestampUtcMs,
-        detection.Kind,
-        detection.X,
-        detection.Y,
-        detection.BoxX,
-        detection.BoxY,
-        detection.BoxWidth,
-        detection.BoxHeight,
-        detection.Confidence);
-
-    private static MovingObjectObservation ToMovingObjectObservation(Detection detection) => new(
-        detection.SourceId,
-        detection.TimestampUtcMs,
-        detection.X,
-        detection.Y,
-        detection.BoxX,
-        detection.BoxY,
-        detection.BoxWidth,
-        detection.BoxHeight,
-        detection.Confidence);
-
-    private static bool IsMovingObjectObservation(Detection detection)
-    {
-        return detection.Kind.Equals("moving-object", StringComparison.OrdinalIgnoreCase) ||
-            detection.Kind.Equals("motion", StringComparison.OrdinalIgnoreCase);
-    }
+    private static Detection ToDetection(TrainObservation observation) => new(
+        $"{observation.TrainColor}-{observation.TimestampUtcMs}",
+        observation.X,
+        observation.Y,
+        observation.BoxX,
+        observation.BoxY,
+        observation.BoxWidth,
+        observation.BoxHeight,
+        observation.Confidence,
+        observation.TrainColor,
+        observation.SourceId,
+        observation.TimestampUtcMs);
 
     private IReadOnlyList<DebugFrame> BuildDebugFrames(
         FramePacket sourceFrame,
@@ -627,4 +646,64 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     }
 
     private sealed record LaneState(IFrameSource Source, CancellationTokenSource Cancellation, Task Task);
+
+    private sealed class DetectorVisualObservationPipeline(IDetectorManager detectorManager) : IVisualObservationPipeline
+    {
+        public async Task<VisualObservationResult> ObserveAsync(
+            FramePacket sourceFrame,
+            VisualObservationSettings settings,
+            CancellationToken cancellationToken)
+        {
+            var detections = await detectorManager.DetectAsync(sourceFrame, cancellationToken);
+            var movingObjectObservations = detections.Where(IsMovingObjectObservation).Select(ToMovingObjectObservation).ToList();
+            var trainObservations = detections.Where(detection => !IsMovingObjectObservation(detection)).Select(ToTrainObservation).ToList();
+            return new VisualObservationResult(movingObjectObservations, trainObservations, []);
+        }
+
+        private static TrainObservation ToTrainObservation(Detection detection) => new(
+            detection.SourceId,
+            detection.TimestampUtcMs,
+            detection.Kind,
+            detection.X,
+            detection.Y,
+            detection.BoxX,
+            detection.BoxY,
+            detection.BoxWidth,
+            detection.BoxHeight,
+            detection.Confidence);
+
+        private static MovingObjectObservation ToMovingObjectObservation(Detection detection) => new(
+            detection.SourceId,
+            detection.TimestampUtcMs,
+            detection.X,
+            detection.Y,
+            detection.BoxX,
+            detection.BoxY,
+            detection.BoxWidth,
+            detection.BoxHeight,
+            detection.Confidence);
+
+        private static bool IsMovingObjectObservation(Detection detection)
+        {
+            return detection.Kind.Equals("moving-object", StringComparison.OrdinalIgnoreCase) ||
+                detection.Kind.Equals("motion", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private sealed class EmptyDetectorManager : IDetectorManager
+    {
+        public static EmptyDetectorManager Instance { get; } = new();
+
+        public IReadOnlyList<string> AvailableColorFilters => [];
+
+        public IReadOnlyList<string> EnabledColorFilters => [];
+
+        public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations => [];
+
+        public void SetEnabledColorFilters(IEnumerable<string> colors) { }
+
+        public void SetColorCalibrations(IEnumerable<ColorCalibrationProfile> calibrations) { }
+
+        public Task<IReadOnlyList<Detection>> DetectAsync(FramePacket frame, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<Detection>>([]);
+    }
 }

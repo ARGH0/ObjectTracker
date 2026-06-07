@@ -84,8 +84,9 @@ public sealed class VisualObservationPipeline : IVisualObservationPipeline
             Cv.Cv2.Threshold(diff, mask, settings.Threshold, 255, Cv.ThresholdTypes.Binary);
             using var refinedMask = motionMaskRefiner.Refine(mask, BuildRefinerOptions(settings.MorphKernelSize));
             var movingObjectObservations = GetMovingObjectObservations(refinedMask, sourceFrame, settings.MotionArea);
+            var trainObservations = GetTrainObservations(color, refinedMask, movingObjectObservations, sourceFrame, settings);
 
-            return Task.FromResult(new VisualObservationResult(movingObjectObservations, [], []));
+            return Task.FromResult(new VisualObservationResult(movingObjectObservations, trainObservations, []));
         }
     }
 
@@ -119,6 +120,107 @@ public sealed class VisualObservationPipeline : IVisualObservationPipeline
         }
 
         return observations;
+    }
+
+    private static IReadOnlyList<TrainObservation> GetTrainObservations(
+        Cv.Mat sourceColor,
+        Cv.Mat motionMask,
+        IReadOnlyList<MovingObjectObservation> movingObjectObservations,
+        FramePacket sourceFrame,
+        VisualObservationSettings settings)
+    {
+        if (settings.ColorCalibrations.Count == 0 || movingObjectObservations.Count == 0)
+        {
+            return [];
+        }
+
+        var observations = new List<TrainObservation>();
+        foreach (var movingObjectObservation in movingObjectObservations)
+        {
+            var rect = new Cv.Rect(
+                (int)movingObjectObservation.BoxX,
+                (int)movingObjectObservation.BoxY,
+                (int)movingObjectObservation.BoxWidth,
+                (int)movingObjectObservation.BoxHeight);
+            using var colorRoi = new Cv.Mat(sourceColor, rect);
+            using var motionRoi = new Cv.Mat(motionMask, rect);
+            using var hsvRoi = new Cv.Mat();
+            Cv.Cv2.CvtColor(colorRoi, hsvRoi, Cv.ColorConversionCodes.BGR2HSV);
+
+            var (profile, pixelCount) = FindDominantTrainColor(hsvRoi, motionRoi, settings.ColorCalibrations);
+            if (profile is null || pixelCount < settings.ColorMinPixels)
+            {
+                continue;
+            }
+
+            observations.Add(new TrainObservation(
+                sourceFrame.SourceId,
+                sourceFrame.TimestampUtcMs,
+                profile.Value.Name,
+                movingObjectObservation.X,
+                movingObjectObservation.Y,
+                movingObjectObservation.BoxX,
+                movingObjectObservation.BoxY,
+                movingObjectObservation.BoxWidth,
+                movingObjectObservation.BoxHeight,
+                movingObjectObservation.Confidence));
+        }
+
+        return observations;
+    }
+
+    private static (ColorCalibrationProfile? Profile, int PixelCount) FindDominantTrainColor(
+        Cv.Mat hsvRoi,
+        Cv.Mat motionRoi,
+        IReadOnlyList<ColorCalibrationProfile> colorCalibrations)
+    {
+        ColorCalibrationProfile? bestProfile = null;
+        var bestCount = 0;
+        foreach (var profile in colorCalibrations)
+        {
+            using var colorMask = BuildColorMask(hsvRoi, profile);
+            Cv.Cv2.BitwiseAnd(colorMask, motionRoi, colorMask);
+            var count = Cv.Cv2.CountNonZero(colorMask);
+            if (count > bestCount)
+            {
+                bestProfile = profile;
+                bestCount = count;
+            }
+        }
+
+        return (bestProfile, bestCount);
+    }
+
+    private static Cv.Mat BuildColorMask(Cv.Mat hsv, ColorCalibrationProfile profile)
+    {
+        if (profile.HueLower <= profile.HueUpper)
+        {
+            var mask = new Cv.Mat();
+            Cv.Cv2.InRange(
+                hsv,
+                new Cv.Scalar(profile.HueLower, profile.SaturationLower, profile.ValueLower),
+                new Cv.Scalar(profile.HueUpper, profile.SaturationUpper, profile.ValueUpper),
+                mask);
+            return mask;
+        }
+
+        var primary = new Cv.Mat();
+        var secondary = new Cv.Mat();
+        var combined = new Cv.Mat();
+        Cv.Cv2.InRange(
+            hsv,
+            new Cv.Scalar(profile.HueLower, profile.SaturationLower, profile.ValueLower),
+            new Cv.Scalar(180, profile.SaturationUpper, profile.ValueUpper),
+            primary);
+        Cv.Cv2.InRange(
+            hsv,
+            new Cv.Scalar(0, profile.SaturationLower, profile.ValueLower),
+            new Cv.Scalar(profile.HueUpper, profile.SaturationUpper, profile.ValueUpper),
+            secondary);
+        Cv.Cv2.BitwiseOr(primary, secondary, combined);
+        primary.Dispose();
+        secondary.Dispose();
+        return combined;
     }
 
     private static Cv.Size BuildProcessSize(int sourceWidth, int sourceHeight, int maxWidth)

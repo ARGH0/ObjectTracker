@@ -139,7 +139,7 @@ public sealed class PipelineControllerLaneReconciliationTests
     }
 
     [Fact]
-    public async Task LaneProcessesLatestAvailableSourceFrameInsteadOfBacklog()
+    public async Task LaneProcessesOneFreshSourceFramePerCadenceInsteadOfDrainingBacklog()
     {
         var source = new ControlledFrameSource(
             "camera-1",
@@ -157,7 +157,25 @@ public sealed class PipelineControllerLaneReconciliationTests
         var snapshot = await output.WaitForSnapshotAsync();
         await controller.StopAsync(CancellationToken.None);
 
-        Assert.Equal(1002, snapshot.SourceFrame.TimestampUtcMs);
+        Assert.Equal(1000, snapshot.SourceFrame.TimestampUtcMs);
+    }
+
+    [Fact]
+    public async Task LaneSkipsCadenceTickWhenSourceHasNoFreshFrame()
+    {
+        var source = new ControlledFrameSource("camera-1", [Frame("camera-1", 1000)]);
+        var factory = new MultiFrameSourceFactory(source);
+        var output = new RecordingOutputPort();
+        await using var controller = CreateController(factory, output);
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        controller.SetTargetFramesPerSecond(60);
+        await controller.StartAsync(CancellationToken.None);
+        await output.WaitForSnapshotAsync();
+        await Task.Delay(80);
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Single(output.Snapshots);
     }
 
     [Fact]
@@ -529,17 +547,11 @@ public sealed class PipelineControllerLaneReconciliationTests
 
     private sealed class StubDetectorManager : IDetectorManager
     {
-        public DetectorMode ActiveMode => DetectorMode.Color;
-
-        public IReadOnlyList<DetectorMode> SupportedModes => [DetectorMode.Color];
-
         public IReadOnlyList<string> AvailableColorFilters => [];
 
         public IReadOnlyList<string> EnabledColorFilters => [];
 
         public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations => [];
-
-        public void SwitchMode(DetectorMode mode) { }
 
         public void SetEnabledColorFilters(IEnumerable<string> colors) { }
 
@@ -550,17 +562,11 @@ public sealed class PipelineControllerLaneReconciliationTests
 
     private sealed class SourceAwareDetectorManager(IReadOnlyDictionary<string, Detection[]> detectionsBySourceId) : IDetectorManager
     {
-        public DetectorMode ActiveMode => DetectorMode.Color;
-
-        public IReadOnlyList<DetectorMode> SupportedModes => [DetectorMode.Color];
-
         public IReadOnlyList<string> AvailableColorFilters => [];
 
         public IReadOnlyList<string> EnabledColorFilters => [];
 
         public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations => [];
-
-        public void SwitchMode(DetectorMode mode) { }
 
         public void SetEnabledColorFilters(IEnumerable<string> colors) { }
 
@@ -577,17 +583,11 @@ public sealed class PipelineControllerLaneReconciliationTests
     {
         private int callIndex;
 
-        public DetectorMode ActiveMode => DetectorMode.Color;
-
-        public IReadOnlyList<DetectorMode> SupportedModes => [DetectorMode.Color];
-
         public IReadOnlyList<string> AvailableColorFilters => [];
 
         public IReadOnlyList<string> EnabledColorFilters => [];
 
         public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations => [];
-
-        public void SwitchMode(DetectorMode mode) { }
 
         public void SetEnabledColorFilters(IEnumerable<string> colors) { }
 

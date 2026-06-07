@@ -6,8 +6,6 @@ namespace ObjectTracker.Vision;
 
 public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterControl
 {
-    public DetectorMode Mode => DetectorMode.Color;
-
     public string Name => "OpenCV Color";
 
     private readonly Lock filterLock = new();
@@ -101,10 +99,16 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
 
     public Task<IReadOnlyList<Detection>> DetectAsync(FramePacket frame, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromResult<IReadOnlyList<Detection>>([]);
+        }
 
         using var image = Cv2.ImDecode(frame.EncodedJpeg, ImreadModes.Color);
-        cancellationToken.ThrowIfCancellationRequested();
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromResult<IReadOnlyList<Detection>>([]);
+        }
 
         if (image.Empty())
         {
@@ -113,7 +117,10 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
 
         using var hsv = new Mat();
         Cv2.CvtColor(image, hsv, ColorConversionCodes.BGR2HSV);
-        cancellationToken.ThrowIfCancellationRequested();
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromResult<IReadOnlyList<Detection>>([]);
+        }
 
         var detections = new List<Detection>();
 
@@ -127,7 +134,10 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
 
         foreach (var range in ranges)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Task.FromResult<IReadOnlyList<Detection>>([]);
+            }
 
             if (!enabled.Contains(range.Name))
             {
@@ -135,14 +145,20 @@ public sealed class OpenCvColorDetector : IDetectionAlgorithm, IColorFilterContr
             }
 
             using var mask = BuildMask(hsv, range);
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Task.FromResult<IReadOnlyList<Detection>>([]);
+            }
 
             Cv2.FindContours(mask, out var contours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
 
             var index = 0;
             foreach (var contour in contours)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return Task.FromResult<IReadOnlyList<Detection>>([]);
+                }
 
                 var area = Cv2.ContourArea(contour);
                 var minArea = GetMinArea(range.Name);

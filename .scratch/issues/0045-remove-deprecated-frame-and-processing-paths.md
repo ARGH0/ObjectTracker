@@ -1,7 +1,7 @@
 # Remove Deprecated Frame And Processing Paths
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,12 +13,12 @@ Remove obsolete and transitional code after the PipelineSnapshot flow is covered
 
 ## Acceptance criteria
 
-- [ ] No public UI frame seam uses PreviewFrameSet.
-- [ ] No visible included tile uses a separate raw preview consumer while the Vision Pipeline is running.
-- [ ] No playlist runtime path remains for file-based Camera Sources.
-- [ ] No selected-Camera Source loop controls Vision Pipeline processing.
-- [ ] Transitional adapters that are no longer needed after migration are removed.
-- [ ] End-to-end Vision Pipeline snapshot regression tests still pass after cleanup.
+- [x] No public UI frame seam uses PreviewFrameSet.
+- [x] No visible included tile uses a separate raw preview consumer while the Vision Pipeline is running.
+- [x] No playlist runtime path remains for file-based Camera Sources.
+- [x] No selected-Camera Source loop controls Vision Pipeline processing.
+- [x] Transitional adapters that are no longer needed after migration are removed.
+- [x] End-to-end Vision Pipeline snapshot regression tests still pass after cleanup.
 
 ## Blocked by
 

@@ -66,6 +66,40 @@ public sealed class CameraTilePipelineSnapshotRendererTests
     }
 
     [Fact]
+    public async Task RenderSnapshotAsync_WhenSnapshotUsesCurrentDebugFrameNames_RoutesFramesToDistinctDebugViewSlots()
+    {
+        var renderer = new CameraTilePipelineSnapshotRenderer();
+        var debugFrames = new List<CameraTileDebugFrameSnapshot>();
+        var snapshot = Snapshot(
+            "cam-a",
+            annotatedBytes: [7],
+            debugFrames:
+            [
+                new DebugFrame("source", new FramePacket("cam-a", 30, 2, 2, [8])),
+                new DebugFrame("moving-object-observation", new FramePacket("cam-a", 31, 2, 2, [9])),
+                new DebugFrame("train-observation", new FramePacket("cam-a", 32, 2, 2, [10])),
+                new DebugFrame("train-tracking", new FramePacket("cam-a", 33, 2, 2, [11]))
+            ]);
+        var routing = new MainWindow.CameraTileFrameRouting([
+            new MainWindow.CameraTileFrameRoute("cam-a", MainWindow.CameraTileFrameSource.PipelineSnapshotDebugFrames)
+        ]);
+
+        await renderer.RenderSnapshotAsync(snapshot, routing, _ => Task.CompletedTask, debugFrame =>
+        {
+            debugFrames.Add(debugFrame);
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+
+        Assert.Equal(new[]
+        {
+            CameraTileDebugFrameSlot.Source,
+            CameraTileDebugFrameSlot.MovingObjectObservation,
+            CameraTileDebugFrameSlot.TrainObservation,
+            CameraTileDebugFrameSlot.TrainTracking
+        }, debugFrames.Select(frame => frame.Slot).ToArray());
+    }
+
+    [Fact]
     public async Task RenderSnapshotAsync_WhenTileRouteUsesRawFeed_DoesNotDisplayPipelineSnapshot()
     {
         var renderer = new CameraTilePipelineSnapshotRenderer();
@@ -99,7 +133,6 @@ public sealed class CameraTilePipelineSnapshotRendererTests
             [],
             [],
             debugFrames,
-            DetectorMode.Color,
             new PipelineSnapshotTiming(20, 30, 29, 1.2));
     }
 }

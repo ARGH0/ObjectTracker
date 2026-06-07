@@ -6,9 +6,18 @@ using ObjectTracker.Core.Domain;
 
 namespace ObjectTracker.UI.Desktop;
 
+public enum CameraTileDebugFrameSlot
+{
+    Source,
+    MovingObjectObservation,
+    TrainObservation,
+    TrainTracking
+}
+
 public readonly record struct CameraTileDebugFrameSnapshot(
     string CameraId,
     string Name,
+    CameraTileDebugFrameSlot Slot,
     long FrameVersion,
     int Width,
     int Height,
@@ -58,10 +67,22 @@ public sealed class CameraTilePipelineSnapshotRenderer
             await onDebugFrame(new CameraTileDebugFrameSnapshot(
                 snapshot.CameraSourceId,
                 debugFrame.Name,
+                GetDebugFrameSlot(debugFrame.Name),
                 frame.TimestampUtcMs,
                 frame.Width,
                 frame.Height,
                 frame.EncodedJpeg));
         }
+    }
+
+    private static CameraTileDebugFrameSlot GetDebugFrameSlot(string name)
+    {
+        return name switch
+        {
+            "moving-object-observation" or "moving-color" => CameraTileDebugFrameSlot.MovingObjectObservation,
+            "train-observation" or "color-detection" => CameraTileDebugFrameSlot.TrainObservation,
+            "train-tracking" or "motion" => CameraTileDebugFrameSlot.TrainTracking,
+            _ => CameraTileDebugFrameSlot.Source
+        };
     }
 }

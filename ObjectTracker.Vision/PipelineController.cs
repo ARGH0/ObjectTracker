@@ -48,8 +48,6 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
     public IReadOnlyList<FrameSourceInfo> AvailableSources => frameSourceFactory.GetAvailableSources();
 
-    public IReadOnlyList<DetectorMode> AvailableDetectors => detectorManager.SupportedModes;
-
     public IReadOnlyList<string> AvailableColorFilters => detectorManager.AvailableColorFilters;
 
     public IReadOnlyList<string> EnabledColorFilters => detectorManager.EnabledColorFilters;
@@ -77,8 +75,6 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
             }
         }
     }
-
-    public DetectorMode ActiveDetector => detectorManager.ActiveMode;
 
     public int TargetFramesPerSecond => Volatile.Read(ref targetFramesPerSecond);
 
@@ -181,12 +177,6 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         includedCameraSourceIds.Clear();
         SetVisionPipelineInclusion(sourceId, included: true);
         await StartAsync(cancellationToken);
-    }
-
-    public void SwitchDetector(DetectorMode mode)
-    {
-        detectorManager.SwitchMode(mode);
-        _ = PublishStatusAsync($"Detector gewijzigd naar '{mode}'.", CancellationToken.None);
     }
 
     public void SetEnabledColorFilters(IEnumerable<string> colors)
@@ -325,7 +315,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var frame = await ReadLatestFrameAsync(source, cancellationToken);
+                var frame = await source.ReadFrameAsync(cancellationToken);
                 if (frame is null)
                 {
                     await Task.Delay(10, cancellationToken);
@@ -335,6 +325,11 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 var cycleStartedAt = Stopwatch.GetTimestamp();
                 var sw = Stopwatch.StartNew();
                 var detections = await detectorManager.DetectAsync(frame, cancellationToken);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
                 IReadOnlyList<TrainState> trainStates;
                 lock (trackerLock)
                 {
@@ -355,7 +350,6 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                     trainObservations,
                     trainStates,
                     debugFrames,
-                    detectorManager.ActiveMode,
                     new PipelineSnapshotTiming(frame.TimestampUtcMs, TargetFramesPerSecond, fps, sw.Elapsed.TotalMilliseconds));
 
                 foreach (var output in outputs)
@@ -381,28 +375,6 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         {
             await PublishStatusAsync($"Vision Pipeline lane '{source.DisplayName}' failed: {ex.Message}", CancellationToken.None);
         }
-    }
-
-    private static async Task<FramePacket?> ReadLatestFrameAsync(IFrameSource source, CancellationToken cancellationToken)
-    {
-        var latest = await source.ReadFrameAsync(cancellationToken);
-        if (latest is null)
-        {
-            return null;
-        }
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var next = await source.ReadFrameAsync(cancellationToken);
-            if (next is null)
-            {
-                return latest;
-            }
-
-            latest = next;
-        }
-
-        return latest;
     }
 
     private async Task WaitForTargetCadenceAsync(long cycleStartedAt, CancellationToken cancellationToken)

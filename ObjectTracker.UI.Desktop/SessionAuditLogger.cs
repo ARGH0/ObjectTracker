@@ -21,17 +21,6 @@ internal sealed class SessionAuditLogger : IDisposable
 
     public string? CurrentFilePath { get; private set; }
 
-    public bool IsActive
-    {
-        get
-        {
-            lock (sync)
-            {
-                return writer is not null;
-            }
-        }
-    }
-
     public void StartSession()
     {
         lock (sync)
@@ -53,14 +42,6 @@ internal sealed class SessionAuditLogger : IDisposable
             CurrentFilePath = filePath;
 
             writer.WriteLine($"[{timestamp:O}] Session started.");
-        }
-    }
-
-    public void Append(string line)
-    {
-        lock (sync)
-        {
-            writer?.WriteLine(line);
         }
     }
 

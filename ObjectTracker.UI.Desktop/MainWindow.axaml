@@ -78,7 +78,7 @@
                     <Grid x:Name="CameraPanelFullContent"
                           RowDefinitions="Auto,8,*">
                     <ListBox Grid.Row="0"
-                              x:Name="PlaylistListBox"
+                              x:Name="CameraSourceListBox"
                               SelectionMode="Single"
                               MinHeight="150"
                               MaxHeight="220">
@@ -250,7 +250,7 @@
                                               VerticalScrollBarVisibility="Auto">
                                     <StackPanel Spacing="8">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <CheckBox x:Name="LoopPlaylistCheckBox"
+                                            <CheckBox x:Name="LoopVideoCheckBox"
                                                       Content="Loop this video source"
                                                       IsChecked="True" />
                                             <Border Background="#26323B"

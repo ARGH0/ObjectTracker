@@ -241,17 +241,11 @@ public sealed class PipelineControllerSnapshotTests
 
     private sealed class StubDetectorManager(IReadOnlyList<Detection> detections) : IDetectorManager
     {
-        public DetectorMode ActiveMode => DetectorMode.Color;
-
-        public IReadOnlyList<DetectorMode> SupportedModes => [DetectorMode.Color];
-
         public IReadOnlyList<string> AvailableColorFilters => [];
 
         public IReadOnlyList<string> EnabledColorFilters => [];
 
         public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations => [];
-
-        public void SwitchMode(DetectorMode mode) { }
 
         public void SetEnabledColorFilters(IEnumerable<string> colors) { }
 

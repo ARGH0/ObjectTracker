@@ -8,7 +8,6 @@ public sealed record PipelineSnapshot(
     IReadOnlyList<TrainObservation> TrainObservations,
     IReadOnlyList<TrainState> TrainStates,
     IReadOnlyList<DebugFrame> DebugFrames,
-    DetectorMode ActiveDetector,
     PipelineSnapshotTiming Timing);
 
 public sealed record DebugFrame(string Name, FramePacket Frame);

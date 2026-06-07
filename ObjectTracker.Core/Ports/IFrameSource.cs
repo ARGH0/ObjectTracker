@@ -14,6 +14,7 @@ public interface IFrameSource : IAsyncDisposable
 
     Task StopAsync(CancellationToken cancellationToken);
 
+    /// <summary>Returns the next fresh Source Frame, or null when no new frame is available.</summary>
     Task<FramePacket?> ReadFrameAsync(CancellationToken cancellationToken);
 
     string? ConsumeDiagnosticEvent();

@@ -465,17 +465,11 @@ public sealed class MainWindowEndToEndRegressionTests
 
     private sealed class SourceAwareDetectorManager(IReadOnlyDictionary<string, Detection[]> detectionsBySourceId) : IDetectorManager
     {
-        public DetectorMode ActiveMode => DetectorMode.Color;
-
-        public IReadOnlyList<DetectorMode> SupportedModes => [DetectorMode.Color];
-
         public IReadOnlyList<string> AvailableColorFilters => [];
 
         public IReadOnlyList<string> EnabledColorFilters => [];
 
         public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations => [];
-
-        public void SwitchMode(DetectorMode mode) { }
 
         public void SetEnabledColorFilters(IEnumerable<string> colors) { }
 

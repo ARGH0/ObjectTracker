@@ -656,21 +656,8 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         {
             var detections = await detectorManager.DetectAsync(sourceFrame, cancellationToken);
             var movingObjectObservations = detections.Where(IsMovingObjectObservation).Select(ToMovingObjectObservation).ToList();
-            var trainObservations = detections.Where(detection => !IsMovingObjectObservation(detection)).Select(ToTrainObservation).ToList();
-            return new VisualObservationResult(movingObjectObservations, trainObservations, []);
+            return new VisualObservationResult(movingObjectObservations, [], []);
         }
-
-        private static TrainObservation ToTrainObservation(Detection detection) => new(
-            detection.SourceId,
-            detection.TimestampUtcMs,
-            detection.Kind,
-            detection.X,
-            detection.Y,
-            detection.BoxX,
-            detection.BoxY,
-            detection.BoxWidth,
-            detection.BoxHeight,
-            detection.Confidence);
 
         private static MovingObjectObservation ToMovingObjectObservation(Detection detection) => new(
             detection.SourceId,

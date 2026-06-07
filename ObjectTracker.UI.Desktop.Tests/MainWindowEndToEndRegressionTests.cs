@@ -277,7 +277,7 @@ public sealed class MainWindowEndToEndRegressionTests
         var output = new RecordingOutputPort();
         await using var controller = new PipelineController(
             new MultiFrameSourceFactory(fileSource, new ControlledFrameSource("usb:0:ANY", []), handoffSource),
-            new SourceAwareDetectorManager(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
+            new SourceAwareVisualObservationPipeline(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
             {
                 ["file-bridge"] = [Detection("file-bridge", 1000, 10, 10, "Red")],
                 ["handoff-hidden"] = [Detection("handoff-hidden", 6000, 20, 12, "Red")]
@@ -480,6 +480,32 @@ public sealed class MainWindowEndToEndRegressionTests
             return Task.FromResult<IReadOnlyList<Detection>>(
                 detectionsBySourceId.TryGetValue(frame.SourceId, out var detections) ? detections : []);
         }
+    }
+
+    private sealed class SourceAwareVisualObservationPipeline(IReadOnlyDictionary<string, Detection[]> detectionsBySourceId) : IVisualObservationPipeline
+    {
+        public Task<VisualObservationResult> ObserveAsync(
+            FramePacket sourceFrame,
+            VisualObservationSettings settings,
+            CancellationToken cancellationToken)
+        {
+            var trainObservations = detectionsBySourceId.TryGetValue(sourceFrame.SourceId, out var detections)
+                ? detections.Select(ToTrainObservation).ToList()
+                : [];
+            return Task.FromResult(new VisualObservationResult([], trainObservations, []));
+        }
+
+        private static TrainObservation ToTrainObservation(Detection detection) => new(
+            detection.SourceId,
+            detection.TimestampUtcMs,
+            detection.Kind,
+            detection.X,
+            detection.Y,
+            detection.BoxX,
+            detection.BoxY,
+            detection.BoxWidth,
+            detection.BoxHeight,
+            detection.Confidence);
     }
 
     private sealed class DuplicateLocalTrainIdTracker : ITracker

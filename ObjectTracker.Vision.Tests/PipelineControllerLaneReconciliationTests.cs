@@ -280,7 +280,7 @@ public sealed class PipelineControllerLaneReconciliationTests
         var output = new RecordingOutputPort();
         await using var controller = new PipelineController(
             factory,
-            new SourceAwareDetectorManager(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
+            new SourceAwareVisualObservationPipeline(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
             {
                 ["camera-1"] = [Detection("camera-1", 1000, 10, 10, "Red")],
                 ["camera-2"] = [Detection("camera-2", 2000, 20, 12, "Red")]
@@ -313,7 +313,7 @@ public sealed class PipelineControllerLaneReconciliationTests
         var output = new RecordingOutputPort();
         await using var controller = new PipelineController(
             factory,
-            new SequenceDetectorManager([
+            new SequenceVisualObservationPipeline([
                 [Detection("camera-1", 1000, 10, 10, "Red")],
                 []
             ]),
@@ -345,7 +345,7 @@ public sealed class PipelineControllerLaneReconciliationTests
         var output = new RecordingOutputPort();
         await using var controller = new PipelineController(
             factory,
-            new SourceAwareDetectorManager(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
+            new SourceAwareVisualObservationPipeline(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
             {
                 ["camera-1"] = [Detection("camera-1", 1000, 10, 10, "Red")],
                 ["camera-2"] = [Detection("camera-2", 6000, 20, 12, "Red")]
@@ -378,7 +378,7 @@ public sealed class PipelineControllerLaneReconciliationTests
         var output = new RecordingOutputPort();
         await using var controller = new PipelineController(
             factory,
-            new SourceAwareDetectorManager(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
+            new SourceAwareVisualObservationPipeline(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
             {
                 ["camera-1"] = [Detection("camera-1", 1000, 10, 10, "Red")],
                 ["camera-2"] = [Detection("camera-2", 2500, 20, 12, "Red")]
@@ -412,7 +412,7 @@ public sealed class PipelineControllerLaneReconciliationTests
         var output = new RecordingOutputPort();
         await using var controller = new PipelineController(
             factory,
-            new SourceAwareDetectorManager(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
+            new SourceAwareVisualObservationPipeline(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
             {
                 ["camera-1"] = [Detection("camera-1", 1000, 10, 10, "Red")],
                 ["camera-2"] = [Detection("camera-2", 6000, 20, 12, "Red")],
@@ -599,6 +599,46 @@ public sealed class PipelineControllerLaneReconciliationTests
             return Task.FromResult(detectionsByCall[index]);
         }
     }
+
+    private sealed class SourceAwareVisualObservationPipeline(IReadOnlyDictionary<string, Detection[]> detectionsBySourceId) : IVisualObservationPipeline
+    {
+        public Task<VisualObservationResult> ObserveAsync(
+            FramePacket sourceFrame,
+            VisualObservationSettings settings,
+            CancellationToken cancellationToken)
+        {
+            var trainObservations = detectionsBySourceId.TryGetValue(sourceFrame.SourceId, out var detections)
+                ? detections.Select(ToTrainObservation).ToList()
+                : [];
+            return Task.FromResult(new VisualObservationResult([], trainObservations, []));
+        }
+    }
+
+    private sealed class SequenceVisualObservationPipeline(IReadOnlyList<IReadOnlyList<Detection>> detectionsByCall) : IVisualObservationPipeline
+    {
+        private int callIndex;
+
+        public Task<VisualObservationResult> ObserveAsync(
+            FramePacket sourceFrame,
+            VisualObservationSettings settings,
+            CancellationToken cancellationToken)
+        {
+            var index = Math.Min(Interlocked.Increment(ref callIndex) - 1, detectionsByCall.Count - 1);
+            return Task.FromResult(new VisualObservationResult([], detectionsByCall[index].Select(ToTrainObservation).ToList(), []));
+        }
+    }
+
+    private static TrainObservation ToTrainObservation(Detection detection) => new(
+        detection.SourceId,
+        detection.TimestampUtcMs,
+        detection.Kind,
+        detection.X,
+        detection.Y,
+        detection.BoxX,
+        detection.BoxY,
+        detection.BoxWidth,
+        detection.BoxHeight,
+        detection.Confidence);
 
     private sealed class StubTracker : ITracker
     {

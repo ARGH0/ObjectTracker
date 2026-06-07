@@ -1,7 +1,7 @@
 # Static Color Blobs Are Not Train Observations
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Wire the Vision Pipeline lane through the visual observation seam so Train Obser
 
 ## Acceptance criteria
 
-- [ ] The Vision Pipeline lane can publish PipelineSnapshots from visual observation seam output.
-- [ ] A regression test proves a static Train Color blob outside moving evidence does not become a Train Observation.
-- [ ] Train Tracking still receives Train Observations as evidence and remains responsible for Train State.
-- [ ] Existing PipelineSnapshot output behavior remains compatible with UI routing tests.
+- [x] The Vision Pipeline lane can publish PipelineSnapshots from visual observation seam output.
+- [x] A regression test proves a static Train Color blob outside moving evidence does not become a Train Observation.
+- [x] Train Tracking still receives Train Observations as evidence and remains responsible for Train State.
+- [x] Existing PipelineSnapshot output behavior remains compatible with UI routing tests.
 
 ## Blocked by
 

@@ -33,7 +33,7 @@ public sealed class PipelineControllerSnapshotTests
     public async Task StartAsync_PublishesSnapshotWithTrainObservationsTrainStatesAndTiming()
     {
         var sourceFrame = new FramePacket("camera-1", 2000, 2, 2, [1, 2, 3]);
-        var detection = new Detection("detection-1", 10, 20, 8, 18, 12, 14, 0.75f, "Red", "camera-1", sourceFrame.TimestampUtcMs);
+        var trainObservation = new TrainObservation("camera-1", sourceFrame.TimestampUtcMs, "Red", 10, 20, 8, 18, 12, 14, 0.75f);
         var trainState = new TrainState(
             "local-train-1",
             "Red",
@@ -49,7 +49,7 @@ public sealed class PipelineControllerSnapshotTests
         var output = new RecordingOutputPort();
         await using var controller = new PipelineController(
             new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
-            new StubDetectorManager([detection]),
+            new StubVisualObservationPipeline(new VisualObservationResult([], [trainObservation], [])),
             new StubTracker([trainState]),
             [output],
             new StubClock(sourceFrame.TimestampUtcMs));
@@ -72,12 +72,12 @@ public sealed class PipelineControllerSnapshotTests
     public async Task StartAsync_SeparatesMovingObjectObservationsFromTrainObservations()
     {
         var sourceFrame = new FramePacket("camera-1", 2100, 2, 2, [1, 2, 3]);
-        var movingEvidence = new Detection("motion-1", 5, 6, 1, 2, 3, 4, 0.5f, "moving-object", "camera-1", sourceFrame.TimestampUtcMs);
-        var trainColorEvidence = new Detection("red-1", 10, 20, 8, 18, 12, 14, 0.75f, "Red", "camera-1", sourceFrame.TimestampUtcMs);
+        var movingEvidence = new MovingObjectObservation("camera-1", sourceFrame.TimestampUtcMs, 5, 6, 1, 2, 3, 4, 0.5f);
+        var trainColorEvidence = new TrainObservation("camera-1", sourceFrame.TimestampUtcMs, "Red", 10, 20, 8, 18, 12, 14, 0.75f);
         var output = new RecordingOutputPort();
         await using var controller = new PipelineController(
             new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
-            new StubDetectorManager([movingEvidence, trainColorEvidence]),
+            new StubVisualObservationPipeline(new VisualObservationResult([movingEvidence], [trainColorEvidence], [])),
             new StubTracker([]),
             [output],
             new StubClock(sourceFrame.TimestampUtcMs));
@@ -118,10 +118,30 @@ public sealed class PipelineControllerSnapshotTests
     }
 
     [Fact]
+    public async Task StartAsync_DoesNotPublishFullFrameColorDetectionsAsTrainObservations()
+    {
+        var sourceFrame = new FramePacket("camera-1", 2300, 2, 2, [1, 2, 3]);
+        var staticColorBlob = new Detection("red-blob", 10, 20, 8, 18, 12, 14, 0.75f, "Red", "camera-1", sourceFrame.TimestampUtcMs);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new StubDetectorManager([staticColorBlob]),
+            new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Empty(snapshot.TrainObservations);
+    }
+
+    [Fact]
     public async Task StartAsync_WhenDebugViewEnabled_PublishesNamedDebugFrames()
     {
         var sourceFrame = new FramePacket("camera-1", 1234, 2, 2, [1, 2, 3]);
-        var detection = new Detection("red-1", 10, 20, 8, 18, 12, 14, 0.75f, "Red", "camera-1", sourceFrame.TimestampUtcMs);
+        var trainObservation = new TrainObservation("camera-1", sourceFrame.TimestampUtcMs, "Red", 10, 20, 8, 18, 12, 14, 0.75f);
         var trainState = new TrainState(
             "local-train-1",
             "Red",
@@ -137,7 +157,7 @@ public sealed class PipelineControllerSnapshotTests
         var output = new RecordingOutputPort();
         await using var controller = new PipelineController(
             new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
-            new StubDetectorManager([detection]),
+            new StubVisualObservationPipeline(new VisualObservationResult([], [trainObservation], [])),
             new StubTracker([trainState]),
             [output],
             new StubClock(sourceFrame.TimestampUtcMs));
@@ -176,11 +196,11 @@ public sealed class PipelineControllerSnapshotTests
     public async Task StartAsync_WhenTrainObservationHasNoTrainState_DoesNotDrawObservationOnAnnotatedFrame()
     {
         var sourceFrame = JpegFrame("camera-1", 1234);
-        var observation = new Detection("red-1", 10, 10, 4, 4, 8, 8, 0.75f, "Red", "camera-1", sourceFrame.TimestampUtcMs);
+        var observation = new TrainObservation("camera-1", sourceFrame.TimestampUtcMs, "Red", 10, 10, 4, 4, 8, 8, 0.75f);
         var output = new RecordingOutputPort();
         await using var controller = new PipelineController(
             new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
-            new StubDetectorManager([observation]),
+            new StubVisualObservationPipeline(new VisualObservationResult([], [observation], [])),
             new StubTracker([]),
             [output],
             new StubClock(sourceFrame.TimestampUtcMs));

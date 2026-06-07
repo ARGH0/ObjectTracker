@@ -1,7 +1,7 @@
 # Handoff Grace And Ambiguity Alert Integration
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,11 +13,11 @@ Add global handoff grace handling for Local Train IDs appearing across Camera So
 
 ## Acceptance criteria
 
-- [ ] Same Local Train ID may appear in multiple Camera Source snapshots during the global handoff grace period.
-- [ ] Duplicate Local Train ID presence beyond the grace period raises an Ambiguity Alert through the separate safety/intervention flow.
-- [ ] Ambiguity Alert state is not embedded in PipelineSnapshot.
-- [ ] Other Camera Source lanes continue running when an Ambiguity Alert is raised.
-- [ ] Tests cover allowed handoff and beyond-grace ambiguity behavior.
+- [x] Same Local Train ID may appear in multiple Camera Source snapshots during the global handoff grace period.
+- [x] Duplicate Local Train ID presence beyond the grace period raises an Ambiguity Alert through the separate safety/intervention flow.
+- [x] Ambiguity Alert state is not embedded in PipelineSnapshot.
+- [x] Other Camera Source lanes continue running when an Ambiguity Alert is raised.
+- [x] Tests cover allowed handoff and beyond-grace ambiguity behavior.
 
 ## Blocked by
 

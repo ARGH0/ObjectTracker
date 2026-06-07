@@ -7,6 +7,8 @@ namespace ObjectTracker.Vision;
 
 public sealed class PipelineController : IPipelineController, IAsyncDisposable
 {
+    private const long HandoffGracePeriodMs = 3000;
+
     private readonly IFrameSourceFactory frameSourceFactory;
     private readonly IDetectorManager detectorManager;
     private readonly ITracker tracker;
@@ -15,10 +17,13 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     private readonly SemaphoreSlim lifecycleLock = new(1, 1);
     private readonly Lock trackerLock = new();
     private readonly Lock overlaySettingsLock = new();
+    private readonly Lock handoffLock = new();
     private readonly Dictionary<string, RgbColor> overlayColors = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> debugViewCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> includedCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, LaneState> activeLanes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Dictionary<string, long>> trainPresenceByLocalId = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> raisedDuplicateLocalTrainIdAlerts = new(StringComparer.OrdinalIgnoreCase);
 
     private int overlayLineThickness = 2;
     private int targetFramesPerSecond = 30;
@@ -160,6 +165,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
             {
                 tracker.Reset();
             }
+            ResetHandoffMonitoring();
             await PublishStatusAsync("Pipeline gestopt.", cancellationToken);
         }
         finally
@@ -357,6 +363,8 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                     await output.PublishSnapshotAsync(snapshot, cancellationToken);
                 }
 
+                await PublishAmbiguityAlertsAsync(GetDuplicateLocalTrainIdsBeyondGrace(snapshot.TrainStates), cancellationToken);
+
                 var sourceDiagnosticEvent = source.ConsumeDiagnosticEvent();
                 if (!string.IsNullOrWhiteSpace(sourceDiagnosticEvent))
                 {
@@ -419,6 +427,57 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         foreach (var output in outputs)
         {
             await output.PublishStatusAsync(status, cancellationToken);
+        }
+    }
+
+    private IReadOnlyList<string> GetDuplicateLocalTrainIdsBeyondGrace(IReadOnlyList<TrainState> trainStates)
+    {
+        var alerts = new List<string>();
+        lock (handoffLock)
+        {
+            foreach (var trainState in trainStates)
+            {
+                if (!trainPresenceByLocalId.TryGetValue(trainState.LocalTrainId, out var presenceBySource))
+                {
+                    presenceBySource = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+                    trainPresenceByLocalId[trainState.LocalTrainId] = presenceBySource;
+                }
+
+                presenceBySource[trainState.SourceId] = trainState.TimestampUtcMs;
+                if (presenceBySource.Count < 2)
+                {
+                    continue;
+                }
+
+                var earliest = presenceBySource.Values.Min();
+                var latest = presenceBySource.Values.Max();
+                if (latest - earliest <= HandoffGracePeriodMs || raisedDuplicateLocalTrainIdAlerts.Contains(trainState.LocalTrainId))
+                {
+                    continue;
+                }
+
+                raisedDuplicateLocalTrainIdAlerts.Add(trainState.LocalTrainId);
+                alerts.Add(trainState.LocalTrainId);
+            }
+        }
+
+        return alerts;
+    }
+
+    private async Task PublishAmbiguityAlertsAsync(IReadOnlyList<string> duplicateLocalTrainIds, CancellationToken cancellationToken)
+    {
+        foreach (var localTrainId in duplicateLocalTrainIds)
+        {
+            await PublishStatusAsync($"Ambiguity Alert: duplicate Local Train ID '{localTrainId}' exceeded handoff grace period.", cancellationToken);
+        }
+    }
+
+    private void ResetHandoffMonitoring()
+    {
+        lock (handoffLock)
+        {
+            trainPresenceByLocalId.Clear();
+            raisedDuplicateLocalTrainIdAlerts.Clear();
         }
     }
 

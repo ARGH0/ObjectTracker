@@ -318,6 +318,107 @@ public sealed class PipelineControllerLaneReconciliationTests
         Assert.True(secondTrainState.Confidence < firstTrainState.Confidence);
     }
 
+    [Fact]
+    public async Task TrainTracking_WhenDuplicateLocalTrainIdExceedsHandoffGrace_RaisesAmbiguityAlertOutsidePipelineSnapshot()
+    {
+        var source1 = new ControlledFrameSource("camera-1", [Frame("camera-1", 1000)]);
+        var source2 = new ControlledFrameSource("camera-2", [Frame("camera-2", 6000)]);
+        var factory = new MultiFrameSourceFactory(source1, source2);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            factory,
+            new SourceAwareDetectorManager(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["camera-1"] = [Detection("camera-1", 1000, 10, 10, "Red")],
+                ["camera-2"] = [Detection("camera-2", 6000, 20, 12, "Red")]
+            }),
+            new DuplicateLocalTrainIdTracker(),
+            [output],
+            new IncrementingClock());
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        await controller.StartAsync(CancellationToken.None);
+        var firstSnapshot = await output.WaitForSnapshotAsync();
+
+        controller.SetVisionPipelineInclusion("camera-2", included: true);
+        var snapshots = await output.WaitForSnapshotsAsync(2);
+        await WaitUntilAsync(() => output.Statuses.Any(status => status.Contains("Ambiguity Alert", StringComparison.OrdinalIgnoreCase)));
+        await controller.StopAsync(CancellationToken.None);
+
+        var secondSnapshot = snapshots.Last(snapshot => snapshot.CameraSourceId == "camera-2");
+        Assert.Equal("train-001", Assert.Single(firstSnapshot.TrainStates).LocalTrainId);
+        Assert.Equal("train-001", Assert.Single(secondSnapshot.TrainStates).LocalTrainId);
+        Assert.Contains(output.Statuses, status => status.Contains("Ambiguity Alert", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task TrainTracking_AllowsDuplicateLocalTrainIdDuringHandoffGracePeriod()
+    {
+        var source1 = new ControlledFrameSource("camera-1", [Frame("camera-1", 1000)]);
+        var source2 = new ControlledFrameSource("camera-2", [Frame("camera-2", 2500)]);
+        var factory = new MultiFrameSourceFactory(source1, source2);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            factory,
+            new SourceAwareDetectorManager(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["camera-1"] = [Detection("camera-1", 1000, 10, 10, "Red")],
+                ["camera-2"] = [Detection("camera-2", 2500, 20, 12, "Red")]
+            }),
+            new DuplicateLocalTrainIdTracker(),
+            [output],
+            new IncrementingClock());
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        await controller.StartAsync(CancellationToken.None);
+        var firstSnapshot = await output.WaitForSnapshotAsync();
+
+        controller.SetVisionPipelineInclusion("camera-2", included: true);
+        var snapshots = await output.WaitForSnapshotsAsync(2);
+        await Task.Delay(50);
+        await controller.StopAsync(CancellationToken.None);
+
+        var secondSnapshot = snapshots.Last(snapshot => snapshot.CameraSourceId == "camera-2");
+        Assert.Equal("train-001", Assert.Single(firstSnapshot.TrainStates).LocalTrainId);
+        Assert.Equal("train-001", Assert.Single(secondSnapshot.TrainStates).LocalTrainId);
+        Assert.DoesNotContain(output.Statuses, status => status.Contains("Ambiguity Alert", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task TrainTracking_WhenAmbiguityAlertIsRaised_OtherCameraSourceLanesKeepRunning()
+    {
+        var source1 = new ControlledFrameSource("camera-1", [Frame("camera-1", 1000)]);
+        var source2 = new ControlledFrameSource("camera-2", [Frame("camera-2", 6000)]);
+        var healthySource = new ControlledFrameSource("camera-healthy", [Frame("camera-healthy", 1000)]);
+        var factory = new MultiFrameSourceFactory(source1, source2, healthySource);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            factory,
+            new SourceAwareDetectorManager(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["camera-1"] = [Detection("camera-1", 1000, 10, 10, "Red")],
+                ["camera-2"] = [Detection("camera-2", 6000, 20, 12, "Red")],
+                ["camera-healthy"] = []
+            }),
+            new DuplicateLocalTrainIdTracker(),
+            [output],
+            new IncrementingClock());
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        controller.SetVisionPipelineInclusion("camera-healthy", included: true);
+        await controller.StartAsync(CancellationToken.None);
+        await output.WaitForSnapshotsAsync(2);
+
+        controller.SetVisionPipelineInclusion("camera-2", included: true);
+        await WaitUntilAsync(() => output.Statuses.Any(status => status.Contains("Ambiguity Alert", StringComparison.OrdinalIgnoreCase)));
+
+        healthySource.Enqueue(Frame("camera-healthy", 7000));
+        var snapshots = await output.WaitForSnapshotsAsync(output.Snapshots.Count + 1);
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Contains(snapshots, snapshot => snapshot.CameraSourceId == "camera-healthy" && snapshot.SourceFrame.TimestampUtcMs == 7000);
+    }
+
     private static PipelineController CreateController(IFrameSourceFactory factory, IOutputPort output, ITracker? tracker = null) => new(
         factory,
         new StubDetectorManager(),
@@ -513,6 +614,29 @@ public sealed class PipelineControllerLaneReconciliationTests
         public IReadOnlyList<TrainState> Update(IReadOnlyList<Detection> detections, long frameTimestampUtcMs) => [];
 
         public void Reset() => ResetCount++;
+    }
+
+    private sealed class DuplicateLocalTrainIdTracker : ITracker
+    {
+        public IReadOnlyList<TrainState> Update(IReadOnlyList<Detection> detections, long frameTimestampUtcMs)
+        {
+            return detections
+                .Select(detection => new TrainState(
+                    "train-001",
+                    detection.Kind,
+                    detection.X,
+                    detection.Y,
+                    0,
+                    0,
+                    detection.Confidence,
+                    TrainMotionState.Moving,
+                    CollisionWarningState.None,
+                    detection.SourceId,
+                    detection.TimestampUtcMs))
+                .ToList();
+        }
+
+        public void Reset() { }
     }
 
     private sealed class IncrementingClock : IClock

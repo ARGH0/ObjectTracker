@@ -1334,6 +1334,7 @@ public partial class MainWindow : AppWindow, IOutputPort
         {
             controller.SetVisionPipelineInclusion(camera.Id, included: true);
             controller.SetDebugViewEnabled(camera.Id, NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled));
+            controller.SetVisualObservationSettings(camera.Id, ToVisualObservationSettings(GetSettingsForCamera(camera.Id)));
         }
 
         await controller.StartAsync(cancellationToken);
@@ -1361,6 +1362,15 @@ public partial class MainWindow : AppWindow, IOutputPort
             cancellationSignal);
         await cancellationSignal.Task;
     }
+
+    private static VisualObservationSettings ToVisualObservationSettings(RuntimeProcessingSettings settings) => new(
+        settings.Threshold,
+        settings.MotionArea,
+        settings.ColorMinPixels,
+        settings.MorphKernelSize,
+        settings.ProcessMaxWidth,
+        settings.ColorCalibrations,
+        DebugViewEnabled: false);
 
     private void StartBakeForAllCameras(CancellationToken cancellationToken)
     {

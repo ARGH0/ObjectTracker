@@ -1,7 +1,7 @@
 # Per-Camera Observation Settings Reach Lanes
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Pass each Camera Source's observation settings into its Vision Pipeline lane. Th
 
 ## Acceptance criteria
 
-- [ ] Each included Camera Source lane receives its own observation settings.
-- [ ] Settings saved in the Camera workspace are reflected in lane configuration after the appropriate apply/restart path.
-- [ ] Processing-critical changes still mark pending Vision Pipeline restart while running.
-- [ ] Tests prove two Camera Sources can use different observation settings.
+- [x] Each included Camera Source lane receives its own observation settings.
+- [x] Settings saved in the Camera workspace are reflected in lane configuration after the appropriate apply/restart path.
+- [x] Processing-critical changes still mark pending Vision Pipeline restart while running.
+- [x] Tests prove two Camera Sources can use different observation settings.
 
 ## Blocked by
 

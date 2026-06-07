@@ -38,6 +38,8 @@ public interface IPipelineController
 
     void SetDebugViewEnabled(string cameraSourceId, bool enabled);
 
+    void SetVisualObservationSettings(string cameraSourceId, VisualObservationSettings settings);
+
     void SetOverlayLineThickness(int thickness);
 
     void SetOverlayColor(string kind, byte r, byte g, byte b);

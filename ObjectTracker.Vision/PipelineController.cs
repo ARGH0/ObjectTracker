@@ -21,6 +21,7 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     private readonly Lock handoffLock = new();
     private readonly Dictionary<string, RgbColor> overlayColors = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> debugViewCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, VisualObservationSettings> visualObservationSettingsByCameraSourceId = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> includedCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, LaneState> activeLanes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Dictionary<string, long>> trainPresenceByLocalId = new(StringComparer.OrdinalIgnoreCase);
@@ -405,6 +406,19 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         }
     }
 
+    public void SetVisualObservationSettings(string cameraSourceId, VisualObservationSettings settings)
+    {
+        if (string.IsNullOrWhiteSpace(cameraSourceId))
+        {
+            return;
+        }
+
+        lock (overlaySettingsLock)
+        {
+            visualObservationSettingsByCameraSourceId[cameraSourceId] = settings;
+        }
+    }
+
     private static async Task<bool> DelayOrCancellationAsync(TimeSpan delay, CancellationToken cancellationToken)
     {
         var cancellationSignal = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -448,7 +462,10 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
     {
         lock (overlaySettingsLock)
         {
-            return VisualObservationSettings.Default with
+            var settings = visualObservationSettingsByCameraSourceId.TryGetValue(cameraSourceId, out var configured)
+                ? configured
+                : VisualObservationSettings.Default;
+            return settings with
             {
                 DebugViewEnabled = debugViewCameraSourceIds.Contains(cameraSourceId)
             };

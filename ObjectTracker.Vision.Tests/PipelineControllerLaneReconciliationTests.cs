@@ -44,7 +44,6 @@ public sealed class PipelineControllerLaneReconciliationTests
         await output.WaitForSnapshotsAsync(2);
 
         await controller.StopAsync(CancellationToken.None);
-https://www.instagram.com/
         Assert.Equal(1, factory.Source("camera-1").StopCount);
         Assert.Equal(1, factory.Source("camera-2").StopCount);
     }
@@ -252,6 +251,52 @@ https://www.instagram.com/
             .ToDictionary(group => group.Key, group => group.Last());
         Assert.Equal(60, latestByCameraSource["camera-1"].Timing.TargetFramesPerSecond);
         Assert.Equal(60, latestByCameraSource["camera-2"].Timing.TargetFramesPerSecond);
+    }
+
+    [Fact]
+    public async Task StartAsync_PassesPerCameraObservationSettingsToEachLane()
+    {
+        var source1 = new ControlledFrameSource("camera-1", [Frame("camera-1", 1000)]);
+        var source2 = new ControlledFrameSource("camera-2", [Frame("camera-2", 1000)]);
+        var factory = new MultiFrameSourceFactory(source1, source2);
+        var output = new RecordingOutputPort();
+        var observationPipeline = new RecordingVisualObservationPipeline();
+        var camera1Settings = VisualObservationSettings.Default with
+        {
+            Threshold = 31,
+            MotionArea = 41,
+            ColorMinPixels = 51,
+            MorphKernelSize = 5,
+            ProcessMaxWidth = 320,
+            ColorCalibrations = [new ColorCalibrationProfile("Red", 0, 10, 100, 255, 100, 255)]
+        };
+        var camera2Settings = VisualObservationSettings.Default with
+        {
+            Threshold = 67,
+            MotionArea = 77,
+            ColorMinPixels = 87,
+            MorphKernelSize = 7,
+            ProcessMaxWidth = 640,
+            ColorCalibrations = [new ColorCalibrationProfile("Blue", 100, 120, 100, 255, 100, 255)]
+        };
+        await using var controller = new PipelineController(
+            factory,
+            observationPipeline,
+            new StubTracker(),
+            [output],
+            new IncrementingClock());
+
+        controller.SetVisionPipelineInclusion("camera-1", included: true);
+        controller.SetVisionPipelineInclusion("camera-2", included: true);
+        controller.SetVisualObservationSettings("camera-1", camera1Settings);
+        controller.SetVisualObservationSettings("camera-2", camera2Settings);
+
+        await controller.StartAsync(CancellationToken.None);
+        await output.WaitForSnapshotsAsync(2);
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Equal(camera1Settings, observationPipeline.SettingsBySourceId["camera-1"]);
+        Assert.Equal(camera2Settings, observationPipeline.SettingsBySourceId["camera-2"]);
     }
 
     [Fact]
@@ -626,6 +671,36 @@ https://www.instagram.com/
         {
             var index = Math.Min(Interlocked.Increment(ref callIndex) - 1, detectionsByCall.Count - 1);
             return Task.FromResult(new VisualObservationResult([], detectionsByCall[index].Select(ToTrainObservation).ToList(), []));
+        }
+    }
+
+    private sealed class RecordingVisualObservationPipeline : IVisualObservationPipeline
+    {
+        private readonly Lock sync = new();
+        private readonly Dictionary<string, VisualObservationSettings> settingsBySourceId = new(StringComparer.OrdinalIgnoreCase);
+
+        public IReadOnlyDictionary<string, VisualObservationSettings> SettingsBySourceId
+        {
+            get
+            {
+                lock (sync)
+                {
+                    return new Dictionary<string, VisualObservationSettings>(settingsBySourceId, StringComparer.OrdinalIgnoreCase);
+                }
+            }
+        }
+
+        public Task<VisualObservationResult> ObserveAsync(
+            FramePacket sourceFrame,
+            VisualObservationSettings settings,
+            CancellationToken cancellationToken)
+        {
+            lock (sync)
+            {
+                settingsBySourceId[sourceFrame.SourceId] = settings;
+            }
+
+            return Task.FromResult(VisualObservationResult.Empty);
         }
     }
 

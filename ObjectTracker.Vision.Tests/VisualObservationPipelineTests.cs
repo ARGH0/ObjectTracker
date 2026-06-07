@@ -243,6 +243,31 @@ public sealed class VisualObservationPipelineTests
         Assert.InRange(trainObservation.BoxHeight, 9, 11);
     }
 
+    [Fact]
+    public async Task ObserveAsync_UsesConfiguredBackgroundForFirstRuntimeSourceFrame()
+    {
+        var pipeline = new VisualObservationPipeline();
+        var settings = VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 40,
+            MorphKernelSize = 1,
+            ProcessMaxWidth = 100,
+            EncodedBackground = CreateEncodedImage(width: 80, height: 50)
+        };
+
+        var result = await pipeline.ObserveAsync(
+            CreateFrame("file-bridge", 1100, new Cv.Rect(20, 12, 12, 10)),
+            settings,
+            CancellationToken.None);
+
+        var observation = Assert.Single(result.MovingObjectObservations);
+        Assert.Equal("file-bridge", observation.SourceId);
+        Assert.Equal(1100, observation.TimestampUtcMs);
+        Assert.InRange(observation.BoxX, 19, 21);
+        Assert.InRange(observation.BoxY, 11, 13);
+    }
+
     private static FramePacket CreateFrame(string sourceId, long timestampUtcMs, Cv.Rect foreground, Cv.Scalar? foregroundColor = null)
     {
         return CreateFrame(
@@ -258,6 +283,12 @@ public sealed class VisualObservationPipelineTests
 
     private static FramePacket CreateFrame(string sourceId, long timestampUtcMs, int width, int height, params ForegroundRegion[] foregroundRegions)
     {
+        var encoded = CreateEncodedImage(width, height, foregroundRegions);
+        return new FramePacket(sourceId, timestampUtcMs, width, height, encoded);
+    }
+
+    private static byte[] CreateEncodedImage(int width, int height, params ForegroundRegion[] foregroundRegions)
+    {
         using var image = new Cv.Mat(height, width, Cv.MatType.CV_8UC3, Cv.Scalar.Black);
         foreach (var foregroundRegion in foregroundRegions)
         {
@@ -265,7 +296,7 @@ public sealed class VisualObservationPipelineTests
         }
 
         Cv.Cv2.ImEncode(".jpg", image, out var encoded, [new Cv.ImageEncodingParam(Cv.ImwriteFlags.JpegQuality, 100)]);
-        return new FramePacket(sourceId, timestampUtcMs, image.Width, image.Height, encoded);
+        return encoded;
     }
 
     private readonly record struct ForegroundRegion(Cv.Rect Rect, Cv.Scalar Color);

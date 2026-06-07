@@ -140,6 +140,34 @@ public sealed class PipelineControllerSnapshotTests
     }
 
     [Fact]
+    public async Task StartAsync_WithConfiguredBackground_PublishesMovingObjectObservationFromFirstFileSourceFrame()
+    {
+        var sourceFrame = JpegFrame("file-bridge", 2400, new Cv.Rect(20, 12, 12, 10));
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new VisualObservationPipeline(),
+            new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+        controller.SetVisualObservationSettings("file-bridge", VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 40,
+            MorphKernelSize = 1,
+            ProcessMaxWidth = 100,
+            EncodedBackground = CreateEncodedImage(width: 80, height: 50)
+        });
+
+        await controller.StartAsync("file-bridge", CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        var observation = Assert.Single(snapshot.MovingObjectObservations);
+        Assert.Equal("file-bridge", observation.SourceId);
+    }
+
+    [Fact]
     public async Task StartAsync_WhenDebugViewEnabled_PublishesNamedDebugFrames()
     {
         var sourceFrame = new FramePacket("camera-1", 1234, 2, 2, [1, 2, 3]);
@@ -360,8 +388,24 @@ public sealed class PipelineControllerSnapshotTests
 
     private static FramePacket JpegFrame(string sourceId, long timestampUtcMs)
     {
-        using var image = new Cv.Mat(24, 24, Cv.MatType.CV_8UC3, Cv.Scalar.Black);
+        return JpegFrame(sourceId, timestampUtcMs, foreground: null);
+    }
+
+    private static FramePacket JpegFrame(string sourceId, long timestampUtcMs, Cv.Rect? foreground)
+    {
+        var encoded = CreateEncodedImage(width: 80, height: 50, foreground);
+        return new FramePacket(sourceId, timestampUtcMs, 80, 50, encoded);
+    }
+
+    private static byte[] CreateEncodedImage(int width, int height, Cv.Rect? foreground = null)
+    {
+        using var image = new Cv.Mat(height, width, Cv.MatType.CV_8UC3, Cv.Scalar.Black);
+        if (foreground is { } rect)
+        {
+            Cv.Cv2.Rectangle(image, rect, Cv.Scalar.White, -1);
+        }
+
         Cv.Cv2.ImEncode(".jpg", image, out var encoded, [new Cv.ImageEncodingParam(Cv.ImwriteFlags.JpegQuality, 90)]);
-        return new FramePacket(sourceId, timestampUtcMs, image.Width, image.Height, encoded);
+        return encoded;
     }
 }

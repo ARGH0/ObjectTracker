@@ -17,4 +17,6 @@ public sealed record VisualObservationSettings(
         ProcessMaxWidth: 640,
         ColorCalibrations: [],
         DebugViewEnabled: false);
+
+    public byte[]? EncodedBackground { get; init; }
 }

@@ -375,6 +375,7 @@ public partial class MainWindow : AppWindow, IOutputPort
     private readonly ObservableCollection<string> logEntries = new();
 
     private readonly BackgroundEstimationEngine engine = new();
+    private readonly SessionCalibrationService sessionCalibration = new();
     private readonly CameraSettingsStore cameraSettingsStore = new();
     private readonly FileCameraSourceStore fileCameraSourceStore = new();
     private readonly UsbCaptureSettingsStore usbCaptureSettingsStore = new();
@@ -1334,7 +1335,7 @@ public partial class MainWindow : AppWindow, IOutputPort
         {
             controller.SetVisionPipelineInclusion(camera.Id, included: true);
             controller.SetDebugViewEnabled(camera.Id, NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled));
-            controller.SetVisualObservationSettings(camera.Id, ToVisualObservationSettings(GetSettingsForCamera(camera.Id)));
+            controller.SetVisualObservationSettings(camera.Id, await BuildVisualObservationSettingsAsync(camera, cancellationToken));
         }
 
         await controller.StartAsync(cancellationToken);
@@ -1371,6 +1372,27 @@ public partial class MainWindow : AppWindow, IOutputPort
         settings.ProcessMaxWidth,
         settings.ColorCalibrations,
         DebugViewEnabled: false);
+
+    private async Task<VisualObservationSettings> BuildVisualObservationSettingsAsync(CameraProfile camera, CancellationToken cancellationToken)
+    {
+        var settings = GetSettingsForCamera(camera.Id);
+        var visualObservationSettings = ToVisualObservationSettings(settings);
+        if (camera.IsUsbCamera || string.IsNullOrWhiteSpace(camera.PrimaryVideoPath))
+        {
+            return visualObservationSettings;
+        }
+
+        var bakedBackgroundPath = await sessionCalibration.EnsureBakedBackgroundAsync(
+            camera.PrimaryVideoPath,
+            settings.SampleCount,
+            settings.ProcessMaxWidth,
+            GetBakeImagePath(settings),
+            cancellationToken);
+        return visualObservationSettings with
+        {
+            EncodedBackground = await File.ReadAllBytesAsync(bakedBackgroundPath, cancellationToken)
+        };
+    }
 
     private void StartBakeForAllCameras(CancellationToken cancellationToken)
     {

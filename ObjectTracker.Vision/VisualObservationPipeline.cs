@@ -46,17 +46,25 @@ public sealed class VisualObservationPipeline : IVisualObservationPipeline
         Cv.Cv2.CvtColor(color, gray, Cv.ColorConversionCodes.BGR2GRAY);
         Cv.Cv2.Resize(gray, resized, processSize, interpolation: Cv.InterpolationFlags.Area);
 
+        using var backgroundFromSettings = DecodeBackground(settings.EncodedBackground, processSize);
         Cv.Mat background;
-        lock (backgroundLock)
+        if (backgroundFromSettings is not null)
         {
-            if (!backgroundsBySourceId.TryGetValue(sourceFrame.SourceId, out var existingBackground) || existingBackground.Size() != processSize)
+            background = backgroundFromSettings.Clone();
+        }
+        else
+        {
+            lock (backgroundLock)
             {
-                existingBackground?.Dispose();
-                backgroundsBySourceId[sourceFrame.SourceId] = resized.Clone();
-                return Task.FromResult(VisualObservationResult.Empty);
-            }
+                if (!backgroundsBySourceId.TryGetValue(sourceFrame.SourceId, out var existingBackground) || existingBackground.Size() != processSize)
+                {
+                    existingBackground?.Dispose();
+                    backgroundsBySourceId[sourceFrame.SourceId] = resized.Clone();
+                    return Task.FromResult(VisualObservationResult.Empty);
+                }
 
-            background = existingBackground.Clone();
+                background = existingBackground.Clone();
+            }
         }
 
         using (background)
@@ -216,6 +224,29 @@ public sealed class VisualObservationPipeline : IVisualObservationPipeline
         var scale = (double)maxWidth / sourceWidth;
         var targetHeight = Math.Max(1, (int)Math.Round(sourceHeight * scale));
         return new Cv.Size(maxWidth, targetHeight);
+    }
+
+    private static Cv.Mat? DecodeBackground(byte[]? encodedBackground, Cv.Size processSize)
+    {
+        if (encodedBackground is null || encodedBackground.Length == 0)
+        {
+            return null;
+        }
+
+        using var decoded = Cv.Cv2.ImDecode(encodedBackground, Cv.ImreadModes.Grayscale);
+        if (decoded.Empty())
+        {
+            return null;
+        }
+
+        if (decoded.Size() == processSize)
+        {
+            return decoded.Clone();
+        }
+
+        var resized = new Cv.Mat();
+        Cv.Cv2.Resize(decoded, resized, processSize, interpolation: Cv.InterpolationFlags.Area);
+        return resized;
     }
 
     private static MotionMaskRefiner.Options BuildRefinerOptions(int morphKernelSize)

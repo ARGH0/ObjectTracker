@@ -62,9 +62,4 @@ public partial class MainWindow
     private ColorPicker CalibrationColorMinPicker => ColorCalibrationWorkspaceControl.CalibrationColorMinPicker;
     private ColorPicker CalibrationColorMaxPicker => ColorCalibrationWorkspaceControl.CalibrationColorMaxPicker;
     private TextBox BakeImagePathTextBox => CameraWorkspaceControl.BakeImagePathTextBox;
-
-    private Control LayersWorkspacePanel => LayerWorkspaceControl;
-    private Control ColorCalibrationWorkspacePanel => ColorCalibrationWorkspaceControl;
-    private Control SettingsWorkspacePanel => SettingsWorkspaceControl;
-    private Control CameraWorkspacePanel => CameraWorkspaceControl;
 }

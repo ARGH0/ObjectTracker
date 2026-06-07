@@ -600,10 +600,10 @@ public partial class MainWindow : AppWindow, IOutputPort
     {
         activeWorkspace = workspace;
         var visibility = BuildWorkspaceVisibility(workspace);
-        CameraWorkspacePanel.IsVisible = visibility.CameraVisible;
-        LayersWorkspacePanel.IsVisible = visibility.LayersVisible;
-        ColorCalibrationWorkspacePanel.IsVisible = visibility.CalibrationVisible;
-        SettingsWorkspacePanel.IsVisible = visibility.SettingsVisible;
+        CameraWorkspaceControl.IsVisible = visibility.CameraVisible;
+        LayerWorkspaceControl.IsVisible = visibility.LayersVisible;
+        ColorCalibrationWorkspaceControl.IsVisible = visibility.CalibrationVisible;
+        SettingsWorkspaceControl.IsVisible = visibility.SettingsVisible;
         RuntimeLogExpander.IsVisible = IsRuntimeLogVisibleForWorkspace(workspace);
     }
 

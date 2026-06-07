@@ -131,14 +131,6 @@ public sealed class FileCameraSourceFeedLease : IAsyncDisposable
     }
 }
 
-public enum FileCameraSourceFeedState
-{
-    Stopped,
-    Starting,
-    Running,
-    Failed
-}
-
 public readonly record struct FileCameraSourceRuntimeStatus(
     FileCameraSourceFeedState State,
     bool IsStale,

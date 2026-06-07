@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using ObjectTracker.Core.Domain;
+using ObjectTracker.UI.Desktop.Enums;
 
 namespace ObjectTracker.UI.Desktop;
 
@@ -52,7 +53,7 @@ internal sealed class CameraSettingsStore
                 ColorMinPixels: Math.Clamp(item.ColorMinPixels, 1, 100000),
                 MorphKernelSize: EnsureOdd(Math.Clamp(item.MorphKernelSize, 1, 31)),
                 ProcessMaxWidth: Math.Clamp(item.ProcessMaxWidth, 160, 1920),
-                BakeSourceMode: ParseBakeSourceMode(item.BakeSourceMode),
+                BakeSourceMode: ParseBakeSourceMode(item.BakeSourceModeString),
                 BakeImagePath: item.BakeImagePath ?? string.Empty,
                 ColorCalibrations: ReadColorCalibrations(item.ColorCalibrations));
         }
@@ -78,7 +79,7 @@ internal sealed class CameraSettingsStore
                 ColorMinPixels = settings.ColorMinPixels,
                 MorphKernelSize = settings.MorphKernelSize,
                 ProcessMaxWidth = settings.ProcessMaxWidth,
-                BakeSourceMode = settings.BakeSourceMode.ToString(),
+                BakeSourceModeString = settings.BakeSourceMode.ToString(),
                 BakeImagePath = settings.BakeImagePath,
                 ColorCalibrations = settings.ColorCalibrations
                     .Select(calibration => new ColorCalibrationDto
@@ -110,11 +111,11 @@ internal sealed class CameraSettingsStore
         return value % 2 == 0 ? value + 1 : value;
     }
 
-    private static MainWindow.BakeSourceMode ParseBakeSourceMode(string? value)
+    private static BakeSourceMode ParseBakeSourceMode(string? value)
     {
-        return Enum.TryParse<MainWindow.BakeSourceMode>(value, ignoreCase: true, out var parsed)
+        return Enum.TryParse<BakeSourceMode>(value, ignoreCase: true, out var parsed)
             ? parsed
-            : MainWindow.BakeSourceMode.Samples;
+            : BakeSourceMode.Samples;
     }
 
     private static IReadOnlyList<ColorCalibrationProfile> ReadColorCalibrations(List<ColorCalibrationDto>? dtos)
@@ -167,7 +168,7 @@ internal sealed class CameraSettingsStore
 
         public int ProcessMaxWidth { get; set; } = 640;
 
-        public string BakeSourceMode { get; set; } = nameof(MainWindow.BakeSourceMode.Samples);
+        public string BakeSourceModeString { get; set; } = nameof(BakeSourceMode.Samples);
 
         public string BakeImagePath { get; set; } = string.Empty;
 

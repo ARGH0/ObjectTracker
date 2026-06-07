@@ -3,14 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using ObjectTracker.UI.Desktop.Enums;
 
 namespace ObjectTracker.UI.Desktop;
-
-public enum CameraTileFeedKind
-{
-    Usb,
-    VideoFile
-}
 
 public readonly record struct CameraTileFeedRequest(string CameraId, CameraTileFeedKind Kind);
 

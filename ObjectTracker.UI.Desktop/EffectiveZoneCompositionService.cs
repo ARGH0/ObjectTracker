@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ObjectTracker.UI.Desktop.Enums;
 
 namespace ObjectTracker.UI.Desktop;
 

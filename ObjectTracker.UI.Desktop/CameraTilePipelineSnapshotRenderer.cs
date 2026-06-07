@@ -3,16 +3,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ObjectTracker.Core.Domain;
+using ObjectTracker.UI.Desktop.Enums;
 
 namespace ObjectTracker.UI.Desktop;
-
-public enum CameraTileDebugFrameSlot
-{
-    Source,
-    MovingObjectObservation,
-    TrainObservation,
-    TrainTracking
-}
 
 public readonly record struct CameraTileDebugFrameSnapshot(
     string CameraId,
@@ -44,7 +37,7 @@ public sealed class CameraTilePipelineSnapshotRenderer
         cancellationToken.ThrowIfCancellationRequested();
 
         var route = routing.Routes.FirstOrDefault(route => string.Equals(route.CameraId, snapshot.CameraSourceId, StringComparison.OrdinalIgnoreCase));
-        if (route.FrameSource == MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame)
+        if (route.FrameSource == CameraTileFrameSource.PipelineSnapshotAnnotatedFrame)
         {
             var frame = snapshot.AnnotatedFrame;
             await onFrame(new CameraTileRawFrameSnapshot(
@@ -56,7 +49,7 @@ public sealed class CameraTilePipelineSnapshotRenderer
             return;
         }
 
-        if (route.FrameSource != MainWindow.CameraTileFrameSource.PipelineSnapshotDebugFrames)
+        if (route.FrameSource != CameraTileFrameSource.PipelineSnapshotDebugFrames)
         {
             return;
         }

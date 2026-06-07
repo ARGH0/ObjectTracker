@@ -1,18 +1,6 @@
+using ObjectTracker.UI.Desktop.Enums;
+
 namespace ObjectTracker.UI.Desktop;
-
-public enum CameraTileMissingFrameBehavior
-{
-    RepeatLastFrame,
-    BlackFrame
-}
-
-public enum CameraTileFrameDisplay
-{
-    CurrentFrame,
-    LastFrame,
-    BlackFrame,
-    Placeholder
-}
 
 public readonly record struct CameraTileDisplayView(
     CameraTileMissingFrameBehavior MissingFrameBehavior,
@@ -27,7 +15,7 @@ public static class CameraTileDisplayProjection
         bool hasCurrentFrame,
         bool hasLastFrame,
         CameraTileMissingFrameBehavior missingFrameBehavior = CameraTileMissingFrameBehavior.RepeatLastFrame,
-        MainWindow.CameraTileFrameSource frameSource = MainWindow.CameraTileFrameSource.RawCameraSourceFeed,
+        CameraTileFrameSource frameSource = CameraTileFrameSource.RawCameraSourceFeed,
         CameraSourceStatus? cameraSourceStatus = null,
         VisionPipelineLaneStatus? visionPipelineLaneStatus = null)
     {
@@ -38,7 +26,7 @@ public static class CameraTileDisplayProjection
             frameDisplay,
             frameDisplay == CameraTileFrameDisplay.Placeholder ? "Waiting for first frame" : string.Empty,
             ShowCameraSourceStatusOverlay: IsOverlayState(cameraSourceStatus?.State),
-            ShowVisionPipelineLaneStatusOverlay: frameSource != MainWindow.CameraTileFrameSource.RawCameraSourceFeed && IsOverlayState(visionPipelineLaneStatus?.State));
+            ShowVisionPipelineLaneStatusOverlay: frameSource != CameraTileFrameSource.RawCameraSourceFeed && IsOverlayState(visionPipelineLaneStatus?.State));
     }
 
     private static bool IsOverlayState(CameraSourceStatusState? state)

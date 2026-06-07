@@ -1,5 +1,5 @@
-using ObjectTracker.UI.Desktop;
 using Avalonia.Controls;
+using ObjectTracker.UI.Desktop;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;

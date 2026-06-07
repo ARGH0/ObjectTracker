@@ -1,10 +1,6 @@
-namespace ObjectTracker.UI.Desktop;
+using ObjectTracker.UI.Desktop.Enums;
 
-internal enum FileCameraSourcePlaybackStep
-{
-    FrameAvailable,
-    Ended
-}
+namespace ObjectTracker.UI.Desktop;
 
 internal interface IVideoFrameReader
 {

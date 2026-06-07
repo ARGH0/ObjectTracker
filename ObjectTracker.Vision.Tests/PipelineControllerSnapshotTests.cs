@@ -1,7 +1,7 @@
 using ObjectTracker.Core.Domain;
 using ObjectTracker.Core.Ports;
-using Cv = OpenCvSharp;
 using Xunit;
+using Cv = OpenCvSharp;
 
 namespace ObjectTracker.Vision.Tests;
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ObjectTracker.UI.Desktop.Enums;
 
 namespace ObjectTracker.UI.Desktop;
 
@@ -107,18 +108,6 @@ public sealed class LayerTypeCatalogService
             .ToList();
         return Create(definitions);
     }
-}
-
-public enum LayerMergePolicy
-{
-    PreserveRegions = 0,
-    MergeForEffectiveMask = 1
-}
-
-public enum LayerTypeBehaviorClass
-{
-    LogicCoupled = 0,
-    Informational = 1
 }
 
 public readonly record struct LayerTypeDefinition(

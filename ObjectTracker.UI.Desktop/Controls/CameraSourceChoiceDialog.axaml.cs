@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using ObjectTracker.UI.Desktop.Enums;
 
 namespace ObjectTracker.UI.Desktop;
 

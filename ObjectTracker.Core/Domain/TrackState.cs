@@ -1,18 +1,6 @@
+using ObjectTracker.Core.Domain.Enums;
+
 namespace ObjectTracker.Core.Domain;
-
-public enum TrainMotionState
-{
-    Moving,
-    Stationary,
-    Uncertain,
-    GoneFromTrack
-}
-
-public enum CollisionWarningState
-{
-    None,
-    Warning
-}
 
 public sealed record TrainState(
     string LocalTrainId,

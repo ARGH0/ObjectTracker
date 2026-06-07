@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ObjectTracker.UI.Desktop.Enums;
 using ObjectTracker.Vision.Source;
 
 namespace ObjectTracker.UI.Desktop;

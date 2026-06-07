@@ -242,10 +242,10 @@ public sealed class MainWindowCameraGridProjectionTests
     public void CameraTileFrameRouting_CoversCameraVisibilityInclusionRunningAndDebugViewCombinations()
     {
         var combinations = from isVisible in new[] { false, true }
-            from isIncludedInVisionPipeline in new[] { false, true }
-            from isVisionPipelineRunning in new[] { false, true }
-            from debugViewEnabled in new[] { false, true }
-            select new { isVisible, isIncludedInVisionPipeline, isVisionPipelineRunning, debugViewEnabled };
+                           from isIncludedInVisionPipeline in new[] { false, true }
+                           from isVisionPipelineRunning in new[] { false, true }
+                           from debugViewEnabled in new[] { false, true }
+                           select new { isVisible, isIncludedInVisionPipeline, isVisionPipelineRunning, debugViewEnabled };
 
         foreach (var combination in combinations)
         {

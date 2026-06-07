@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using ObjectTracker.UI.Desktop.Enums;
 
 namespace ObjectTracker.UI.Desktop;
 

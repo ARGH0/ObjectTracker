@@ -1,24 +1,7 @@
 using System.Collections.Generic;
+using ObjectTracker.UI.Desktop.Enums;
 
 namespace ObjectTracker.UI.Desktop;
-
-public enum CameraSourceStatusState
-{
-    Starting,
-    Running,
-    Stale,
-    Failed,
-    Stopped
-}
-
-public enum VisionPipelineLaneStatusState
-{
-    Starting,
-    Running,
-    Stale,
-    Failed,
-    Stopped
-}
 
 public readonly record struct CameraSourceStatus(
     CameraSourceStatusState State,

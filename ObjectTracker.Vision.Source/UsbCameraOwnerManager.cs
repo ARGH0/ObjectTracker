@@ -23,14 +23,6 @@ public readonly record struct UsbFrameSnapshot(
     byte[] EncodedJpeg,
     long FrameVersion);
 
-public enum UsbCameraOwnerState
-{
-    Stopped,
-    Starting,
-    Running,
-    Failed
-}
-
 public readonly record struct UsbCameraRuntimeStatus(
     UsbCameraOwnerState State,
     bool IsStale,

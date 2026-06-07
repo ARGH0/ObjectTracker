@@ -24,17 +24,12 @@ using OpenCvSharp;
 using VideoCapture = OpenCvSharp.VideoCapture;
 using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
 using VideoCaptureProperties = OpenCvSharp.VideoCaptureProperties;
+using ObjectTracker.UI.Desktop.Enums;
 
 namespace ObjectTracker.UI.Desktop;
 
 public partial class MainWindow : AppWindow, IOutputPort
 {
-    public enum Workspace
-    {
-        Camera,
-        Layers,
-        Settings
-    }
 
     public readonly record struct WorkspaceVisibility(bool CameraVisible, bool LayersVisible, bool SettingsVisible);
 
@@ -100,34 +95,6 @@ public partial class MainWindow : AppWindow, IOutputPort
     public readonly record struct CameraTileFrameRoute(string CameraId, CameraTileFrameSource FrameSource);
 
     public readonly record struct CameraTileFrameRouting(IReadOnlyList<CameraTileFrameRoute> Routes);
-
-    public enum CameraRenderMode
-    {
-        LiveAnnotated,
-        DebugView,
-        RawFeed
-    }
-
-    public enum CameraTileFrameSource
-    {
-        RawCameraSourceFeed,
-        PipelineSnapshotAnnotatedFrame,
-        PipelineSnapshotDebugFrames
-    }
-
-    public enum SettingsNavigationDecision
-    {
-        Save,
-        Discard,
-        Cancel
-    }
-
-    public enum SettingsField
-    {
-        GridColumns,
-        GridRows,
-        MissingFrameBehavior
-    }
 
     public readonly record struct CameraGridProjection(
         int VisibleCount,
@@ -3556,18 +3523,6 @@ public partial class MainWindow : AppWindow, IOutputPort
         }
 
         return name;
-    }
-
-    private enum CameraSourceKind
-    {
-        VideoFiles,
-        UsbCamera
-    }
-
-    internal enum BakeSourceMode
-    {
-        Samples = 0,
-        ImageFile = 1
     }
 
     [StructLayout(LayoutKind.Auto)]

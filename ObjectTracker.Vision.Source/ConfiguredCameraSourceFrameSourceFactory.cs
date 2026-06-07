@@ -3,12 +3,6 @@ using ObjectTracker.Core.Ports;
 
 namespace ObjectTracker.Vision.Source;
 
-public enum ConfiguredCameraSourceKind
-{
-    Usb,
-    File
-}
-
 public sealed record ConfiguredCameraSource(
     string Id,
     string DisplayName,

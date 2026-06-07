@@ -164,6 +164,37 @@ public sealed class PipelineControllerSnapshotTests
     }
 
     [Fact]
+    public async Task StartAsync_WithVisualObservationPipeline_DoesNotProduceTrainObservationsFromStaticColorBlobs()
+    {
+        using var staticBackgroundMat = new Cv.Mat(50, 80, Cv.MatType.CV_8UC3, Cv.Scalar.Black);
+        Cv.Cv2.Rectangle(staticBackgroundMat, new Cv.Rect(10, 10, 8, 8), new Cv.Scalar(0, 0, 255), -1);
+        Cv.Cv2.ImEncode(".jpg", staticBackgroundMat, out var staticBackgroundBytes);
+        var sourceFrame = JpegFrame("camera-1", 2500);
+        var redCalibration = new ColorCalibrationProfile("Red", 0, 10, 100, 255, 100, 255);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new VisualObservationPipeline(),
+            new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        controller.SetVisualObservationSettings("camera-1", VisualObservationSettings.Default with
+        {
+            Threshold = 30,
+            MotionArea = 20,
+            EncodedBackground = staticBackgroundBytes,
+            ColorCalibrations = [redCalibration]
+        });
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Empty(snapshot.TrainObservations);
+    }
+
+    [Fact]
     public async Task StartAsync_WithConfiguredBackground_PublishesMovingObjectObservationFromFirstFileSourceFrame()
     {
         var sourceFrame = JpegFrame("file-bridge", 2400, new Cv.Rect(20, 12, 12, 10));

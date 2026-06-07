@@ -1306,10 +1306,9 @@ public partial class MainWindow : AppWindow, IOutputPort
         var configuredSources = includedCameras
             .Select(ToConfiguredCameraSource)
             .ToList();
-        var detectorManager = new DetectorManager(new OpenCvColorDetector());
         return new PipelineController(
             new ConfiguredCameraSourceFrameSourceFactory(configuredSources, usbCameraOwnerManager, fileCameraSourceFeedManager),
-            detectorManager,
+            new VisualObservationPipeline(),
             new SimpleTracker(),
             [this],
             new SystemClock());

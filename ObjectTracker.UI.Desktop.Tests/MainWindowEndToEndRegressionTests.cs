@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ObjectTracker.Core.Domain;
+using ObjectTracker.Core.Ports;
 using ObjectTracker.UI.Desktop;
+using ObjectTracker.Vision;
 using ObjectTracker.Vision.Source;
 using OpenCvSharp;
 using Xunit;
@@ -246,12 +249,338 @@ public sealed class MainWindowEndToEndRegressionTests
         Assert.False(failedDecision.ShouldRestartCameraSource);
     }
 
+    [Fact]
+    public async Task VisionPipelineSnapshotFlow_EndToEnd_RoutesFramesStatusesTrainTrackingAndRuntimeChanges()
+    {
+        var fileSourceProjection = MainWindow.BuildFileCameraSourceProjection(new[]
+        {
+            new MainWindow.FileCameraSource("file-bridge", "Bridge File Camera Source", "/videos/bridge.mp4", LoopVideo: true)
+        });
+        var cameras = new[]
+        {
+            new MainWindow.CameraWorkspaceCamera("file-bridge", "Bridge", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false),
+            new MainWindow.CameraWorkspaceCamera("usb:0:ANY", "USB Yard", IsVisible: true, IsIncludedInVisionPipeline: false, DebugViewEnabled: false),
+            new MainWindow.CameraWorkspaceCamera("handoff-hidden", "Hidden Handoff", IsVisible: false, IsIncludedInVisionPipeline: true, DebugViewEnabled: false),
+            new MainWindow.CameraWorkspaceCamera("spare-hidden", "Spare Hidden", IsVisible: false, IsIncludedInVisionPipeline: false, DebugViewEnabled: false)
+        };
+        var stoppedRouting = MainWindow.BuildCameraTileFrameRouting(MainWindow.BuildCameraGridProjection(cameras, isVisionPipelineRunning: false));
+        var runningProjection = MainWindow.BuildCameraGridProjection(cameras, isVisionPipelineRunning: true);
+        var runningRouting = MainWindow.BuildCameraTileFrameRouting(runningProjection);
+        var firstSnapshotPlaceholder = CameraTileDisplayProjection.Build(
+            hasCurrentFrame: false,
+            hasLastFrame: false,
+            frameSource: MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame,
+            visionPipelineLaneStatus: new VisionPipelineLaneStatus(VisionPipelineLaneStatusState.Starting, LatestSnapshotVersion: null, FailureMessage: null));
+
+        var fileSource = new ControlledFrameSource("file-bridge", [Frame("file-bridge", 1000)]);
+        var handoffSource = new ControlledFrameSource("handoff-hidden", [Frame("handoff-hidden", 6000)]);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new MultiFrameSourceFactory(fileSource, new ControlledFrameSource("usb:0:ANY", []), handoffSource),
+            new SourceAwareDetectorManager(new Dictionary<string, Detection[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["file-bridge"] = [Detection("file-bridge", 1000, 10, 10, "Red")],
+                ["handoff-hidden"] = [Detection("handoff-hidden", 6000, 20, 12, "Red")]
+            }),
+            new DuplicateLocalTrainIdTracker(),
+            [output],
+            new IncrementingClock());
+        controller.SetVisionPipelineInclusion("file-bridge", included: true);
+        controller.SetVisionPipelineInclusion("handoff-hidden", included: true);
+        controller.SetTargetFramesPerSecond(12);
+
+        await controller.StartAsync(CancellationToken.None);
+        var snapshots = await output.WaitForSnapshotsAsync(2);
+        await WaitUntilAsync(() => output.Statuses.Any(status => status.Contains("Ambiguity Alert", StringComparison.OrdinalIgnoreCase)));
+
+        var renderer = new CameraTilePipelineSnapshotRenderer();
+        var annotatedFrames = new List<CameraTileRawFrameSnapshot>();
+        var visibleSnapshot = snapshots.First(snapshot => snapshot.CameraSourceId == "file-bridge");
+        await renderer.RenderSnapshotAsync(visibleSnapshot, runningRouting, frame =>
+        {
+            annotatedFrames.Add(frame);
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+
+        controller.SetDebugViewEnabled("file-bridge", enabled: true);
+        fileSource.Enqueue(Frame("file-bridge", 7000));
+        var debugSnapshot = (await output.WaitForSnapshotsAsync(3)).Last(snapshot => snapshot.CameraSourceId == "file-bridge");
+        var debugRouting = MainWindow.BuildCameraTileFrameRouting(MainWindow.BuildCameraGridProjection(new[]
+        {
+            cameras[0] with { DebugViewEnabled = true },
+            cameras[1],
+            cameras[2],
+            cameras[3]
+        }, isVisionPipelineRunning: true));
+        var debugFrames = new List<CameraTileDebugFrameSnapshot>();
+        await renderer.RenderSnapshotAsync(debugSnapshot, debugRouting, _ => Task.CompletedTask, frame =>
+        {
+            debugFrames.Add(frame);
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+
+        controller.SetVisionPipelineInclusion("file-bridge", included: false);
+        await WaitUntilAsync(() => fileSource.StopCount == 1);
+        var excludedRouting = MainWindow.BuildCameraTileFrameRouting(MainWindow.BuildCameraGridProjection(new[]
+        {
+            cameras[0] with { IsIncludedInVisionPipeline = false, DebugViewEnabled = false },
+            cameras[1],
+            cameras[2],
+            cameras[3]
+        }, isVisionPipelineRunning: true));
+        var staleSnapshotDisplay = CameraTileDisplayProjection.Build(
+            hasCurrentFrame: false,
+            hasLastFrame: true,
+            frameSource: MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame,
+            cameraSourceStatus: new CameraSourceStatus(CameraSourceStatusState.Running, LatestFrameVersion: 4, FailureMessage: null),
+            visionPipelineLaneStatus: new VisionPipelineLaneStatus(VisionPipelineLaneStatusState.Stale, LatestSnapshotVersion: debugSnapshot.Timing.TimestampUtcMs, FailureMessage: null));
+        var statusPanel = CameraPanelStatusProjection.Build(
+            new CameraSourceStatus(CameraSourceStatusState.Running, LatestFrameVersion: 4, FailureMessage: null),
+            new VisionPipelineLaneStatus(VisionPipelineLaneStatusState.Stale, LatestSnapshotVersion: debugSnapshot.Timing.TimestampUtcMs, FailureMessage: null));
+
+        await controller.StopAsync(CancellationToken.None);
+        var stoppedAgainRouting = MainWindow.BuildCameraTileFrameRouting(MainWindow.BuildCameraGridProjection(cameras, isVisionPipelineRunning: false));
+
+        Assert.Equal("file-bridge", Assert.Single(fileSourceProjection.Sources).CameraId);
+        Assert.True(fileSourceProjection.Sources[0].LoopVideo);
+        Assert.All(stoppedRouting.Routes, route => Assert.Equal(MainWindow.CameraTileFrameSource.RawCameraSourceFeed, route.FrameSource));
+        Assert.Equal(new[] { "file-bridge", "usb:0:ANY" }, runningProjection.Tiles.Select(tile => tile.CameraId).ToArray());
+        Assert.Contains(runningRouting.Routes, route => route.CameraId == "file-bridge" && route.FrameSource == MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame);
+        Assert.Contains(runningRouting.Routes, route => route.CameraId == "usb:0:ANY" && route.FrameSource == MainWindow.CameraTileFrameSource.RawCameraSourceFeed);
+        Assert.Equal(CameraTileFrameDisplay.Placeholder, firstSnapshotPlaceholder.FrameDisplay);
+        Assert.Contains(snapshots, snapshot => snapshot.CameraSourceId == "handoff-hidden");
+        Assert.Single(annotatedFrames);
+        Assert.Equal("file-bridge", annotatedFrames[0].CameraId);
+        Assert.Contains(debugFrames, frame => frame.Name == "train-tracking");
+        Assert.Equal(12, debugSnapshot.Timing.TargetFramesPerSecond);
+        Assert.Equal("train-001", Assert.Single(visibleSnapshot.TrainStates).LocalTrainId);
+        Assert.Equal("train-001", Assert.Single(snapshots.First(snapshot => snapshot.CameraSourceId == "handoff-hidden").TrainStates).LocalTrainId);
+        Assert.Contains(output.Statuses, status => status.Contains("Ambiguity Alert", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(excludedRouting.Routes, route => route.CameraId == "file-bridge" && route.FrameSource == MainWindow.CameraTileFrameSource.RawCameraSourceFeed);
+        Assert.True(staleSnapshotDisplay.ShowVisionPipelineLaneStatusOverlay);
+        Assert.False(staleSnapshotDisplay.ShowCameraSourceStatusOverlay);
+        Assert.Equal("Camera Source Status: running", statusPanel.CameraSourceStatusText);
+        Assert.Equal("Vision Pipeline Lane Status: stale", statusPanel.VisionPipelineLaneStatusText);
+        Assert.All(stoppedAgainRouting.Routes, route => Assert.Equal(MainWindow.CameraTileFrameSource.RawCameraSourceFeed, route.FrameSource));
+        Assert.Equal(1, fileSource.StopCount);
+        Assert.Equal(1, handoffSource.StopCount);
+    }
+
     private sealed class RecordingConsumer(string cameraId, List<string> stops) : IAsyncDisposable
     {
         public ValueTask DisposeAsync()
         {
             stops.Add(cameraId);
             return ValueTask.CompletedTask;
+        }
+    }
+
+    private static FramePacket Frame(string sourceId, long timestamp) => new(sourceId, timestamp, 2, 2, [1, 2, 3]);
+
+    private static Detection Detection(string sourceId, long timestamp, float x, float y, string trainColor) => new(
+        $"{sourceId}-{trainColor}-{timestamp}",
+        x,
+        y,
+        x - 2,
+        y - 2,
+        4,
+        4,
+        0.9f,
+        trainColor,
+        sourceId,
+        timestamp);
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+            {
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+
+        throw new TimeoutException("Expected condition to become true.");
+    }
+
+    private sealed class MultiFrameSourceFactory(params ControlledFrameSource[] sources) : IFrameSourceFactory
+    {
+        private readonly Dictionary<string, ControlledFrameSource> sourcesById = sources.ToDictionary(source => source.Id, StringComparer.OrdinalIgnoreCase);
+
+        public IReadOnlyList<FrameSourceInfo> GetAvailableSources() => sources.Select(source => new FrameSourceInfo(source.Id, source.DisplayName)).ToList();
+
+        public IFrameSource Create(string sourceId) => sourcesById[sourceId];
+    }
+
+    private sealed class ControlledFrameSource(string id, IReadOnlyList<FramePacket> frames) : IFrameSource
+    {
+        private readonly Lock sync = new();
+        private readonly List<FramePacket> frames = frames.ToList();
+        private int nextFrameIndex;
+
+        public string Id => id;
+
+        public string DisplayName => id;
+
+        public string Diagnostics => "test source";
+
+        public int StopCount { get; private set; }
+
+        public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken cancellationToken)
+        {
+            StopCount++;
+            return Task.CompletedTask;
+        }
+
+        public Task<FramePacket?> ReadFrameAsync(CancellationToken cancellationToken)
+        {
+            lock (sync)
+            {
+                if (nextFrameIndex >= frames.Count)
+                {
+                    return Task.FromResult<FramePacket?>(null);
+                }
+
+                return Task.FromResult<FramePacket?>(frames[nextFrameIndex++]);
+            }
+        }
+
+        public void Enqueue(FramePacket frame)
+        {
+            lock (sync)
+            {
+                frames.Add(frame);
+            }
+        }
+
+        public string? ConsumeDiagnosticEvent() => null;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class SourceAwareDetectorManager(IReadOnlyDictionary<string, Detection[]> detectionsBySourceId) : IDetectorManager
+    {
+        public DetectorMode ActiveMode => DetectorMode.Color;
+
+        public IReadOnlyList<DetectorMode> SupportedModes => [DetectorMode.Color];
+
+        public IReadOnlyList<string> AvailableColorFilters => [];
+
+        public IReadOnlyList<string> EnabledColorFilters => [];
+
+        public IReadOnlyList<ColorCalibrationProfile> ColorCalibrations => [];
+
+        public void SwitchMode(DetectorMode mode) { }
+
+        public void SetEnabledColorFilters(IEnumerable<string> colors) { }
+
+        public void SetColorCalibrations(IEnumerable<ColorCalibrationProfile> calibrations) { }
+
+        public Task<IReadOnlyList<Detection>> DetectAsync(FramePacket frame, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<Detection>>(
+                detectionsBySourceId.TryGetValue(frame.SourceId, out var detections) ? detections : []);
+        }
+    }
+
+    private sealed class DuplicateLocalTrainIdTracker : ITracker
+    {
+        public IReadOnlyList<TrainState> Update(IReadOnlyList<Detection> detections, long frameTimestampUtcMs)
+        {
+            return detections
+                .Select(detection => new TrainState(
+                    "train-001",
+                    detection.Kind,
+                    detection.X,
+                    detection.Y,
+                    0,
+                    0,
+                    detection.Confidence,
+                    TrainMotionState.Moving,
+                    CollisionWarningState.None,
+                    detection.SourceId,
+                    detection.TimestampUtcMs))
+                .ToList();
+        }
+
+        public void Reset() { }
+    }
+
+    private sealed class IncrementingClock : IClock
+    {
+        private long value = 1000;
+
+        public long UtcNowMs() => Interlocked.Increment(ref value);
+    }
+
+    private sealed class RecordingOutputPort : IOutputPort
+    {
+        private readonly List<PipelineSnapshot> snapshots = [];
+        private readonly List<string> statuses = [];
+        private readonly Lock sync = new();
+
+        public IReadOnlyList<PipelineSnapshot> Snapshots
+        {
+            get
+            {
+                lock (sync)
+                {
+                    return snapshots.ToList();
+                }
+            }
+        }
+
+        public IReadOnlyList<string> Statuses
+        {
+            get
+            {
+                lock (sync)
+                {
+                    return statuses.ToList();
+                }
+            }
+        }
+
+        public Task PublishSnapshotAsync(PipelineSnapshot snapshot, CancellationToken cancellationToken)
+        {
+            lock (sync)
+            {
+                snapshots.Add(snapshot);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task PublishStatusAsync(string status, CancellationToken cancellationToken)
+        {
+            lock (sync)
+            {
+                statuses.Add(status);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public async Task<IReadOnlyList<PipelineSnapshot>> WaitForSnapshotsAsync(int count)
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+            while (DateTime.UtcNow < deadline)
+            {
+                var current = Snapshots;
+                if (current.Count >= count)
+                {
+                    return current;
+                }
+
+                await Task.Delay(10);
+            }
+
+            throw new TimeoutException($"Expected the Vision Pipeline to publish {count} snapshots.");
         }
     }
 }

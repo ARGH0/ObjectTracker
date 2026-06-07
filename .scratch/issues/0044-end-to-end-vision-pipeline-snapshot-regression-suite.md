@@ -1,7 +1,7 @@
 # End-To-End Vision Pipeline Snapshot Regression Suite
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,12 +13,12 @@ Add integration-style regression coverage for the full operator flow from Camera
 
 ## Acceptance criteria
 
-- [ ] Tests cover Camera Source setup for USB and file-based sources.
-- [ ] Tests cover visible/included, visible/excluded, hidden/included, and hidden/excluded behavior.
-- [ ] Tests cover Vision Pipeline start, first snapshot placeholder, snapshot display, Debug View toggle, inclusion change, and stop.
-- [ ] Tests cover Camera Source Status and Vision Pipeline Lane Status projections.
-- [ ] Tests cover global target FPS and actual per-lane processed FPS behavior.
-- [ ] Tests cover Train Tracking Local Train ID continuity and handoff ambiguity behavior.
+- [x] Tests cover Camera Source setup for USB and file-based sources.
+- [x] Tests cover visible/included, visible/excluded, hidden/included, and hidden/excluded behavior.
+- [x] Tests cover Vision Pipeline start, first snapshot placeholder, snapshot display, Debug View toggle, inclusion change, and stop.
+- [x] Tests cover Camera Source Status and Vision Pipeline Lane Status projections.
+- [x] Tests cover global target FPS and actual per-lane processed FPS behavior.
+- [x] Tests cover Train Tracking Local Train ID continuity and handoff ambiguity behavior.
 
 ## Blocked by
 

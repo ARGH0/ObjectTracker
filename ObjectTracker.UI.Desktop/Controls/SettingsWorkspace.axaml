@@ -1,0 +1,94 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ObjectTracker.UI.Desktop.ViewModels"
+             x:Class="ObjectTracker.UI.Desktop.SettingsWorkspace"
+             x:DataType="vm:SettingsWorkspaceViewModel"
+             Padding="16">
+    <Border Classes="surface"
+            Padding="16">
+        <Grid RowDefinitions="Auto,12,Auto,12,Auto,12,*"
+              ColumnDefinitions="360,16,*">
+            <StackPanel Grid.Row="0"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="3"
+                        Spacing="4">
+                <TextBlock Text="Settings Workspace"
+                           Classes="sectionTitle" />
+                <TextBlock Text="Global settings use draft edits until explicitly saved."
+                           Classes="muted" />
+            </StackPanel>
+
+            <Border Grid.Row="2"
+                    Grid.Column="0"
+                    Classes="surfaceAlt"
+                    Padding="10">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Grid Settings"
+                               Classes="sectionTitle" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Grid Columns"
+                                   Classes="eyebrow" />
+                        <TextBlock x:Name="SettingsGridColumnsPolicyText"
+                                   Classes="muted"
+                                   Text="{Binding GridColumnsPolicy}" />
+                    </StackPanel>
+                    <TextBox x:Name="SettingsGridColumnsTextBox"
+                             Watermark="32" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Grid Rows"
+                                   Classes="eyebrow" />
+                        <TextBlock x:Name="SettingsGridRowsPolicyText"
+                                   Classes="muted"
+                                   Text="{Binding GridRowsPolicy}" />
+                    </StackPanel>
+                    <TextBox x:Name="SettingsGridRowsTextBox"
+                             Watermark="18" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Missing Frame Behavior"
+                                   Classes="eyebrow" />
+                        <TextBlock x:Name="SettingsMissingFrameBehaviorPolicyText"
+                                   Classes="muted"
+                                   Text="{Binding MissingFrameBehaviorPolicy}" />
+                    </StackPanel>
+                    <ComboBox x:Name="SettingsMissingFrameBehaviorComboBox" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="2"
+                    Grid.Column="2"
+                    Classes="surfaceAlt"
+                    Padding="10">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Draft State"
+                               Classes="sectionTitle" />
+                    <TextBlock x:Name="SettingsDraftStatusText"
+                               Text="{Binding DraftStatus}"
+                               Classes="muted"
+                               TextWrapping="Wrap" />
+                    <TextBlock x:Name="SettingsPendingRestartText"
+                               Text="{Binding PendingRestartStatus}"
+                               Classes="muted"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="Leaving Settings with unsaved changes asks Save / Discard / Cancel."
+                               Classes="muted"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="4"
+                  Grid.Column="0"
+                  ColumnDefinitions="*,8,*">
+                <Button Grid.Column="0"
+                        x:Name="SaveSettingsButton"
+                        Classes="primary"
+                        Content="Save Settings"
+                        IsEnabled="{Binding CanSave}" />
+                <Button Grid.Column="2"
+                        x:Name="DiscardSettingsButton"
+                        Classes="ghost"
+                        Content="Discard Changes"
+                        IsEnabled="{Binding CanDiscard}" />
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

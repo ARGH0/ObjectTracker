@@ -4,5 +4,6 @@ public enum Workspace
 {
     Camera,
     Layers,
+    Calibration,
     Settings
 }

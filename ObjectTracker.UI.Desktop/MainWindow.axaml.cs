@@ -10,28 +10,27 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Windowing;
 using ObjectTracker.Core.Domain;
 using ObjectTracker.Core.Ports;
+using ObjectTracker.UI.Desktop.Enums;
 using ObjectTracker.Vision;
 using ObjectTracker.Vision.Source;
-using OpenCvSharp;
 using VideoCapture = OpenCvSharp.VideoCapture;
 using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
 using VideoCaptureProperties = OpenCvSharp.VideoCaptureProperties;
-using ObjectTracker.UI.Desktop.Enums;
 
 namespace ObjectTracker.UI.Desktop;
 
 public partial class MainWindow : AppWindow, IOutputPort
 {
 
-    public readonly record struct WorkspaceVisibility(bool CameraVisible, bool LayersVisible, bool SettingsVisible);
+    public readonly record struct WorkspaceVisibility(bool CameraVisible, bool LayersVisible, bool SettingsVisible, bool CalibrationVisible = false);
 
     public readonly record struct BottomStatusSnapshot(
         string VisionPipeline,
@@ -109,23 +108,15 @@ public partial class MainWindow : AppWindow, IOutputPort
         IReadOnlyList<string> CameraIds,
         IReadOnlyList<CameraRenderMode> RenderModes);
 
-    public readonly record struct CameraPanelLayoutState(
-        bool IsOpen,
-        bool IsPinned,
-        SplitViewDisplayMode DisplayMode,
-        double CameraPanelWidth,
-        double CompactPaneWidth,
-        string ToggleButtonText,
-        string PinButtonText);
-
     public static WorkspaceVisibility BuildWorkspaceVisibility(Workspace workspace)
     {
         return workspace switch
         {
-            Workspace.Camera => new WorkspaceVisibility(true, false, false),
-            Workspace.Layers => new WorkspaceVisibility(false, true, false),
-            Workspace.Settings => new WorkspaceVisibility(false, false, true),
-            _ => new WorkspaceVisibility(true, false, false)
+            Workspace.Camera => new WorkspaceVisibility(true, false, false, false),
+            Workspace.Layers => new WorkspaceVisibility(false, true, false, false),
+            Workspace.Calibration => new WorkspaceVisibility(false, false, false, true),
+            Workspace.Settings => new WorkspaceVisibility(false, false, true, false),
+            _ => new WorkspaceVisibility(true, false, false, false)
         };
     }
 
@@ -144,30 +135,6 @@ public partial class MainWindow : AppWindow, IOutputPort
         return isVisionPipelineRunning
             ? new VisionPipelineMenuState(StartEnabled: false, StopEnabled: true)
             : new VisionPipelineMenuState(StartEnabled: true, StopEnabled: false);
-    }
-
-    public static CameraPanelLayoutState BuildCameraPanelLayoutState(bool isOpen, bool isPinned)
-    {
-        if (isPinned)
-        {
-            return new CameraPanelLayoutState(
-                IsOpen: true,
-                IsPinned: true,
-                DisplayMode: SplitViewDisplayMode.Inline,
-                CameraPanelWidth: 340,
-                CompactPaneWidth: 0,
-                ToggleButtonText: string.Empty,
-                PinButtonText: "📍");
-        }
-
-        return new CameraPanelLayoutState(
-            IsOpen: isOpen,
-            IsPinned: false,
-            DisplayMode: SplitViewDisplayMode.CompactOverlay,
-            CameraPanelWidth: 340,
-            CompactPaneWidth: 48,
-            ToggleButtonText: isOpen ? "<" : ">",
-            PinButtonText: "📌");
     }
 
     public static CameraGridProjection BuildCameraGridProjection(IReadOnlyList<CameraWorkspaceCamera> cameras)
@@ -451,8 +418,7 @@ public partial class MainWindow : AppWindow, IOutputPort
     private bool applyingUsbCaptureSettingsUi;
     private bool gridEditorVisible;
     private bool hasPendingVisionPipelineRestart;
-    private bool isCameraPanelOpen = true;
-    private bool isCameraPanelPinned = true;
+
     private Workspace activeWorkspace = Workspace.Camera;
     internal Func<string, string, Task<bool>> ConfirmDestructiveActionAsync { get; set; }
     internal Func<Task<SettingsNavigationDecision>> PromptSettingsNavigationDecisionAsync { get; set; }
@@ -506,7 +472,6 @@ public partial class MainWindow : AppWindow, IOutputPort
         HookEvents();
         SetActiveWorkspace(Workspace.Camera);
         SetRunState(isRunning: false);
-        ApplyCameraPanelLayout();
         RefreshSettingsWorkspaceUi();
         RefreshCameraUi();
         RefreshLayerTypeUi();
@@ -529,15 +494,14 @@ public partial class MainWindow : AppWindow, IOutputPort
 
     private void HookEvents()
     {
-        AddVideosButton.Click += AddCamerasButtonOnClick;
-        RemoveSelectedButton.Click += RemoveCameraButtonOnClick;
+        CameraWorkspaceControl.AddCameraRequested += (_, _) => AddCamerasButtonOnClick(null, new RoutedEventArgs());
+        CameraWorkspaceControl.RemoveCameraRequested += (_, _) => RemoveCameraButtonOnClick(null, new RoutedEventArgs());
         DeleteSelectedCameraMenuItem.Click += RemoveCameraButtonOnClick;
         MoveCameraUpButton.Click += MoveCameraUpButtonOnClick;
         MoveCameraDownButton.Click += MoveCameraDownButtonOnClick;
         ClearCamerasMenuItem.Click += ClearCamerasButtonOnClick;
-        PreviousVideoButton.Click += PreviousCameraButtonOnClick;
-        NextVideoButton.Click += NextCameraButtonOnClick;
-        StartStopButton.Click += StartStopButtonOnClick;
+        CameraWorkspaceControl.PreviousVideoRequested += (_, _) => PreviousCameraButtonOnClick(null, new RoutedEventArgs());
+        CameraWorkspaceControl.NextVideoRequested += (_, _) => NextCameraButtonOnClick(null, new RoutedEventArgs());
         OpenBakedMaskButton.Click += OpenBakedMaskButtonOnClick;
         CameraSourceListBox.SelectionChanged += CameraSelectionChanged;
         CameraZoneComboBox.SelectionChanged += CameraZoneComboBoxOnSelectionChanged;
@@ -549,38 +513,38 @@ public partial class MainWindow : AppWindow, IOutputPort
         UsbTargetFpsComboBox.SelectionChanged += UsbCaptureSettingsControlOnChanged;
         ApplyUsbCaptureSettingsButton.Click += ApplyUsbCaptureSettingsButtonOnClick;
         RevertUsbCaptureSettingsButton.Click += RevertUsbCaptureSettingsButtonOnClick;
-        ToggleGridEditorButton.Click += ToggleGridEditorButtonOnClick;
+        CameraWorkspaceControl.ToggleGridEditorRequested += (_, _) => ToggleGridEditorButtonOnClick(null, new RoutedEventArgs());
         AddLayerButton.Click += AddLayerButtonOnClick;
         DeleteLayerButton.Click += DeleteLayerButtonOnClick;
-        AddGlobalLayerTypeButton.Click += AddGlobalLayerTypeButtonOnClick;
-        DeleteGlobalLayerTypeButton.Click += DeleteGlobalLayerTypeButtonOnClick;
-        GlobalLayerTypesListBox.SelectionChanged += GlobalLayerTypesListBoxOnSelectionChanged;
         LayersListBox.SelectionChanged += LayersListBoxOnSelectionChanged;
         RegionsListBox.SelectionChanged += RegionsListBoxOnSelectionChanged;
         SaveRegionButton.Click += SaveRegionButtonOnClick;
         DeleteRegionButton.Click += DeleteRegionButtonOnClick;
-        RefreshCompositionPreviewButton.Click += RefreshCompositionPreviewButtonOnClick;
+        CameraWorkspaceControl.RefreshCompositionPreviewRequested += (_, _) => RefreshCompositionPreviewButtonOnClick(null, new RoutedEventArgs());
+        CalibrationWorkspaceMenuItem.Click += CalibrationWorkspaceButtonOnClick;
         BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
         SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
         ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
         LoopVideoCheckBox.IsCheckedChanged += LoopVideoCheckBoxOnChanged;
-        MarkAmbiguityButton.Click += MarkAmbiguityButtonOnClick;
-        ResolveRemovedButton.Click += ResolveRemovedButtonOnClick;
-        ResolveRelinkButton.Click += ResolveRelinkButtonOnClick;
-        ResolveFalseButton.Click += ResolveFalseButtonOnClick;
-        ResolveOtherButton.Click += ResolveOtherButtonOnClick;
+        CameraWorkspaceControl.MarkAmbiguityRequested += (_, _) => MarkAmbiguityButtonOnClick(null, new RoutedEventArgs());
+        CameraWorkspaceControl.ResolveRemovedRequested += (_, _) => ResolveRemovedButtonOnClick(null, new RoutedEventArgs());
+        CameraWorkspaceControl.ResolveRelinkRequested += (_, _) => ResolveRelinkButtonOnClick(null, new RoutedEventArgs());
+        CameraWorkspaceControl.ResolveFalseRequested += (_, _) => ResolveFalseButtonOnClick(null, new RoutedEventArgs());
+        CameraWorkspaceControl.ResolveOtherRequested += (_, _) => ResolveOtherButtonOnClick(null, new RoutedEventArgs());
         OpenCameraWorkspaceMenuItem.Click += CameraWorkspaceButtonOnClick;
         LayersWorkspaceMenuItem.Click += LayersWorkspaceButtonOnClick;
+        CalibrationWorkspaceMenuItem.Click += CalibrationWorkspaceButtonOnClick;
         SettingsWorkspaceMenuItem.Click += SettingsWorkspaceButtonOnClick;
         StartVisionPipelineMenuItem.Click += StartVisionPipelineMenuItemOnClick;
         StopVisionPipelineMenuItem.Click += StopVisionPipelineMenuItemOnClick;
-        ToggleCameraPanelButton.Click += ToggleCameraPanelButtonOnClick;
-        PinCameraPanelButton.Click += PinCameraPanelButtonOnClick;
-        SaveSettingsButton.Click += SaveSettingsButtonOnClick;
-        DiscardSettingsButton.Click += DiscardSettingsButtonOnClick;
-        SettingsGridColumnsTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
-        SettingsGridRowsTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
-        SettingsMissingFrameBehaviorComboBox.SelectionChanged += SettingsMissingFrameBehaviorComboBoxOnSelectionChanged;
+
+        SettingsWorkspaceControl.SaveRequested += (_, _) => SaveSettingsButtonOnClick(null, new RoutedEventArgs());
+        SettingsWorkspaceControl.DiscardRequested += (_, _) => DiscardSettingsButtonOnClick(null, new RoutedEventArgs());
+        SettingsWorkspaceControl.DraftChanged += (_, _) => SettingsDraftTextBoxOnTextChanged(null, null);
+
+        LayerWorkspaceControl.AddLayerTypeRequested += (_, _) => AddGlobalLayerTypeButtonOnClick(null, new RoutedEventArgs());
+        LayerWorkspaceControl.DeleteLayerTypeRequested += (_, _) => DeleteGlobalLayerTypeButtonOnClick(null, new RoutedEventArgs());
+        LayerWorkspaceControl.LayerTypeSelectionChanged += (_, _) => RefreshSelectedGlobalLayerTypeUsage();
 
         SampleCountTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         ThresholdTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
@@ -590,12 +554,8 @@ public partial class MainWindow : AppWindow, IOutputPort
         ProcessWidthTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
 
         CalibrationColorComboBox.SelectionChanged += CalibrationColorComboBoxOnSelectionChanged;
-        HueLowerTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
-        HueUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
-        SaturationLowerTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
-        SaturationUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
-        ValueLowerTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
-        ValueUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
+        CalibrationColorMinPicker.ColorChanged += (_, _) => UpdateSelectedColorCalibrationFromUi(logChange: false);
+        CalibrationColorMaxPicker.ColorChanged += (_, _) => UpdateSelectedColorCalibrationFromUi(logChange: false);
 
         UpdateAmbiguityUi();
     }
@@ -610,6 +570,11 @@ public partial class MainWindow : AppWindow, IOutputPort
         await TryNavigateWorkspaceAsync(Workspace.Layers);
     }
 
+    private async void CalibrationWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        await TryNavigateWorkspaceAsync(Workspace.Calibration);
+    }
+
     private async void SettingsWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
     {
         await TryNavigateWorkspaceAsync(Workspace.Settings);
@@ -621,41 +586,6 @@ public partial class MainWindow : AppWindow, IOutputPort
         {
             await StartVisionPipelineFromUiAsync();
         }
-    }
-
-    private void ToggleCameraPanelButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        if (isCameraPanelPinned)
-        {
-            return;
-        }
-
-        isCameraPanelOpen = !isCameraPanelOpen;
-        ApplyCameraPanelLayout();
-    }
-
-    private void PinCameraPanelButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        isCameraPanelPinned = !isCameraPanelPinned;
-        isCameraPanelOpen = true;
-        ApplyCameraPanelLayout();
-    }
-
-    private void ApplyCameraPanelLayout()
-    {
-        var layout = BuildCameraPanelLayoutState(isCameraPanelOpen, isCameraPanelPinned);
-
-        CameraSplitView.CompactPaneLength = layout.CompactPaneWidth;
-        CameraSplitView.IsPaneOpen = layout.IsOpen;
-        CameraSplitView.DisplayMode = layout.DisplayMode;
-        CameraSplitView.OpenPaneLength = layout.CameraPanelWidth;
-        CameraPanelFullContent.IsVisible = layout.IsOpen;
-        CameraPanelTitleText.IsVisible = layout.IsOpen;
-        PinCameraPanelButton.IsVisible = layout.IsOpen;
-        ToggleCameraPanelButton.IsVisible = !layout.IsPinned;
-
-        ToggleCameraPanelButton.Content = layout.ToggleButtonText;
-        PinCameraPanelButton.Content = layout.PinButtonText;
     }
 
     private async void StopVisionPipelineMenuItemOnClick(object? sender, RoutedEventArgs e)
@@ -672,6 +602,7 @@ public partial class MainWindow : AppWindow, IOutputPort
         var visibility = BuildWorkspaceVisibility(workspace);
         CameraWorkspacePanel.IsVisible = visibility.CameraVisible;
         LayersWorkspacePanel.IsVisible = visibility.LayersVisible;
+        ColorCalibrationWorkspacePanel.IsVisible = visibility.CalibrationVisible;
         SettingsWorkspacePanel.IsVisible = visibility.SettingsVisible;
         RuntimeLogExpander.IsVisible = IsRuntimeLogVisibleForWorkspace(workspace);
     }
@@ -710,7 +641,7 @@ public partial class MainWindow : AppWindow, IOutputPort
         SetActiveWorkspace(result.Workspace);
     }
 
-    private void SaveSettingsButtonOnClick(object? sender, RoutedEventArgs e)
+    private void SaveSettingsButtonOnClick(object? sender, RoutedEventArgs? e)
     {
         UpdateDraftAppSettingsFromUi();
         var impact = BuildSettingsSaveImpact(appSettings, draftAppSettings, runTask is not null);
@@ -722,14 +653,14 @@ public partial class MainWindow : AppWindow, IOutputPort
         SetStatus("Status: settings saved.");
     }
 
-    private void DiscardSettingsButtonOnClick(object? sender, RoutedEventArgs e)
+    private void DiscardSettingsButtonOnClick(object? sender, RoutedEventArgs? e)
     {
         draftAppSettings = appSettings;
         RefreshSettingsWorkspaceUi();
         SetStatus("Status: settings changes discarded.");
     }
 
-    private void SettingsDraftTextBoxOnTextChanged(object? sender, TextChangedEventArgs e)
+    private void SettingsDraftTextBoxOnTextChanged(object? sender, TextChangedEventArgs? e)
     {
         UpdateDraftAppSettingsFromUi();
         RefreshSettingsDraftStatusUi();
@@ -743,43 +674,17 @@ public partial class MainWindow : AppWindow, IOutputPort
 
     private void UpdateDraftAppSettingsFromUi()
     {
-        var columns = ParseInt(SettingsGridColumnsTextBox.Text, appSettings.GridColumns, AppSettings.MinGridColumns, AppSettings.MaxGridColumns);
-        var rows = ParseInt(SettingsGridRowsTextBox.Text, appSettings.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows);
-        draftAppSettings = new AppSettings(columns, rows, GetSelectedMissingFrameBehavior());
+        draftAppSettings = SettingsWorkspaceControl.ReadDraftSettings(appSettings);
     }
 
     private void RefreshSettingsWorkspaceUi()
     {
-        SettingsGridColumnsPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.GridColumns);
-        SettingsGridRowsPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.GridRows);
-        SettingsMissingFrameBehaviorPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.MissingFrameBehavior);
-        SettingsMissingFrameBehaviorComboBox.ItemsSource = new[]
-        {
-            "Repeat last frame",
-            "Black frame"
-        };
-        SettingsGridColumnsTextBox.Text = draftAppSettings.GridColumns.ToString();
-        SettingsGridRowsTextBox.Text = draftAppSettings.GridRows.ToString();
-        SettingsMissingFrameBehaviorComboBox.SelectedIndex = draftAppSettings.MissingFrameBehavior == CameraTileMissingFrameBehavior.BlackFrame ? 1 : 0;
-        RefreshSettingsDraftStatusUi();
-    }
-
-    private CameraTileMissingFrameBehavior GetSelectedMissingFrameBehavior()
-    {
-        return SettingsMissingFrameBehaviorComboBox.SelectedIndex == 1
-            ? CameraTileMissingFrameBehavior.BlackFrame
-            : CameraTileMissingFrameBehavior.RepeatLastFrame;
+        SettingsWorkspaceControl.RefreshSettingsUi(appSettings, draftAppSettings, hasPendingVisionPipelineRestart, GetSettingsApplyPolicyLabel);
     }
 
     private void RefreshSettingsDraftStatusUi()
     {
-        var state = BuildSettingsDraftState(appSettings, draftAppSettings);
-        SettingsDraftStatusText.Text = state.StatusText;
-        SettingsPendingRestartText.Text = hasPendingVisionPipelineRestart
-            ? "Pending restart: required"
-            : "Pending restart: none";
-        SaveSettingsButton.IsEnabled = state.HasUnsavedChanges;
-        DiscardSettingsButton.IsEnabled = state.HasUnsavedChanges;
+        SettingsWorkspaceControl.RefreshDraftStatusUi(appSettings, draftAppSettings, hasPendingVisionPipelineRestart);
     }
 
     private async void AddCamerasButtonOnClick(object? sender, RoutedEventArgs e)
@@ -1096,7 +1001,7 @@ public partial class MainWindow : AppWindow, IOutputPort
         if (camera is not null)
         {
             ApplySettingsToUi(GetSettingsForCamera(camera.Value.Id));
-            CurrentVideoText.Text = BuildCurrentSourceText(camera.Value);
+            CameraWorkspaceControl.SetCurrentVideo(BuildCurrentSourceText(camera.Value));
             OpenBakedMaskButton.IsEnabled = camera.Value.CanOpenBakedMask;
             applyingCameraVisibilityUi = true;
             CameraVisibilityCheckBox.IsChecked = camera.Value.IsVisible;
@@ -1127,17 +1032,6 @@ public partial class MainWindow : AppWindow, IOutputPort
                 ("cameraName", selected.DisplayName),
                 ("requestedIndex", index.ToString()));
         }
-    }
-
-    private async void StartStopButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        if (runTask is not null)
-        {
-            await StopProcessingAsync();
-            return;
-        }
-
-        await StartVisionPipelineFromUiAsync();
     }
 
     private void MoveCameraUpButtonOnClick(object? sender, RoutedEventArgs e)
@@ -1625,7 +1519,7 @@ public partial class MainWindow : AppWindow, IOutputPort
         if (snapshot.Count == 0)
         {
             CameraSourceListBox.SelectedIndex = -1;
-            CurrentVideoText.Text = "Current camera/source: -";
+            CameraWorkspaceControl.SetCurrentVideo("Current camera/source: -");
             OpenBakedMaskButton.IsEnabled = false;
             applyingCameraVisibilityUi = true;
             CameraVisibilityCheckBox.IsChecked = false;
@@ -1655,7 +1549,7 @@ public partial class MainWindow : AppWindow, IOutputPort
 
         var selected = snapshot[selectedCameraIndex];
         ApplySettingsToUi(GetSettingsForCamera(selected.Id));
-        CurrentVideoText.Text = BuildCurrentSourceText(selected);
+        CameraWorkspaceControl.SetCurrentVideo(BuildCurrentSourceText(selected));
         OpenBakedMaskButton.IsEnabled = selected.CanOpenBakedMask;
         CameraVisibilityCheckBox.IsEnabled = true;
         applyingCameraVisibilityUi = true;
@@ -2352,9 +2246,7 @@ public partial class MainWindow : AppWindow, IOutputPort
             .ToList();
         LayerTypeComboBox.SelectedIndex = 0;
 
-        var selectedLayerTypeId = GlobalLayerTypesListBox.SelectedItem is GlobalLayerTypeListItem selected
-            ? selected.LayerTypeId
-            : null;
+        var selectedLayerTypeId = LayerWorkspaceControl.SelectedLayerTypeId;
         var globalItems = orderedDefinitions
             .Select(definition => new GlobalLayerTypeListItem(
                 definition.LayerTypeId,
@@ -2363,35 +2255,36 @@ public partial class MainWindow : AppWindow, IOutputPort
                 definition.MergePolicy,
                 definition.BehaviorClass))
             .ToList();
-        GlobalLayerTypesListBox.ItemsSource = globalItems;
+        LayerWorkspaceControl.SetLayerTypeItems(globalItems);
         var selectedIndex = string.IsNullOrWhiteSpace(selectedLayerTypeId)
             ? 0
             : globalItems.FindIndex(item => string.Equals(item.LayerTypeId, selectedLayerTypeId, StringComparison.OrdinalIgnoreCase));
-        GlobalLayerTypesListBox.SelectedIndex = globalItems.Count == 0 ? -1 : Math.Max(0, selectedIndex);
-        RefreshSelectedGlobalLayerTypeUsage();
-    }
-
-    private void GlobalLayerTypesListBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
+        LayerWorkspaceControl.SetLayerTypeSelection(globalItems.Count == 0 ? -1 : Math.Max(0, selectedIndex));
         RefreshSelectedGlobalLayerTypeUsage();
     }
 
     private void RefreshSelectedGlobalLayerTypeUsage()
     {
-        if (GlobalLayerTypesListBox.SelectedItem is not GlobalLayerTypeListItem selected)
+        var selectedLayerTypeId = LayerWorkspaceControl.SelectedLayerTypeId;
+        if (string.IsNullOrWhiteSpace(selectedLayerTypeId))
         {
-            GlobalLayerTypeIdTextBox.Text = string.Empty;
-            GlobalLayerTypeNameTextBox.Text = string.Empty;
-            GlobalLayerTypePrecedenceTextBox.Text = string.Empty;
-            GlobalLayerTypeUsageListBox.ItemsSource = null;
-            DeleteGlobalLayerTypeButton.IsEnabled = false;
-            GlobalLayerTypeDeleteStatusText.Text = "Select a Layer Type to inspect usage.";
+            LayerWorkspaceControl.SetLayerTypeDraft(string.Empty, string.Empty, string.Empty);
+            LayerWorkspaceControl.SetUsageItems(null);
+            LayerWorkspaceControl.SetDeleteStatus("Select a Layer Type to inspect usage.", false);
             return;
         }
 
-        GlobalLayerTypeIdTextBox.Text = selected.LayerTypeId;
-        GlobalLayerTypeNameTextBox.Text = selected.DisplayName;
-        GlobalLayerTypePrecedenceTextBox.Text = selected.Precedence.ToString();
+        var selected = layerTypeCatalogService.GetOrderedByPrecedence()
+            .FirstOrDefault(definition => string.Equals(definition.LayerTypeId, selectedLayerTypeId, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(selected.LayerTypeId))
+        {
+            LayerWorkspaceControl.SetLayerTypeDraft(string.Empty, string.Empty, string.Empty);
+            LayerWorkspaceControl.SetUsageItems(null);
+            LayerWorkspaceControl.SetDeleteStatus("Select a Layer Type to inspect usage.", false);
+            return;
+        }
+
+        LayerWorkspaceControl.SetLayerTypeDraft(selected.LayerTypeId, selected.DisplayName, selected.Precedence.ToString());
 
         var usage = BuildLayerTypeUsageProjection(
             selected.LayerTypeId,
@@ -2399,13 +2292,12 @@ public partial class MainWindow : AppWindow, IOutputPort
             cameraZoneIdentityService.CameraZones,
             cameraZoneIdentityService.SourceBindings,
             BuildCameraDisplayNamesBySourceId());
-        GlobalLayerTypeUsageListBox.ItemsSource = usage.Items.Count == 0
+        LayerWorkspaceControl.SetUsageItems(usage.Items.Count == 0
             ? new[] { "No camera usage." }
-            : usage.Items.Select(item => $"{item.CameraDisplayName} / {item.CameraZoneName}: {item.LayerName} ({item.RegionCount} regions)").ToList();
+            : usage.Items.Select(item => $"{item.CameraDisplayName} / {item.CameraZoneName}: {item.LayerName} ({item.RegionCount} regions)").ToList());
 
         var deleteState = BuildLayerTypeDeleteState(selected.LayerTypeId, usage);
-        DeleteGlobalLayerTypeButton.IsEnabled = deleteState.CanDelete;
-        GlobalLayerTypeDeleteStatusText.Text = deleteState.Message;
+        LayerWorkspaceControl.SetDeleteStatus(deleteState.Message, deleteState.CanDelete);
     }
 
     private Dictionary<string, string> BuildCameraDisplayNamesBySourceId()
@@ -2467,8 +2359,6 @@ public partial class MainWindow : AppWindow, IOutputPort
 
     private void SetRunState(bool isRunning)
     {
-        StartStopButton.Content = isRunning ? "Stop" : "Start";
-        StartStopButton.IsEnabled = isRunning || !ambiguityActive;
         var menuState = BuildVisionPipelineMenuState(isRunning);
         StartVisionPipelineMenuItem.IsEnabled = menuState.StartEnabled;
         StopVisionPipelineMenuItem.IsEnabled = menuState.StopEnabled;
@@ -2724,8 +2614,7 @@ public partial class MainWindow : AppWindow, IOutputPort
 
     private void UpdateAmbiguityUi()
     {
-        AmbiguityBanner.IsVisible = ambiguityActive;
-        AmbiguityText.Text = ambiguityMessage;
+        CameraWorkspaceControl.SetAmbiguityBanner(ambiguityActive, ambiguityMessage);
         UpdateBottomStatusBar();
     }
 
@@ -2850,16 +2739,6 @@ public partial class MainWindow : AppWindow, IOutputPort
             }
 
             return RuntimeProcessingSettings.Default;
-        }
-    }
-
-    private bool IsDebugViewEnabled(string cameraId)
-    {
-        lock (cameraSync)
-        {
-            return cameras.Any(camera =>
-                string.Equals(camera.Id, cameraId, StringComparison.OrdinalIgnoreCase) &&
-                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled));
         }
     }
 
@@ -2990,21 +2869,22 @@ public partial class MainWindow : AppWindow, IOutputPort
 
     private void AddGlobalLayerTypeButtonOnClick(object? sender, RoutedEventArgs e)
     {
-        if (!int.TryParse(GlobalLayerTypePrecedenceTextBox.Text, out var precedence))
+        var (idText, nameText, precedenceText) = LayerWorkspaceControl.ReadLayerTypeDraft();
+        if (!int.TryParse(precedenceText, out var precedence))
         {
             SetStatus("Status: enter a numeric Layer Type precedence.");
             return;
         }
 
         var result = layerTypeCatalogService.TryAddLayerType(new LayerTypeDefinition(
-            GlobalLayerTypeIdTextBox.Text ?? string.Empty,
-            GlobalLayerTypeNameTextBox.Text ?? string.Empty,
+            idText,
+            nameText,
             precedence,
             LayerMergePolicy.MergeForEffectiveMask,
             LayerTypeBehaviorClass.Informational));
         if (!result.Added)
         {
-            GlobalLayerTypeDeleteStatusText.Text = result.Warning;
+            LayerWorkspaceControl.SetDeleteStatus(result.Warning, false);
             SetStatus($"Status: {result.Warning}");
             return;
         }
@@ -3012,23 +2892,25 @@ public partial class MainWindow : AppWindow, IOutputPort
         layerTypeCatalogService = result.Catalog;
         layerTypeSettingsStore.Save(layerTypeCatalogService.GetOrderedByPrecedence());
         RefreshLayerTypeUi();
-        SetStatus($"Status: added Layer Type {GlobalLayerTypeNameTextBox.Text}.");
+        SetStatus($"Status: added Layer Type {nameText}.");
     }
 
     private void DeleteGlobalLayerTypeButtonOnClick(object? sender, RoutedEventArgs e)
     {
-        if (GlobalLayerTypesListBox.SelectedItem is not GlobalLayerTypeListItem selected)
+        var selectedLayerTypeId = LayerWorkspaceControl.SelectedLayerTypeId;
+        var selectedDisplayName = LayerWorkspaceControl.SelectedLayerTypeDisplayName;
+        if (string.IsNullOrWhiteSpace(selectedLayerTypeId))
         {
             return;
         }
 
         var usage = BuildLayerTypeUsageProjection(
-            selected.LayerTypeId,
+            selectedLayerTypeId,
             cameraZoneLayers,
             cameraZoneIdentityService.CameraZones,
             cameraZoneIdentityService.SourceBindings,
             BuildCameraDisplayNamesBySourceId());
-        var deleteState = BuildLayerTypeDeleteState(selected.LayerTypeId, usage);
+        var deleteState = BuildLayerTypeDeleteState(selectedLayerTypeId, usage);
         if (!deleteState.CanDelete)
         {
             SetStatus($"Status: {deleteState.Message}");
@@ -3036,10 +2918,10 @@ public partial class MainWindow : AppWindow, IOutputPort
             return;
         }
 
-        layerTypeCatalogService = layerTypeCatalogService.RemoveLayerType(selected.LayerTypeId);
+        layerTypeCatalogService = layerTypeCatalogService.RemoveLayerType(selectedLayerTypeId);
         layerTypeSettingsStore.Save(layerTypeCatalogService.GetOrderedByPrecedence());
         RefreshLayerTypeUi();
-        SetStatus($"Status: deleted Layer Type {selected.DisplayName}.");
+        SetStatus($"Status: deleted Layer Type {selectedDisplayName}.");
     }
 
     private void DeleteLayerButtonOnClick(object? sender, RoutedEventArgs e)
@@ -3226,7 +3108,7 @@ public partial class MainWindow : AppWindow, IOutputPort
         if (TryGetCamera(target, out var camera))
         {
             ApplySettingsToUi(GetSettingsForCamera(camera.Id));
-            CurrentVideoText.Text = BuildCurrentSourceText(camera);
+            CameraWorkspaceControl.SetCurrentVideo(BuildCurrentSourceText(camera));
             OpenBakedMaskButton.IsEnabled = camera.CanOpenBakedMask;
             SetStatus($"Status: selected camera {camera.DisplayName}");
         }
@@ -3316,7 +3198,7 @@ public partial class MainWindow : AppWindow, IOutputPort
 
     private void SetStatus(string text)
     {
-        StatusText.Text = text;
+        CameraWorkspaceControl.SetStatus(text);
         AppendLog(text);
     }
 
@@ -3407,21 +3289,17 @@ public partial class MainWindow : AppWindow, IOutputPort
             fallback = CreateDefaultColorCalibrations().First(profile => profile.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase));
         }
 
+        var minimumColor = CalibrationColorMinPicker.Color;
+        var maximumColor = CalibrationColorMaxPicker.Color;
+        var (hueLower, hueUpper, saturationLower, saturationUpper, valueLower, valueUpper) = BuildCalibrationBoundsFromColor(minimumColor, maximumColor);
         var updated = NormalizeColorCalibration(new ColorCalibrationProfile(
             selectedColor,
-            ParseInt(HueLowerTextBox.Text, fallback.HueLower, 0, 180),
-            ParseInt(HueUpperTextBox.Text, fallback.HueUpper, 0, 180),
-            ParseInt(SaturationLowerTextBox.Text, fallback.SaturationLower, 0, 255),
-            ParseInt(SaturationUpperTextBox.Text, fallback.SaturationUpper, 0, 255),
-            ParseInt(ValueLowerTextBox.Text, fallback.ValueLower, 0, 255),
-            ParseInt(ValueUpperTextBox.Text, fallback.ValueUpper, 0, 255)));
-
-        HueLowerTextBox.Text = updated.HueLower.ToString();
-        HueUpperTextBox.Text = updated.HueUpper.ToString();
-        SaturationLowerTextBox.Text = updated.SaturationLower.ToString();
-        SaturationUpperTextBox.Text = updated.SaturationUpper.ToString();
-        ValueLowerTextBox.Text = updated.ValueLower.ToString();
-        ValueUpperTextBox.Text = updated.ValueUpper.ToString();
+            hueLower,
+            hueUpper,
+            saturationLower,
+            saturationUpper,
+            valueLower,
+            valueUpper));
 
         var result = source
             .Where(profile => !string.IsNullOrWhiteSpace(profile.Name))
@@ -3453,12 +3331,8 @@ public partial class MainWindow : AppWindow, IOutputPort
             profile = CreateDefaultColorCalibrations().First(item => item.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase));
         }
 
-        HueLowerTextBox.Text = profile.HueLower.ToString();
-        HueUpperTextBox.Text = profile.HueUpper.ToString();
-        SaturationLowerTextBox.Text = profile.SaturationLower.ToString();
-        SaturationUpperTextBox.Text = profile.SaturationUpper.ToString();
-        ValueLowerTextBox.Text = profile.ValueLower.ToString();
-        ValueUpperTextBox.Text = profile.ValueUpper.ToString();
+        CalibrationColorMinPicker.Color = BuildRepresentativeColor(profile, useLowerBound: true);
+        CalibrationColorMaxPicker.Color = BuildRepresentativeColor(profile, useLowerBound: false);
     }
 
     private string? GetCalibrationSelectionName()
@@ -3483,6 +3357,113 @@ public partial class MainWindow : AppWindow, IOutputPort
             Math.Clamp(profile.SaturationUpper, 0, 255),
             Math.Clamp(profile.ValueLower, 0, 255),
             Math.Clamp(profile.ValueUpper, 0, 255));
+    }
+
+    private static (int HueLower, int HueUpper, int SaturationLower, int SaturationUpper, int ValueLower, int ValueUpper) BuildCalibrationBoundsFromColor(Color minimumColor, Color maximumColor)
+    {
+        var (hMin, sMin, vMin) = ToHsv(minimumColor);
+        var (hMax, sMax, vMax) = ToHsv(maximumColor);
+
+        return (
+            Math.Clamp((int)Math.Round(hMin / 2.0), 0, 180),
+            Math.Clamp((int)Math.Round(hMax / 2.0), 0, 180),
+            Math.Clamp((int)Math.Round(sMin * 255.0), 0, 255),
+            Math.Clamp((int)Math.Round(sMax * 255.0), 0, 255),
+            Math.Clamp((int)Math.Round(vMin * 255.0), 0, 255),
+            Math.Clamp((int)Math.Round(vMax * 255.0), 0, 255));
+    }
+
+    private static Color BuildRepresentativeColor(ColorCalibrationProfile profile, bool useLowerBound)
+    {
+        var hue = useLowerBound ? profile.HueLower : profile.HueUpper;
+        var saturation = useLowerBound ? profile.SaturationLower : profile.SaturationUpper;
+        var value = useLowerBound ? profile.ValueLower : profile.ValueUpper;
+
+        return FromHsv(hue * 2.0, saturation / 255.0, value / 255.0);
+    }
+
+    private static (double H, double S, double V) ToHsv(Color color)
+    {
+        var r = color.R / 255.0;
+        var g = color.G / 255.0;
+        var b = color.B / 255.0;
+
+        var max = Math.Max(r, Math.Max(g, b));
+        var min = Math.Min(r, Math.Min(g, b));
+        var delta = max - min;
+
+        var h = 0.0;
+        if (delta > 0)
+        {
+            if (Math.Abs(max - r) < 1e-9)
+            {
+                h = 60.0 * ((g - b) / delta % 6.0);
+            }
+            else if (Math.Abs(max - g) < 1e-9)
+            {
+                h = 60.0 * ((b - r) / delta + 2.0);
+            }
+            else
+            {
+                h = 60.0 * ((r - g) / delta + 4.0);
+            }
+        }
+
+        var s = max == 0.0 ? 0.0 : delta / max;
+        var v = max;
+
+        return (h, s, v);
+    }
+
+    private static Color FromHsv(double hueDegrees, double saturation, double value)
+    {
+        var c = value * saturation;
+        var x = c * (1.0 - Math.Abs((hueDegrees / 60.0) % 2.0 - 1.0));
+        var m = value - c;
+
+        double r1, g1, b1;
+        if (hueDegrees < 60.0)
+        {
+            r1 = c;
+            g1 = x;
+            b1 = 0.0;
+        }
+        else if (hueDegrees < 120.0)
+        {
+            r1 = x;
+            g1 = c;
+            b1 = 0.0;
+        }
+        else if (hueDegrees < 180.0)
+        {
+            r1 = 0.0;
+            g1 = c;
+            b1 = x;
+        }
+        else if (hueDegrees < 240.0)
+        {
+            r1 = 0.0;
+            g1 = x;
+            b1 = c;
+        }
+        else if (hueDegrees < 300.0)
+        {
+            r1 = x;
+            g1 = 0.0;
+            b1 = c;
+        }
+        else
+        {
+            r1 = c;
+            g1 = 0.0;
+            b1 = x;
+        }
+
+        return new Color(
+            255,
+            (byte)Math.Round((r1 + m) * 255.0),
+            (byte)Math.Round((g1 + m) * 255.0),
+            (byte)Math.Round((b1 + m) * 255.0));
     }
 
     internal static IReadOnlyList<ColorCalibrationProfile> CreateDefaultColorCalibrations()

@@ -1,0 +1,53 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ObjectTracker.UI.Desktop.ColorCalibrationWorkspace">
+    <Border Classes="surface"
+            Padding="16">
+        <StackPanel Spacing="16">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Color Calibration"
+                           Classes="sectionTitle" />
+                <TextBlock Text="Tune the color ranges used for detection from a dedicated workspace."
+                           Classes="muted" />
+            </StackPanel>
+
+            <Border Classes="surfaceAlt"
+                    Padding="8">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,8,*" RowDefinitions="Auto,8,Auto">
+                        <StackPanel Grid.Row="0"
+                                    Grid.Column="0"
+                                    Grid.ColumnSpan="3"
+                                    Spacing="4">
+                            <TextBlock Text="Color"
+                                       Classes="eyebrow" />
+                            <ComboBox x:Name="CalibrationColorComboBox"
+                                      SelectedIndex="0">
+                                <ComboBoxItem Content="red" />
+                                <ComboBoxItem Content="green" />
+                                <ComboBoxItem Content="blue" />
+                                <ComboBoxItem Content="yellow" />
+                                <ComboBoxItem Content="white" />
+                                <ComboBoxItem Content="black" />
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Grid.Row="2"
+                                    Grid.Column="0"
+                                    Spacing="4">
+                            <TextBlock Text="Min color"
+                                       Classes="eyebrow" />
+                            <ColorPicker x:Name="CalibrationColorMinPicker" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="2"
+                                    Grid.Column="2"
+                                    Spacing="4">
+                            <TextBlock Text="Max color"
+                                       Classes="eyebrow" />
+                            <ColorPicker x:Name="CalibrationColorMaxPicker" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Border>
+</UserControl>

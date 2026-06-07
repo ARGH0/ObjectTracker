@@ -1,0 +1,92 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ObjectTracker.UI.Desktop.ViewModels"
+             x:Class="ObjectTracker.UI.Desktop.LayerWorkspace"
+             x:DataType="vm:LayerWorkspaceViewModel"
+             Padding="16">
+    <Border Classes="surface"
+            Padding="16">
+        <Grid ColumnDefinitions="360,16,*"
+              RowDefinitions="Auto,8,*">
+            <StackPanel Grid.Row="0"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="3"
+                        Spacing="4">
+                <TextBlock Text="Layers Workspace"
+                           Classes="sectionTitle" />
+                <TextBlock Text="Global Layer Type management and read-only camera usage."
+                           Classes="muted" />
+            </StackPanel>
+
+            <Border Grid.Row="2"
+                    Grid.Column="0"
+                    Classes="surfaceAlt"
+                    Padding="10">
+                <Grid RowDefinitions="Auto,8,*,8,Auto">
+                    <TextBlock Grid.Row="0"
+                               Text="Layer Types"
+                               Classes="sectionTitle" />
+                    <ListBox Grid.Row="2"
+                             x:Name="GlobalLayerTypesListBox"
+                             SelectionMode="Single" />
+                    <Button Grid.Row="4"
+                            x:Name="DeleteGlobalLayerTypeButton"
+                            Classes="destructive"
+                            Content="Delete Layer Type" />
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="2"
+                  Grid.Column="2"
+                  RowDefinitions="Auto,8,Auto,8,*">
+                <Border Grid.Row="0"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <Grid RowDefinitions="Auto,8,Auto,8,Auto"
+                          ColumnDefinitions="*,8,*,8,*">
+                        <TextBlock Grid.Row="0"
+                                   Grid.Column="0"
+                                   Grid.ColumnSpan="5"
+                                   Text="Global Layer Type"
+                                   Classes="sectionTitle" />
+                        <TextBox Grid.Row="2"
+                                 Grid.Column="0"
+                                 x:Name="GlobalLayerTypeIdTextBox"
+                                 Watermark="Layer Type ID" />
+                        <TextBox Grid.Row="2"
+                                 Grid.Column="2"
+                                 x:Name="GlobalLayerTypeNameTextBox"
+                                 Watermark="Display name" />
+                        <TextBox Grid.Row="2"
+                                 Grid.Column="4"
+                                 x:Name="GlobalLayerTypePrecedenceTextBox"
+                                 Watermark="Precedence" />
+                        <Button Grid.Row="4"
+                                Grid.Column="0"
+                                x:Name="AddGlobalLayerTypeButton"
+                                Classes="primary"
+                                Content="Add Layer Type" />
+                    </Grid>
+                </Border>
+
+                <TextBlock Grid.Row="2"
+                           x:Name="GlobalLayerTypeDeleteStatusText"
+                           Classes="muted"
+                           Text="{Binding DeleteStatus}" />
+
+                <Border Grid.Row="4"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <Grid RowDefinitions="Auto,8,*">
+                        <TextBlock Grid.Row="0"
+                                   Text="Camera Usage"
+                                   Classes="sectionTitle" />
+                        <ListBox Grid.Row="2"
+                                 x:Name="GlobalLayerTypeUsageListBox" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>
+

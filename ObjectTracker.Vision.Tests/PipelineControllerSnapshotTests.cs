@@ -96,6 +96,28 @@ public sealed class PipelineControllerSnapshotTests
     }
 
     [Fact]
+    public async Task StartAsync_WhenDebugViewDisabled_DoesNotEmitPipelineProvidedDebugFrames()
+    {
+        var sourceFrame = new FramePacket("camera-1", 2200, 2, 2, [1, 2, 3]);
+        var movingObservation = new MovingObjectObservation("camera-1", sourceFrame.TimestampUtcMs, 5, 6, 1, 2, 3, 4, 0.5f);
+        var trainObservation = new TrainObservation("camera-1", sourceFrame.TimestampUtcMs, "Red", 10, 20, 8, 18, 12, 14, 0.75f);
+        var pipelineDebugFrame = new DebugFrame("moving-object-evidence", sourceFrame);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new StubVisualObservationPipeline(new VisualObservationResult([movingObservation], [trainObservation], [pipelineDebugFrame])),
+            new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Empty(snapshot.DebugFrames);
+    }
+
+    [Fact]
     public async Task StartAsync_CanPublishSnapshotFromVisualObservationPipeline()
     {
         var sourceFrame = new FramePacket("camera-1", 2200, 2, 2, [1, 2, 3]);
@@ -110,13 +132,15 @@ public sealed class PipelineControllerSnapshotTests
             [output],
             new StubClock(sourceFrame.TimestampUtcMs));
 
+        controller.SetDebugViewEnabled("camera-1", enabled: true);
+
         await controller.StartAsync("camera-1", CancellationToken.None);
         var snapshot = await output.WaitForSnapshotAsync();
         await controller.StopAsync(CancellationToken.None);
 
         Assert.Same(movingObservation, Assert.Single(snapshot.MovingObjectObservations));
         Assert.Same(trainObservation, Assert.Single(snapshot.TrainObservations));
-        Assert.Same(debugFrame, Assert.Single(snapshot.DebugFrames));
+        Assert.Same(debugFrame, snapshot.DebugFrames.First(f => f.Name == "moving-object-observation" && ReferenceEquals(f.Frame, debugFrame.Frame)));
     }
 
     [Fact]

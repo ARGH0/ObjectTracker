@@ -72,9 +72,9 @@ public sealed class CameraTilePipelineSnapshotRenderer
     {
         return name switch
         {
-            "moving-object-observation" or "moving-color" => CameraTileDebugFrameSlot.MovingObjectObservation,
-            "train-observation" or "color-detection" => CameraTileDebugFrameSlot.TrainObservation,
-            "train-tracking" or "motion" => CameraTileDebugFrameSlot.TrainTracking,
+            "moving-object-observation" or "moving-color" or "moving-object-evidence" => CameraTileDebugFrameSlot.MovingObjectObservation,
+            "train-observation" or "color-detection" or "train-color-evidence" => CameraTileDebugFrameSlot.TrainObservation,
+            "train-tracking" or "motion" or "motion-mask" or "rail-roi" => CameraTileDebugFrameSlot.TrainTracking,
             _ => CameraTileDebugFrameSlot.Source
         };
     }

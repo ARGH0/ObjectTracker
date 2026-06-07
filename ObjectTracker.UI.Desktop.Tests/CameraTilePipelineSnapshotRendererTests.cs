@@ -101,6 +101,36 @@ public sealed class CameraTilePipelineSnapshotRendererTests
     }
 
     [Fact]
+    public async Task RenderSnapshotAsync_NewDebugFrameNames_RouteToCorrectSlots()
+    {
+        var renderer = new CameraTilePipelineSnapshotRenderer();
+        var debugFrames = new List<CameraTileDebugFrameSnapshot>();
+        var snapshot = Snapshot(
+            "cam-a",
+            annotatedBytes: [7],
+            debugFrames:
+            [
+                new DebugFrame("moving-object-evidence", new FramePacket("cam-a", 31, 2, 2, [9])),
+                new DebugFrame("train-color-evidence", new FramePacket("cam-a", 32, 2, 2, [10]))
+            ]);
+        var routing = new MainWindow.CameraTileFrameRouting([
+            new MainWindow.CameraTileFrameRoute("cam-a", CameraTileFrameSource.PipelineSnapshotDebugFrames)
+        ]);
+
+        await renderer.RenderSnapshotAsync(snapshot, routing, _ => Task.CompletedTask, debugFrame =>
+        {
+            debugFrames.Add(debugFrame);
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+
+        Assert.Equal(new[]
+        {
+            CameraTileDebugFrameSlot.MovingObjectObservation,
+            CameraTileDebugFrameSlot.TrainObservation
+        }, debugFrames.Select(frame => frame.Slot).ToArray());
+    }
+
+    [Fact]
     public async Task RenderSnapshotAsync_WhenTileRouteUsesRawFeed_DoesNotDisplayPipelineSnapshot()
     {
         var renderer = new CameraTilePipelineSnapshotRenderer();

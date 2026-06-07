@@ -368,9 +368,18 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
                 var fps = CalculateFps(frame.TimestampUtcMs, ref framesInWindow, ref windowStartMs);
                 var renderedFrame = RenderTrainStates(frame, trainStates);
-                var debugFrames = observations.DebugFrames
-                    .Concat(BuildDebugFrames(frame, observations.MovingObjectObservations, observations.TrainObservations, trainStates))
-                    .ToList();
+
+                IReadOnlyList<DebugFrame> debugFrames;
+                if (debugViewCameraSourceIds.Contains(frame.SourceId))
+                {
+                    debugFrames = observations.DebugFrames
+                        .Concat(BuildDebugFrames(frame, observations.MovingObjectObservations, observations.TrainObservations, trainStates))
+                        .ToList();
+                }
+                else
+                {
+                    debugFrames = [];
+                }
                 var snapshot = new PipelineSnapshot(
                     frame.SourceId,
                     frame,

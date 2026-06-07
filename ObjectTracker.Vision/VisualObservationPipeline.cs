@@ -84,7 +84,49 @@ public sealed class VisualObservationPipeline : IVisualObservationPipeline
             var movingObjectObservations = GetMovingObjectObservations(refinedMask, sourceFrame, settings.MotionArea);
             var trainObservations = GetTrainObservations(colorResized, refinedMask, movingObjectObservations, sourceFrame, settings);
 
-            return Task.FromResult(new VisualObservationResult(movingObjectObservations, trainObservations, []));
+            var debugFrames = new List<DebugFrame>();
+
+            Cv.Cv2.Threshold(mask, mask, 0, 255, Cv.ThresholdTypes.Binary);
+            Cv.Cv2.ImEncode(".jpg", mask, out var motionMaskBytes);
+            var motionMaskPacket = new FramePacket(sourceFrame.SourceId, sourceFrame.TimestampUtcMs, mask.Width, mask.Height, motionMaskBytes);
+            debugFrames.Add(new DebugFrame("motion-mask", motionMaskPacket));
+
+            if (railRoiMask is not null)
+            {
+                using var roiOverlay = colorResized.Clone();
+                Cv.Cv2.Rectangle(roiOverlay, new Cv.Rect(0, 0, railRoiMask.Width, railRoiMask.Height), new Cv.Scalar(180, 0, 0), thickness: -1);
+                Cv.Cv2.ImEncode(".jpg", roiOverlay, out var roiBytes);
+                var roiPacket = new FramePacket(sourceFrame.SourceId, sourceFrame.TimestampUtcMs, roiOverlay.Width, roiOverlay.Height, roiBytes);
+                debugFrames.Add(new DebugFrame("rail-roi", roiPacket));
+            }
+
+            if (movingObjectObservations.Count > 0)
+            {
+                using var overlay = colorResized.Clone();
+                foreach (var obs in movingObjectObservations)
+                {
+                    Cv.Cv2.Rectangle(overlay, new Cv.Rect((int)obs.BoxX, (int)obs.BoxY, (int)obs.BoxWidth, (int)obs.BoxHeight), new Cv.Scalar(0, 255, 0), thickness: 1);
+                }
+
+                Cv.Cv2.ImEncode(".jpg", overlay, out var encoded);
+                var debugFramePacket = new FramePacket(sourceFrame.SourceId, sourceFrame.TimestampUtcMs, overlay.Width, overlay.Height, encoded);
+                debugFrames.Add(new DebugFrame("moving-object-evidence", debugFramePacket));
+            }
+
+            if (trainObservations.Count > 0)
+            {
+                using var colorOverlay = colorResized.Clone();
+                foreach (var obs in trainObservations)
+                {
+                    Cv.Cv2.Rectangle(colorOverlay, new Cv.Rect((int)obs.BoxX, (int)obs.BoxY, (int)obs.BoxWidth, (int)obs.BoxHeight), new Cv.Scalar(255, 165, 0), thickness: 2);
+                }
+
+                Cv.Cv2.ImEncode(".jpg", colorOverlay, out var trainEncoded);
+                var trainDebugPacket = new FramePacket(sourceFrame.SourceId, sourceFrame.TimestampUtcMs, colorOverlay.Width, colorOverlay.Height, trainEncoded);
+                debugFrames.Add(new DebugFrame("train-color-evidence", trainDebugPacket));
+            }
+
+            return Task.FromResult(new VisualObservationResult(movingObjectObservations, trainObservations, debugFrames));
         }
     }
 

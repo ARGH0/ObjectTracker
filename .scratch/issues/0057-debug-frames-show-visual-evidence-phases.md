@@ -1,7 +1,7 @@
 # Debug Frames Show Visual Evidence Phases
 
-Type: AFK  
-Labels: ready-for-agent
+Type: DONE  
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Emit Debug Frames that show the actual visual evidence phases used by the Vision
 
 ## Acceptance criteria
 
-- [ ] Debug Frames are emitted through PipelineSnapshot only when Debug View is enabled for the Camera Source.
-- [ ] Debug Frames include visual evidence phases rather than copied placeholder Source Frames.
-- [ ] Debug View routes the current Debug Frame names without dropping visual evidence.
-- [ ] Tests prove PipelineSnapshot Debug Frames explain Moving Object Observations and Train Observations.
+- [x] Debug Frames are emitted through PipelineSnapshot only when Debug View is enabled for the Camera Source.
+- [x] Debug Frames include visual evidence phases rather than copied placeholder Source Frames.
+- [x] Debug View routes the current Debug Frame names without dropping visual evidence.
+- [x] Tests prove PipelineSnapshot Debug Frames explain Moving Object Observations and Train Observations.
 
 ## Blocked by
 

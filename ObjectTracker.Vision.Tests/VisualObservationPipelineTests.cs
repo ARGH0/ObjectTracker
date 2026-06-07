@@ -7,6 +7,106 @@ namespace ObjectTracker.Vision.Tests;
 public sealed class VisualObservationPipelineTests
 {
     [Fact]
+    public async Task ObserveAsync_ReturnsMovingObjectEvidenceDebugFrame_WhenMotionDetected()
+    {
+        var pipeline = new VisualObservationPipeline();
+        var settings = VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 40,
+            MorphKernelSize = 1,
+            ProcessMaxWidth = 100
+        };
+
+        await pipeline.ObserveAsync(CreateFrame("camera-1", 1000), settings, CancellationToken.None);
+
+        var result = await pipeline.ObserveAsync(
+            CreateFrame("camera-1", 1100, new Cv.Rect(20, 12, 12, 10)),
+            settings,
+            CancellationToken.None);
+
+        var movingEvidence = Assert.Single(result.DebugFrames, f => f.Name == "moving-object-evidence");
+        Assert.NotEqual(default, movingEvidence.Frame.EncodedJpeg);
+    }
+
+    [Fact]
+    public async Task ObserveAsync_ReturnsMotionMaskDebugFrame_WhenMotionDetected()
+    {
+        var pipeline = new VisualObservationPipeline();
+        var settings = VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 40,
+            MorphKernelSize = 1,
+            ProcessMaxWidth = 100
+        };
+
+        await pipeline.ObserveAsync(CreateFrame("camera-1", 1000), settings, CancellationToken.None);
+
+        var result = await pipeline.ObserveAsync(
+            CreateFrame("camera-1", 1100, new Cv.Rect(20, 12, 12, 10)),
+            settings,
+            CancellationToken.None);
+
+        var motionMaskDebug = Assert.Single(result.DebugFrames, f => f.Name == "motion-mask");
+        Assert.NotEqual(default, motionMaskDebug.Frame.EncodedJpeg);
+    }
+
+    [Fact]
+    public async Task ObserveAsync_ReturnsRailRoiDebugFrame_WhenRailRoiConfigured()
+    {
+        var pipeline = new VisualObservationPipeline();
+        using var railRoiMat = new Cv.Mat(50, 80, Cv.MatType.CV_8UC1, Cv.Scalar.Black);
+        Cv.Cv2.Rectangle(railRoiMat, new Cv.Rect(30, 10, 20, 30), Cv.Scalar.White, -1);
+        var railRoiEncoded = EncodeToJpeg(railRoiMat);
+
+        var settings = VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 40,
+            MorphKernelSize = 1,
+            ProcessMaxWidth = 80,
+            EncodedBackground = CreateEncodedImage(width: 80, height: 50),
+            EncodedRailRoiMask = railRoiEncoded
+        };
+
+        await pipeline.ObserveAsync(CreateFrame("camera-1", 1000), settings, CancellationToken.None);
+
+        var result = await pipeline.ObserveAsync(
+            CreateFrame("camera-1", 1100, new Cv.Rect(35, 20, 12, 10)),
+            settings,
+            CancellationToken.None);
+
+        Assert.Single(result.DebugFrames, f => f.Name == "rail-roi");
+    }
+
+    [Fact]
+    public async Task ObserveAsync_ReturnsTrainColorEvidenceDebugFrame_WhenTrainObservationDetected()
+    {
+        var pipeline = new VisualObservationPipeline();
+        var settings = VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 40,
+            ColorMinPixels = 40,
+            MorphKernelSize = 1,
+            ProcessMaxWidth = 100,
+            ColorCalibrations = [new ColorCalibrationProfile("Red", 0, 10, 100, 255, 100, 255)]
+        };
+
+        await pipeline.ObserveAsync(CreateFrame("camera-1", 1000), settings, CancellationToken.None);
+
+        var result = await pipeline.ObserveAsync(
+            CreateFrame("camera-1", 1100, new Cv.Rect(20, 12, 12, 10), Cv.Scalar.Red),
+            settings,
+            CancellationToken.None);
+
+        Assert.Single(result.TrainObservations);
+        var trainColorDebug = Assert.Single(result.DebugFrames, f => f.Name == "train-color-evidence");
+        Assert.NotEqual(default, trainColorDebug.Frame.EncodedJpeg);
+    }
+
+    [Fact]
     public async Task ObserveAsync_EmitsMovingObjectObservation_WhenForegroundMotionExceedsThresholdAndMotionArea()
     {
         var pipeline = new VisualObservationPipeline();

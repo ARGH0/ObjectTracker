@@ -1,7 +1,7 @@
 # Annotated Frames Stay Train State Focused
 
-Type: AFK  
-Labels: ready-for-agent
+Type: DONE  
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Keep Annotated Frames focused on Train State while Moving Object Observations an
 
 ## Acceptance criteria
 
-- [ ] Annotated Frames draw Train State by default.
-- [ ] Moving Object Observations and Train Observations are not drawn on Annotated Frames unless represented as Train State.
-- [ ] Debug Frames remain the operator-facing path for visual evidence phases.
-- [ ] Tests prove observation-only snapshots do not annotate the normal tile as if Train State exists.
+- [x] Annotated Frames draw Train State by default.
+- [x] Moving Object Observations and Train Observations are not drawn on Annotated Frames unless represented as Train State.
+- [x] Debug Frames remain the operator-facing path for visual evidence phases.
+- [x] Tests prove observation-only snapshots do not annotate the normal tile as if Train State exists.
 
 ## Blocked by
 

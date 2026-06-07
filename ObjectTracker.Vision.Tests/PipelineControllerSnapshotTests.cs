@@ -247,6 +247,50 @@ public sealed class PipelineControllerSnapshotTests
     }
 
     [Fact]
+    public async Task StartAsync_WhenOnlyMovingObjectObservations_PublishesUnmodifiedAnnotatedFrame()
+    {
+        var sourceFrame = JpegFrame("camera-1", 1234);
+        var movingEvidence = new MovingObjectObservation("camera-1", sourceFrame.TimestampUtcMs, 5, 6, 1, 2, 3, 4, 0.5f);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new StubVisualObservationPipeline(new VisualObservationResult([movingEvidence], [], [])),
+            new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Single(snapshot.MovingObjectObservations);
+        Assert.Empty(snapshot.TrainStates);
+        Assert.Equal(sourceFrame.EncodedJpeg, snapshot.AnnotatedFrame.EncodedJpeg);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenOnlyTrainObservations_PublishesUnmodifiedAnnotatedFrame()
+    {
+        var sourceFrame = JpegFrame("camera-1", 1234);
+        var observation = new TrainObservation("camera-1", sourceFrame.TimestampUtcMs, "Red", 10, 10, 4, 4, 8, 8, 0.75f);
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new StubVisualObservationPipeline(new VisualObservationResult([], [observation], [])),
+            new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.Single(snapshot.TrainObservations);
+        Assert.Empty(snapshot.TrainStates);
+        Assert.Equal(sourceFrame.EncodedJpeg, snapshot.AnnotatedFrame.EncodedJpeg);
+    }
+
+    [Fact]
     public async Task StartAsync_WhenTrainObservationHasNoTrainState_DoesNotDrawObservationOnAnnotatedFrame()
     {
         var sourceFrame = JpegFrame("camera-1", 1234);

@@ -1,7 +1,7 @@
 # Foreground Motion Produces Moving Object Observations
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Move background-diff foreground extraction and Motion Area filtering into the vi
 
 ## Acceptance criteria
 
-- [ ] Background-diff foreground extraction is available through the visual observation module.
-- [ ] Motion Area filters tiny foreground components before they become Moving Object Observations.
-- [ ] A test proves foreground motion above the threshold and Motion Area emits a Moving Object Observation.
-- [ ] A test proves foreground noise below Motion Area does not emit a Moving Object Observation.
+- [x] Background-diff foreground extraction is available through the visual observation module.
+- [x] Motion Area filters tiny foreground components before they become Moving Object Observations.
+- [x] A test proves foreground motion above the threshold and Motion Area emits a Moving Object Observation.
+- [x] A test proves foreground noise below Motion Area does not emit a Moving Object Observation.
 
 ## Blocked by
 

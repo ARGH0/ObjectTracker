@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using ObjectTracker.UI.Desktop.Enums;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;

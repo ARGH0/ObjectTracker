@@ -1,5 +1,6 @@
 using System.Linq;
 using ObjectTracker.UI.Desktop;
+using ObjectTracker.UI.Desktop.Enums;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;
@@ -11,7 +12,7 @@ public sealed class MainWindowCameraGridProjectionTests
     {
         var mode = MainWindow.GetCameraRenderMode(isIncludedInVisionPipeline: false, debugViewEnabled: true);
 
-        Assert.Equal(MainWindow.CameraRenderMode.RawFeed, mode);
+        Assert.Equal(CameraRenderMode.RawFeed, mode);
     }
 
     [Fact]
@@ -19,7 +20,7 @@ public sealed class MainWindowCameraGridProjectionTests
     {
         var mode = MainWindow.GetCameraRenderMode(isIncludedInVisionPipeline: true, debugViewEnabled: true);
 
-        Assert.Equal(MainWindow.CameraRenderMode.DebugView, mode);
+        Assert.Equal(CameraRenderMode.DebugView, mode);
     }
 
     [Fact]
@@ -30,7 +31,7 @@ public sealed class MainWindowCameraGridProjectionTests
             debugViewEnabled: true,
             isVisionPipelineRunning: false);
 
-        Assert.Equal(MainWindow.CameraRenderMode.RawFeed, mode);
+        Assert.Equal(CameraRenderMode.RawFeed, mode);
     }
 
     [Fact]
@@ -38,7 +39,7 @@ public sealed class MainWindowCameraGridProjectionTests
     {
         var mode = MainWindow.GetCameraRenderMode(isIncludedInVisionPipeline: true, debugViewEnabled: false);
 
-        Assert.Equal(MainWindow.CameraRenderMode.LiveAnnotated, mode);
+        Assert.Equal(CameraRenderMode.LiveAnnotated, mode);
     }
 
     [Theory]
@@ -52,10 +53,10 @@ public sealed class MainWindowCameraGridProjectionTests
     }
 
     [Theory]
-    [InlineData(MainWindow.CameraRenderMode.RawFeed, "RAW FEED")]
-    [InlineData(MainWindow.CameraRenderMode.DebugView, "DEBUG VIEW")]
-    [InlineData(MainWindow.CameraRenderMode.LiveAnnotated, "LIVE ANNOTATED")]
-    public void CameraRenderModeBadge_ReturnsExpectedLabel(MainWindow.CameraRenderMode mode, string expected)
+    [InlineData(CameraRenderMode.RawFeed, "RAW FEED")]
+    [InlineData(CameraRenderMode.DebugView, "DEBUG VIEW")]
+    [InlineData(CameraRenderMode.LiveAnnotated, "LIVE ANNOTATED")]
+    public void CameraRenderModeBadge_ReturnsExpectedLabel(CameraRenderMode mode, string expected)
     {
         Assert.Equal(expected, MainWindow.GetCameraRenderModeBadge(mode));
     }
@@ -129,7 +130,7 @@ public sealed class MainWindowCameraGridProjectionTests
         Assert.Equal("1. Camera C [LiveAnnotated]", viewState.Titles[0]);
         Assert.Equal("2. Camera A [LiveAnnotated]", viewState.Titles[1]);
         Assert.Equal(new[] { "cam-c", "cam-a" }, viewState.CameraIds.ToArray());
-        Assert.Equal(new[] { MainWindow.CameraRenderMode.LiveAnnotated, MainWindow.CameraRenderMode.LiveAnnotated }, viewState.RenderModes.ToArray());
+        Assert.Equal(new[] { CameraRenderMode.LiveAnnotated, CameraRenderMode.LiveAnnotated }, viewState.RenderModes.ToArray());
     }
 
     [Fact]
@@ -164,9 +165,9 @@ public sealed class MainWindowCameraGridProjectionTests
 
         Assert.Equal(new[]
         {
-            MainWindow.CameraRenderMode.RawFeed,
-            MainWindow.CameraRenderMode.DebugView,
-            MainWindow.CameraRenderMode.LiveAnnotated
+            CameraRenderMode.RawFeed,
+            CameraRenderMode.DebugView,
+            CameraRenderMode.LiveAnnotated
         }, viewState.RenderModes.ToArray());
     }
 
@@ -185,7 +186,7 @@ public sealed class MainWindowCameraGridProjectionTests
             route =>
             {
                 Assert.Equal("cam-a", route.CameraId);
-                Assert.Equal(MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame, route.FrameSource);
+                Assert.Equal(CameraTileFrameSource.PipelineSnapshotAnnotatedFrame, route.FrameSource);
             });
     }
 
@@ -201,7 +202,7 @@ public sealed class MainWindowCameraGridProjectionTests
 
         Assert.Collection(
             routing.Routes,
-            route => Assert.Equal(MainWindow.CameraTileFrameSource.PipelineSnapshotDebugFrames, route.FrameSource));
+            route => Assert.Equal(CameraTileFrameSource.PipelineSnapshotDebugFrames, route.FrameSource));
     }
 
     [Theory]
@@ -222,7 +223,7 @@ public sealed class MainWindowCameraGridProjectionTests
 
         Assert.Collection(
             routing.Routes,
-            route => Assert.Equal(MainWindow.CameraTileFrameSource.RawCameraSourceFeed, route.FrameSource));
+            route => Assert.Equal(CameraTileFrameSource.RawCameraSourceFeed, route.FrameSource));
     }
 
     [Fact]
@@ -270,9 +271,9 @@ public sealed class MainWindowCameraGridProjectionTests
             var route = Assert.Single(routing.Routes);
             var expected = combination.isIncludedInVisionPipeline && combination.isVisionPipelineRunning
                 ? combination.debugViewEnabled
-                    ? MainWindow.CameraTileFrameSource.PipelineSnapshotDebugFrames
-                    : MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame
-                : MainWindow.CameraTileFrameSource.RawCameraSourceFeed;
+                    ? CameraTileFrameSource.PipelineSnapshotDebugFrames
+                    : CameraTileFrameSource.PipelineSnapshotAnnotatedFrame
+                : CameraTileFrameSource.RawCameraSourceFeed;
             Assert.Equal(expected, route.FrameSource);
         }
     }
@@ -287,7 +288,7 @@ public sealed class MainWindowCameraGridProjectionTests
 
         var viewState = MainWindow.BuildCameraTileViewState(projection);
 
-        Assert.Equal(new[] { MainWindow.CameraRenderMode.RawFeed }, viewState.RenderModes.ToArray());
+        Assert.Equal(new[] { CameraRenderMode.RawFeed }, viewState.RenderModes.ToArray());
     }
 
     [Theory]

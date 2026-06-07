@@ -1,4 +1,5 @@
 using ObjectTracker.Core.Domain;
+using ObjectTracker.Core.Domain.Enums;
 using ObjectTracker.Core.Ports;
 using Xunit;
 using Cv = OpenCvSharp;

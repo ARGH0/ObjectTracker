@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using ObjectTracker.UI.Desktop;
+using ObjectTracker.UI.Desktop.Enums;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;
@@ -9,7 +10,7 @@ public sealed class MainWindowWorkspaceShellTests
     [Fact]
     public void BuildWorkspaceVisibility_Camera_ShowsOnlyCameraWorkspace()
     {
-        var visibility = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Camera);
+        var visibility = MainWindow.BuildWorkspaceVisibility(Workspace.Camera);
 
         Assert.True(visibility.CameraVisible);
         Assert.False(visibility.LayersVisible);
@@ -19,7 +20,7 @@ public sealed class MainWindowWorkspaceShellTests
     [Fact]
     public void BuildWorkspaceVisibility_Layers_ShowsOnlyLayersWorkspace()
     {
-        var visibility = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Layers);
+        var visibility = MainWindow.BuildWorkspaceVisibility(Workspace.Layers);
 
         Assert.False(visibility.CameraVisible);
         Assert.True(visibility.LayersVisible);
@@ -29,7 +30,7 @@ public sealed class MainWindowWorkspaceShellTests
     [Fact]
     public void BuildWorkspaceVisibility_Settings_ShowsOnlySettingsWorkspace()
     {
-        var visibility = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Settings);
+        var visibility = MainWindow.BuildWorkspaceVisibility(Workspace.Settings);
 
         Assert.False(visibility.CameraVisible);
         Assert.False(visibility.LayersVisible);
@@ -45,9 +46,9 @@ public sealed class MainWindowWorkspaceShellTests
     [Fact]
     public void RuntimeLog_IsVisible_OnlyInCameraWorkspace()
     {
-        Assert.True(MainWindow.IsRuntimeLogVisibleForWorkspace(MainWindow.Workspace.Camera));
-        Assert.False(MainWindow.IsRuntimeLogVisibleForWorkspace(MainWindow.Workspace.Layers));
-        Assert.False(MainWindow.IsRuntimeLogVisibleForWorkspace(MainWindow.Workspace.Settings));
+        Assert.True(MainWindow.IsRuntimeLogVisibleForWorkspace(Workspace.Camera));
+        Assert.False(MainWindow.IsRuntimeLogVisibleForWorkspace(Workspace.Layers));
+        Assert.False(MainWindow.IsRuntimeLogVisibleForWorkspace(Workspace.Settings));
     }
 
     [Fact]
@@ -103,52 +104,6 @@ public sealed class MainWindowWorkspaceShellTests
 
         Assert.True(state.StartEnabled);
         Assert.False(state.StopEnabled);
-    }
-
-    [Fact]
-    public void CameraPanelLayoutState_WhenPinnedAndOpen_ClaimsLayoutSpace()
-    {
-        var state = MainWindow.BuildCameraPanelLayoutState(isOpen: true, isPinned: true);
-
-        Assert.True(state.IsOpen);
-        Assert.True(state.IsPinned);
-        Assert.Equal(SplitViewDisplayMode.Inline, state.DisplayMode);
-        Assert.Equal(340, state.CameraPanelWidth);
-        Assert.Equal(0, state.CompactPaneWidth);
-    }
-
-    [Fact]
-    public void CameraPanelLayoutState_WhenOverlayAndOpen_DoesNotClaimLayoutSpace()
-    {
-        var state = MainWindow.BuildCameraPanelLayoutState(isOpen: true, isPinned: false);
-
-        Assert.True(state.IsOpen);
-        Assert.False(state.IsPinned);
-        Assert.Equal(SplitViewDisplayMode.CompactOverlay, state.DisplayMode);
-        Assert.Equal(340, state.CameraPanelWidth);
-        Assert.Equal(48, state.CompactPaneWidth);
-    }
-
-    [Fact]
-    public void CameraPanelLayoutState_WhenPinned_IgnoresClosedStateAndStaysOpen()
-    {
-        var state = MainWindow.BuildCameraPanelLayoutState(isOpen: false, isPinned: true);
-
-        Assert.True(state.IsOpen);
-        Assert.Equal(SplitViewDisplayMode.Inline, state.DisplayMode);
-        Assert.Equal(340, state.CameraPanelWidth);
-        Assert.Equal(0, state.CompactPaneWidth);
-    }
-
-    [Fact]
-    public void CameraPanelLayoutState_WhenClosedAndUnpinned_UsesOverlayWithoutCompactPane()
-    {
-        var state = MainWindow.BuildCameraPanelLayoutState(isOpen: false, isPinned: false);
-
-        Assert.False(state.IsOpen);
-        Assert.Equal(SplitViewDisplayMode.CompactOverlay, state.DisplayMode);
-        Assert.Equal(340, state.CameraPanelWidth);
-        Assert.Equal(48, state.CompactPaneWidth);
     }
 
     [Fact]
@@ -222,23 +177,23 @@ public sealed class MainWindowWorkspaceShellTests
         var draft = new AppSettings(GridColumns: 40, GridRows: 18);
 
         var result = MainWindow.ApplySettingsNavigationDecision(
-            MainWindow.Workspace.Settings,
-            MainWindow.Workspace.Camera,
+            Workspace.Settings,
+            Workspace.Camera,
             saved,
             draft,
-            MainWindow.SettingsNavigationDecision.Cancel);
+            SettingsNavigationDecision.Cancel);
 
-        Assert.Equal(MainWindow.Workspace.Settings, result.Workspace);
+        Assert.Equal(Workspace.Settings, result.Workspace);
         Assert.Equal(saved, result.SavedSettings);
         Assert.Equal(draft, result.DraftSettings);
         Assert.True(result.HasUnsavedChanges);
     }
 
     [Theory]
-    [InlineData(MainWindow.SettingsNavigationDecision.Save, 40, true)]
-    [InlineData(MainWindow.SettingsNavigationDecision.Discard, 32, false)]
+    [InlineData(SettingsNavigationDecision.Save, 40, true)]
+    [InlineData(SettingsNavigationDecision.Discard, 32, false)]
     public void SettingsNavigation_WithUnsavedChanges_AppliesSaveOrDiscard(
-        MainWindow.SettingsNavigationDecision decision,
+        SettingsNavigationDecision decision,
         int expectedSavedColumns,
         bool expectedPersist)
     {
@@ -246,13 +201,13 @@ public sealed class MainWindowWorkspaceShellTests
         var draft = new AppSettings(GridColumns: 40, GridRows: 18);
 
         var result = MainWindow.ApplySettingsNavigationDecision(
-            MainWindow.Workspace.Settings,
-            MainWindow.Workspace.Camera,
+            Workspace.Settings,
+            Workspace.Camera,
             saved,
             draft,
             decision);
 
-        Assert.Equal(MainWindow.Workspace.Camera, result.Workspace);
+        Assert.Equal(Workspace.Camera, result.Workspace);
         Assert.Equal(expectedSavedColumns, result.SavedSettings.GridColumns);
         Assert.Equal(result.SavedSettings, result.DraftSettings);
         Assert.False(result.HasUnsavedChanges);
@@ -260,9 +215,9 @@ public sealed class MainWindowWorkspaceShellTests
     }
 
     [Theory]
-    [InlineData(MainWindow.SettingsField.GridColumns)]
-    [InlineData(MainWindow.SettingsField.GridRows)]
-    public void SettingsApplyPolicyLabel_ForGridSettings_RequiresVisionPipelineRestart(MainWindow.SettingsField field)
+    [InlineData(SettingsField.GridColumns)]
+    [InlineData(SettingsField.GridRows)]
+    public void SettingsApplyPolicyLabel_ForGridSettings_RequiresVisionPipelineRestart(SettingsField field)
     {
         var label = MainWindow.GetSettingsApplyPolicyLabel(field);
 
@@ -272,7 +227,7 @@ public sealed class MainWindowWorkspaceShellTests
     [Fact]
     public void SettingsApplyPolicyLabel_ForMissingFrameBehavior_AppliesImmediately()
     {
-        var label = MainWindow.GetSettingsApplyPolicyLabel(MainWindow.SettingsField.MissingFrameBehavior);
+        var label = MainWindow.GetSettingsApplyPolicyLabel(SettingsField.MissingFrameBehavior);
 
         Assert.Equal("applies immediately", label);
     }

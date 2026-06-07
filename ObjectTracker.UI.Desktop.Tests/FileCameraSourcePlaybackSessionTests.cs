@@ -1,3 +1,4 @@
+using ObjectTracker.UI.Desktop.Enums;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;

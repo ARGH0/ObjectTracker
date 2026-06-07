@@ -1,5 +1,6 @@
 using ObjectTracker.Core.Domain;
 using ObjectTracker.UI.Desktop;
+using ObjectTracker.UI.Desktop.Enums;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;
@@ -16,7 +17,7 @@ public sealed class CameraTilePipelineSnapshotRendererTests
             annotatedBytes: [7],
             debugFrames: []);
         var routing = new MainWindow.CameraTileFrameRouting([
-            new MainWindow.CameraTileFrameRoute("cam-a", MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame)
+            new MainWindow.CameraTileFrameRoute("cam-a", CameraTileFrameSource.PipelineSnapshotAnnotatedFrame)
         ]);
 
         await renderer.RenderSnapshotAsync(snapshot, routing, frame =>
@@ -46,7 +47,7 @@ public sealed class CameraTilePipelineSnapshotRendererTests
                 new DebugFrame("train-tracking", new FramePacket("cam-a", 31, 2, 2, [9]))
             ]);
         var routing = new MainWindow.CameraTileFrameRouting([
-            new MainWindow.CameraTileFrameRoute("cam-a", MainWindow.CameraTileFrameSource.PipelineSnapshotDebugFrames)
+            new MainWindow.CameraTileFrameRoute("cam-a", CameraTileFrameSource.PipelineSnapshotDebugFrames)
         ]);
 
         await renderer.RenderSnapshotAsync(snapshot, routing, frame =>
@@ -81,7 +82,7 @@ public sealed class CameraTilePipelineSnapshotRendererTests
                 new DebugFrame("train-tracking", new FramePacket("cam-a", 33, 2, 2, [11]))
             ]);
         var routing = new MainWindow.CameraTileFrameRouting([
-            new MainWindow.CameraTileFrameRoute("cam-a", MainWindow.CameraTileFrameSource.PipelineSnapshotDebugFrames)
+            new MainWindow.CameraTileFrameRoute("cam-a", CameraTileFrameSource.PipelineSnapshotDebugFrames)
         ]);
 
         await renderer.RenderSnapshotAsync(snapshot, routing, _ => Task.CompletedTask, debugFrame =>
@@ -109,7 +110,7 @@ public sealed class CameraTilePipelineSnapshotRendererTests
             annotatedBytes: [7],
             debugFrames: []);
         var routing = new MainWindow.CameraTileFrameRouting([
-            new MainWindow.CameraTileFrameRoute("cam-a", MainWindow.CameraTileFrameSource.RawCameraSourceFeed)
+            new MainWindow.CameraTileFrameRoute("cam-a", CameraTileFrameSource.RawCameraSourceFeed)
         ]);
 
         await renderer.RenderSnapshotAsync(snapshot, routing, frame =>

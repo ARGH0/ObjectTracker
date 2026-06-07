@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ObjectTracker.Core.Domain;
+using ObjectTracker.Core.Domain.Enums;
 using ObjectTracker.Core.Ports;
 using ObjectTracker.UI.Desktop;
+using ObjectTracker.UI.Desktop.Enums;
 using ObjectTracker.Vision;
 using ObjectTracker.Vision.Source;
 using OpenCvSharp;
@@ -16,9 +18,9 @@ public sealed class MainWindowEndToEndRegressionTests
     [Fact]
     public void WorkspaceAndRuntimeControls_EndToEnd_PreserveNavigationAndRuntimeValidity()
     {
-        var cameraWorkspace = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Camera);
-        var layersWorkspace = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Layers);
-        var settingsWorkspace = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Settings);
+        var cameraWorkspace = MainWindow.BuildWorkspaceVisibility(Workspace.Camera);
+        var layersWorkspace = MainWindow.BuildWorkspaceVisibility(Workspace.Layers);
+        var settingsWorkspace = MainWindow.BuildWorkspaceVisibility(Workspace.Settings);
         var stoppedMenu = MainWindow.BuildVisionPipelineMenuState(isVisionPipelineRunning: false);
         var runningMenu = MainWindow.BuildVisionPipelineMenuState(isVisionPipelineRunning: true);
         var pendingStatus = MainWindow.BuildBottomStatusSnapshot(
@@ -61,8 +63,8 @@ public sealed class MainWindowEndToEndRegressionTests
         Assert.Equal(new[] { "cam-raw", "cam-debug" }, viewState.CameraIds.ToArray());
         Assert.Equal(new[]
         {
-            MainWindow.CameraRenderMode.RawFeed,
-            MainWindow.CameraRenderMode.DebugView
+            CameraRenderMode.RawFeed,
+            CameraRenderMode.DebugView
         }, viewState.RenderModes.ToArray());
         Assert.False(runningDestructiveState.DeleteSelectedEnabled);
         Assert.False(runningDestructiveState.ClearAllEnabled);
@@ -269,7 +271,7 @@ public sealed class MainWindowEndToEndRegressionTests
         var firstSnapshotPlaceholder = CameraTileDisplayProjection.Build(
             hasCurrentFrame: false,
             hasLastFrame: false,
-            frameSource: MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame,
+            frameSource: CameraTileFrameSource.PipelineSnapshotAnnotatedFrame,
             visionPipelineLaneStatus: new VisionPipelineLaneStatus(VisionPipelineLaneStatusState.Starting, LatestSnapshotVersion: null, FailureMessage: null));
 
         var fileSource = new ControlledFrameSource("file-bridge", [Frame("file-bridge", 1000)]);
@@ -331,7 +333,7 @@ public sealed class MainWindowEndToEndRegressionTests
         var staleSnapshotDisplay = CameraTileDisplayProjection.Build(
             hasCurrentFrame: false,
             hasLastFrame: true,
-            frameSource: MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame,
+            frameSource: CameraTileFrameSource.PipelineSnapshotAnnotatedFrame,
             cameraSourceStatus: new CameraSourceStatus(CameraSourceStatusState.Running, LatestFrameVersion: 4, FailureMessage: null),
             visionPipelineLaneStatus: new VisionPipelineLaneStatus(VisionPipelineLaneStatusState.Stale, LatestSnapshotVersion: debugSnapshot.Timing.TimestampUtcMs, FailureMessage: null));
         var statusPanel = CameraPanelStatusProjection.Build(
@@ -343,10 +345,10 @@ public sealed class MainWindowEndToEndRegressionTests
 
         Assert.Equal("file-bridge", Assert.Single(fileSourceProjection.Sources).CameraId);
         Assert.True(fileSourceProjection.Sources[0].LoopVideo);
-        Assert.All(stoppedRouting.Routes, route => Assert.Equal(MainWindow.CameraTileFrameSource.RawCameraSourceFeed, route.FrameSource));
+        Assert.All(stoppedRouting.Routes, route => Assert.Equal(CameraTileFrameSource.RawCameraSourceFeed, route.FrameSource));
         Assert.Equal(new[] { "file-bridge", "usb:0:ANY" }, runningProjection.Tiles.Select(tile => tile.CameraId).ToArray());
-        Assert.Contains(runningRouting.Routes, route => route.CameraId == "file-bridge" && route.FrameSource == MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame);
-        Assert.Contains(runningRouting.Routes, route => route.CameraId == "usb:0:ANY" && route.FrameSource == MainWindow.CameraTileFrameSource.RawCameraSourceFeed);
+        Assert.Contains(runningRouting.Routes, route => route.CameraId == "file-bridge" && route.FrameSource == CameraTileFrameSource.PipelineSnapshotAnnotatedFrame);
+        Assert.Contains(runningRouting.Routes, route => route.CameraId == "usb:0:ANY" && route.FrameSource == CameraTileFrameSource.RawCameraSourceFeed);
         Assert.Equal(CameraTileFrameDisplay.Placeholder, firstSnapshotPlaceholder.FrameDisplay);
         Assert.Contains(snapshots, snapshot => snapshot.CameraSourceId == "handoff-hidden");
         Assert.Single(annotatedFrames);
@@ -356,12 +358,12 @@ public sealed class MainWindowEndToEndRegressionTests
         Assert.Equal("train-001", Assert.Single(visibleSnapshot.TrainStates).LocalTrainId);
         Assert.Equal("train-001", Assert.Single(snapshots.First(snapshot => snapshot.CameraSourceId == "handoff-hidden").TrainStates).LocalTrainId);
         Assert.Contains(output.Statuses, status => status.Contains("Ambiguity Alert", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(excludedRouting.Routes, route => route.CameraId == "file-bridge" && route.FrameSource == MainWindow.CameraTileFrameSource.RawCameraSourceFeed);
+        Assert.Contains(excludedRouting.Routes, route => route.CameraId == "file-bridge" && route.FrameSource == CameraTileFrameSource.RawCameraSourceFeed);
         Assert.True(staleSnapshotDisplay.ShowVisionPipelineLaneStatusOverlay);
         Assert.False(staleSnapshotDisplay.ShowCameraSourceStatusOverlay);
         Assert.Equal("Camera Source Status: running", statusPanel.CameraSourceStatusText);
         Assert.Equal("Vision Pipeline Lane Status: stale", statusPanel.VisionPipelineLaneStatusText);
-        Assert.All(stoppedAgainRouting.Routes, route => Assert.Equal(MainWindow.CameraTileFrameSource.RawCameraSourceFeed, route.FrameSource));
+        Assert.All(stoppedAgainRouting.Routes, route => Assert.Equal(CameraTileFrameSource.RawCameraSourceFeed, route.FrameSource));
         Assert.Equal(1, fileSource.StopCount);
         Assert.Equal(1, handoffSource.StopCount);
     }

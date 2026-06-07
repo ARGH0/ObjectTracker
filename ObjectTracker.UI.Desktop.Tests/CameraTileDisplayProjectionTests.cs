@@ -1,4 +1,5 @@
 using ObjectTracker.UI.Desktop;
+using ObjectTracker.UI.Desktop.Enums;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;
@@ -54,10 +55,10 @@ public sealed class CameraTileDisplayProjectionTests
     }
 
     [Theory]
-    [InlineData(MainWindow.CameraTileFrameSource.PipelineSnapshotAnnotatedFrame)]
-    [InlineData(MainWindow.CameraTileFrameSource.PipelineSnapshotDebugFrames)]
+    [InlineData(CameraTileFrameSource.PipelineSnapshotAnnotatedFrame)]
+    [InlineData(CameraTileFrameSource.PipelineSnapshotDebugFrames)]
     public void Build_WhenVisionPipelineLaneIsStaleOrFailed_ShowsLaneStatusOverlayForSnapshotTileModes(
-        MainWindow.CameraTileFrameSource frameSource)
+        CameraTileFrameSource frameSource)
     {
         var stale = CameraTileDisplayProjection.Build(
             hasCurrentFrame: false,

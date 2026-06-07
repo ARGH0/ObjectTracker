@@ -1,6 +1,7 @@
 using ObjectTracker.Vision.Source;
 using System.Runtime.ExceptionServices;
 using Xunit;
+using Cv = OpenCvSharp;
 
 namespace ObjectTracker.Vision.Tests;
 
@@ -191,6 +192,43 @@ public sealed class UsbCameraOwnerManagerTests
     }
 
     [Fact]
+    public async Task SampleBackgroundAsync_UsesSharedUsbFeedWithoutOpeningCompetingCameraHandle()
+    {
+        var key = new UsbCameraKey(0, "ANY");
+        var backend = new ControlledSequenceUsbCaptureBackend(key);
+        await using var manager = new UsbCameraOwnerManager(backend);
+        backend.Enqueue(CreateEncodedImage(80, 50));
+        backend.Enqueue(CreateEncodedImage(80, 50));
+        backend.Enqueue(CreateEncodedImage(80, 50));
+
+        var encodedBackground = await manager.SampleBackgroundAsync(key, UsbCaptureSettings.Default, sampleCount: 3, processMaxWidth: 80, CancellationToken.None);
+        await using var runtimeLease = await manager.AcquireAsync(key, UsbCaptureSettings.Default, CancellationToken.None);
+        backend.Enqueue(CreateEncodedImage(80, 50, new Cv.Rect(20, 12, 12, 10)));
+        var foregroundFrame = await runtimeLease.WaitForNextFrameAsync(previousVersion: 0, TimeSpan.FromSeconds(1), CancellationToken.None);
+        var observationPipeline = new VisualObservationPipeline();
+
+        var result = await observationPipeline.ObserveAsync(
+            new ObjectTracker.Core.Domain.FramePacket(
+                "usb:0:ANY",
+                foregroundFrame?.TimestampUtcMs ?? 0,
+                foregroundFrame?.Width ?? 0,
+                foregroundFrame?.Height ?? 0,
+                foregroundFrame?.EncodedJpeg ?? []),
+            ObjectTracker.Core.Domain.VisualObservationSettings.Default with
+            {
+                Threshold = 20,
+                MotionArea = 40,
+                MorphKernelSize = 1,
+                ProcessMaxWidth = 80,
+                EncodedBackground = encodedBackground
+            },
+            CancellationToken.None);
+
+        Assert.Equal(1, backend.GetOpenCount(key));
+        Assert.Single(result.MovingObjectObservations);
+    }
+
+    [Fact]
     public async Task StopAllAsync_DisposesActivePhysicalOwners()
     {
         var backend = new FakeUsbCaptureBackend();
@@ -371,5 +409,75 @@ public sealed class UsbCameraOwnerManagerTests
             var frames = settings.TargetFps == 20 ? 1 : 0;
             return ValueTask.FromResult<IUsbCaptureSession>(new FakeUsbCaptureSession(key, frames, frameDelay: null, onDispose: () => { }));
         }
+    }
+
+    private sealed class ControlledSequenceUsbCaptureBackend(UsbCameraKey expectedKey) : IUsbCaptureBackend
+    {
+        private readonly Dictionary<UsbCameraKey, int> openCounts = new();
+        private readonly Queue<byte[]> frames = new();
+        private readonly SemaphoreSlim frameAvailable = new(0);
+
+        public int GetOpenCount(UsbCameraKey key) => openCounts.TryGetValue(key, out var count) ? count : 0;
+
+        public void Enqueue(byte[] encodedFrame)
+        {
+            lock (frames)
+            {
+                frames.Enqueue(encodedFrame);
+            }
+
+            frameAvailable.Release();
+        }
+
+        public ValueTask<IUsbCaptureSession> OpenAsync(UsbCameraKey key, UsbCaptureSettings settings, CancellationToken cancellationToken)
+        {
+            Assert.Equal(expectedKey, key);
+            openCounts[key] = GetOpenCount(key) + 1;
+            return ValueTask.FromResult<IUsbCaptureSession>(new ControlledSequenceUsbCaptureSession(key, frames, frameAvailable));
+        }
+    }
+
+    private sealed class ControlledSequenceUsbCaptureSession(UsbCameraKey key, Queue<byte[]> frames, SemaphoreSlim frameAvailable) : IUsbCaptureSession
+    {
+        private long timestampUtcMs;
+
+        public async ValueTask<UsbCapturedFrame?> ReadFrameAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await frameAvailable.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+
+            byte[] encodedFrame;
+            lock (frames)
+            {
+                encodedFrame = frames.Dequeue();
+            }
+
+            return new UsbCapturedFrame(
+                UsbCameraSourceId.Format(key),
+                TimestampUtcMs: ++timestampUtcMs,
+                Width: 80,
+                Height: 50,
+                EncodedJpeg: encodedFrame);
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private static byte[] CreateEncodedImage(int width, int height, Cv.Rect? foreground = null)
+    {
+        using var image = new Cv.Mat(height, width, Cv.MatType.CV_8UC3, Cv.Scalar.Black);
+        if (foreground is { } rect)
+        {
+            Cv.Cv2.Rectangle(image, rect, Cv.Scalar.White, -1);
+        }
+
+        Cv.Cv2.ImEncode(".jpg", image, out var encoded, [new Cv.ImageEncodingParam(Cv.ImwriteFlags.JpegQuality, 100)]);
+        return encoded;
     }
 }

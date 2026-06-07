@@ -1,5 +1,7 @@
 namespace ObjectTracker.Vision.Source;
 
+using Cv = OpenCvSharp;
+
 public readonly record struct UsbCameraKey(int CameraIndex, string Api);
 
 public readonly record struct UsbCaptureSettings(int Width, int Height, int TargetFps)
@@ -127,6 +129,17 @@ public sealed class UsbCameraOwnerManager : IAsyncDisposable
         }
     }
 
+    public async Task<byte[]> SampleBackgroundAsync(
+        UsbCameraKey key,
+        UsbCaptureSettings settings,
+        int sampleCount,
+        int processMaxWidth,
+        CancellationToken cancellationToken)
+    {
+        await using var lease = await AcquireAsync(key, settings, cancellationToken);
+        return await lease.SampleBackgroundAsync(sampleCount, processMaxWidth, cancellationToken);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await StopAllAsync(CancellationToken.None);
@@ -151,6 +164,11 @@ public sealed class UsbCameraLease : IAsyncDisposable
         return owner.WaitForNextFrameAsync(previousVersion, timeout, cancellationToken);
     }
 
+    internal Task<byte[]> SampleBackgroundAsync(int sampleCount, int processMaxWidth, CancellationToken cancellationToken)
+    {
+        return owner.SampleBackgroundAsync(sampleCount, processMaxWidth, cancellationToken);
+    }
+
     public ValueTask DisposeAsync()
     {
         if (!disposed)
@@ -169,6 +187,7 @@ internal sealed class UsbCameraOwner
     private readonly UsbCaptureSettings settings;
     private readonly IUsbCaptureBackend backend;
     private readonly SemaphoreSlim startupLock;
+    private readonly SemaphoreSlim samplingLock = new(1, 1);
     private readonly Lock sync = new();
     private TaskCompletionSource<object?> nextFrameAvailable = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private CancellationTokenSource? cts;
@@ -333,6 +352,38 @@ internal sealed class UsbCameraOwner
         return current is not null && current.Value.FrameVersion > previousVersion ? current : null;
     }
 
+    public async Task<byte[]> SampleBackgroundAsync(int sampleCount, int processMaxWidth, CancellationToken cancellationToken)
+    {
+        if (session is null)
+        {
+            throw new InvalidOperationException("USB Camera Source feed is not started.");
+        }
+
+        await samplingLock.WaitAsync(cancellationToken);
+        try
+        {
+            var samples = new List<Cv.Mat>();
+            while (samples.Count < Math.Max(1, sampleCount))
+            {
+                var frame = await session.ReadFrameAsync(cancellationToken);
+                if (frame is null)
+                {
+                    continue;
+                }
+
+                samples.Add(UsbBackgroundSampler.DecodeSample(frame.Value, processMaxWidth));
+            }
+
+            using var background = UsbBackgroundSampler.BuildMedianBackground(samples);
+            Cv.Cv2.ImEncode(".png", background, out var encoded);
+            return encoded;
+        }
+        finally
+        {
+            samplingLock.Release();
+        }
+    }
+
     private async Task ReadLoopAsync(CancellationToken cancellationToken)
     {
         if (session is null)
@@ -342,6 +393,7 @@ internal sealed class UsbCameraOwner
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            await samplingLock.WaitAsync(cancellationToken);
             UsbCapturedFrame? frame;
             try
             {
@@ -349,7 +401,12 @@ internal sealed class UsbCameraOwner
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                samplingLock.Release();
                 return;
+            }
+            finally
+            {
+                samplingLock.Release();
             }
 
             if (frame is null)
@@ -424,5 +481,79 @@ internal sealed class UsbCameraOwner
 
         activeSettings = UsbCaptureSettings.Default;
         session = await backend.OpenAsync(key, activeSettings, cancellationToken);
+    }
+}
+
+file static class UsbBackgroundSampler
+{
+    public static Cv.Mat DecodeSample(UsbCapturedFrame frame, int processMaxWidth)
+    {
+        using var color = Cv.Cv2.ImDecode(frame.EncodedJpeg, Cv.ImreadModes.Color);
+        using var gray = new Cv.Mat();
+        Cv.Cv2.CvtColor(color, gray, Cv.ColorConversionCodes.BGR2GRAY);
+        var processSize = BuildProcessSize(frame.Width, frame.Height, processMaxWidth);
+        var resized = new Cv.Mat();
+        Cv.Cv2.Resize(gray, resized, processSize, interpolation: Cv.InterpolationFlags.Area);
+        return resized;
+    }
+
+    public static Cv.Mat DecodeSample(UsbFrameSnapshot snapshot, int processMaxWidth)
+    {
+        using var color = Cv.Cv2.ImDecode(snapshot.EncodedJpeg, Cv.ImreadModes.Color);
+        using var gray = new Cv.Mat();
+        Cv.Cv2.CvtColor(color, gray, Cv.ColorConversionCodes.BGR2GRAY);
+        var processSize = BuildProcessSize(snapshot.Width, snapshot.Height, processMaxWidth);
+        var resized = new Cv.Mat();
+        Cv.Cv2.Resize(gray, resized, processSize, interpolation: Cv.InterpolationFlags.Area);
+        return resized;
+    }
+
+    public static Cv.Mat BuildMedianBackground(IReadOnlyList<Cv.Mat> samples)
+    {
+        var processSize = samples[0].Size();
+        var pixelCount = processSize.Width * processSize.Height;
+        var sampleBytes = samples.Select(ToByteArray).ToArray();
+        var median = new byte[pixelCount];
+        var values = new byte[sampleBytes.Length];
+
+        for (var pixel = 0; pixel < pixelCount; pixel++)
+        {
+            for (var i = 0; i < sampleBytes.Length; i++)
+            {
+                values[i] = sampleBytes[i][pixel];
+            }
+
+            Array.Sort(values);
+            median[pixel] = values[values.Length / 2];
+        }
+
+        foreach (var sample in samples)
+        {
+            sample.Dispose();
+        }
+
+        var background = new Cv.Mat(processSize.Height, processSize.Width, Cv.MatType.CV_8UC1);
+        background.SetArray(median);
+        return background;
+    }
+
+    private static byte[] ToByteArray(Cv.Mat mat)
+    {
+        var bytes = new byte[mat.Rows * mat.Cols];
+        mat.GetArray(out byte[] raw);
+        Buffer.BlockCopy(raw, 0, bytes, 0, bytes.Length);
+        return bytes;
+    }
+
+    private static Cv.Size BuildProcessSize(int sourceWidth, int sourceHeight, int maxWidth)
+    {
+        if (sourceWidth <= maxWidth)
+        {
+            return new Cv.Size(sourceWidth, sourceHeight);
+        }
+
+        var scale = (double)maxWidth / sourceWidth;
+        var targetHeight = Math.Max(1, (int)Math.Round(sourceHeight * scale));
+        return new Cv.Size(maxWidth, targetHeight);
     }
 }

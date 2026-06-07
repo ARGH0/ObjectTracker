@@ -1,7 +1,7 @@
 # USB Camera Source Background Feeds Visual Observation
 
-Type: AFK  
-Labels: ready-for-agent
+Type: DONE  
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Use session-owned USB Camera Source background sampling and calibration state as
 
 ## Acceptance criteria
 
-- [ ] USB Camera Source lanes can access background state needed for foreground extraction through session-owned feed behavior.
-- [ ] USB visual observation uses background-diff behavior during Vision Pipeline runtime.
-- [ ] Starting visual observation does not open a competing USB camera handle.
-- [ ] Tests prove USB Camera Source motion relative to background emits Moving Object Observations through the shared feed path.
+- [x] USB Camera Source lanes can access background state needed for foreground extraction through session-owned feed behavior.
+- [x] USB visual observation uses background-diff behavior during Vision Pipeline runtime.
+- [x] Starting visual observation does not open a competing USB camera handle.
+- [x] Tests prove USB Camera Source motion relative to background emits Moving Object Observations through the shared feed path.
 
 ## Blocked by
 

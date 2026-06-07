@@ -73,6 +73,13 @@ public sealed class VisualObservationPipeline : IVisualObservationPipeline
         {
             Cv.Cv2.Absdiff(background, resized, diff);
             Cv.Cv2.Threshold(diff, mask, settings.Threshold, 255, Cv.ThresholdTypes.Binary);
+
+            using var railRoiMask = DecodeRailRoiMask(settings.EncodedRailRoiMask, processSize);
+            if (railRoiMask is not null)
+            {
+                Cv.Cv2.BitwiseAnd(mask, railRoiMask, mask);
+            }
+
             using var refinedMask = motionMaskRefiner.Refine(mask, BuildRefinerOptions(settings.MorphKernelSize));
             var movingObjectObservations = GetMovingObjectObservations(refinedMask, sourceFrame, settings.MotionArea);
             var trainObservations = GetTrainObservations(colorResized, refinedMask, movingObjectObservations, sourceFrame, settings);
@@ -234,6 +241,29 @@ public sealed class VisualObservationPipeline : IVisualObservationPipeline
         }
 
         using var decoded = Cv.Cv2.ImDecode(encodedBackground, Cv.ImreadModes.Grayscale);
+        if (decoded.Empty())
+        {
+            return null;
+        }
+
+        if (decoded.Size() == processSize)
+        {
+            return decoded.Clone();
+        }
+
+        var resized = new Cv.Mat();
+        Cv.Cv2.Resize(decoded, resized, processSize, interpolation: Cv.InterpolationFlags.Area);
+        return resized;
+    }
+
+    private static Cv.Mat? DecodeRailRoiMask(byte[]? encodedRailRoiMask, Cv.Size processSize)
+    {
+        if (encodedRailRoiMask is null || encodedRailRoiMask.Length == 0)
+        {
+            return null;
+        }
+
+        using var decoded = Cv.Cv2.ImDecode(encodedRailRoiMask, Cv.ImreadModes.Grayscale);
         if (decoded.Empty())
         {
             return null;

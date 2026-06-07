@@ -244,6 +244,59 @@ public sealed class VisualObservationPipelineTests
     }
 
     [Fact]
+    public async Task ObserveAsync_DoesNotEmitMovingObjectObservations_WhenMotionIsOutsideRailRoiMask()
+    {
+        var pipeline = new VisualObservationPipeline();
+        using var railRoiMat = new Cv.Mat(50, 80, Cv.MatType.CV_8UC1, Cv.Scalar.Black);
+        Cv.Cv2.Rectangle(railRoiMat, new Cv.Rect(30, 10, 20, 30), Cv.Scalar.White, -1);
+        var railRoiEncoded = EncodeToJpeg(railRoiMat);
+
+        var settings = VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 40,
+            MorphKernelSize = 1,
+            ProcessMaxWidth = 80,
+            EncodedBackground = CreateEncodedImage(width: 80, height: 50),
+            EncodedRailRoiMask = railRoiEncoded
+        };
+
+        var result = await pipeline.ObserveAsync(
+            CreateFrame("camera-1", 1100, new Cv.Rect(5, 5, 12, 10)),
+            settings,
+            CancellationToken.None);
+
+        Assert.Empty(result.MovingObjectObservations);
+    }
+
+    [Fact]
+    public async Task ObserveAsync_EmitsMovingObjectObservations_WhenMotionIsInsideRailRoiMask()
+    {
+        var pipeline = new VisualObservationPipeline();
+        using var railRoiMat = new Cv.Mat(50, 80, Cv.MatType.CV_8UC1, Cv.Scalar.Black);
+        Cv.Cv2.Rectangle(railRoiMat, new Cv.Rect(30, 10, 20, 30), Cv.Scalar.White, -1);
+        var railRoiEncoded = EncodeToJpeg(railRoiMat);
+
+        var settings = VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 40,
+            MorphKernelSize = 1,
+            ProcessMaxWidth = 80,
+            EncodedBackground = CreateEncodedImage(width: 80, height: 50),
+            EncodedRailRoiMask = railRoiEncoded
+        };
+
+        var result = await pipeline.ObserveAsync(
+            CreateFrame("camera-1", 1100, new Cv.Rect(35, 20, 12, 10)),
+            settings,
+            CancellationToken.None);
+
+        var observation = Assert.Single(result.MovingObjectObservations);
+        Assert.Equal("camera-1", observation.SourceId);
+    }
+
+    [Fact]
     public async Task ObserveAsync_UsesConfiguredBackgroundForFirstRuntimeSourceFrame()
     {
         var pipeline = new VisualObservationPipeline();
@@ -266,6 +319,34 @@ public sealed class VisualObservationPipelineTests
         Assert.Equal(1100, observation.TimestampUtcMs);
         Assert.InRange(observation.BoxX, 19, 21);
         Assert.InRange(observation.BoxY, 11, 13);
+    }
+
+    [Fact]
+    public async Task ObserveAsync_DoesNotEmitTrainObservations_WhenMotionIsOutsideRailRoiMask()
+    {
+        var pipeline = new VisualObservationPipeline();
+        using var railRoiMat = new Cv.Mat(50, 80, Cv.MatType.CV_8UC1, Cv.Scalar.Black);
+        Cv.Cv2.Rectangle(railRoiMat, new Cv.Rect(30, 10, 20, 30), Cv.Scalar.White, -1);
+        var railRoiEncoded = EncodeToJpeg(railRoiMat);
+
+        var settings = VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 40,
+            ColorMinPixels = 40,
+            MorphKernelSize = 1,
+            ProcessMaxWidth = 80,
+            EncodedBackground = CreateEncodedImage(width: 80, height: 50),
+            EncodedRailRoiMask = railRoiEncoded,
+            ColorCalibrations = [new ColorCalibrationProfile("Red", 0, 10, 100, 255, 100, 255)]
+        };
+
+        var result = await pipeline.ObserveAsync(
+            CreateFrame("camera-1", 1100, new Cv.Rect(5, 5, 12, 10), Cv.Scalar.Red),
+            settings,
+            CancellationToken.None);
+
+        Assert.Empty(result.TrainObservations);
     }
 
     private static FramePacket CreateFrame(string sourceId, long timestampUtcMs, Cv.Rect foreground, Cv.Scalar? foregroundColor = null)
@@ -296,6 +377,12 @@ public sealed class VisualObservationPipelineTests
         }
 
         Cv.Cv2.ImEncode(".jpg", image, out var encoded, [new Cv.ImageEncodingParam(Cv.ImwriteFlags.JpegQuality, 100)]);
+        return encoded;
+    }
+
+    private static byte[] EncodeToJpeg(Cv.Mat mat)
+    {
+        Cv.Cv2.ImEncode(".jpg", mat, out var encoded, [new Cv.ImageEncodingParam(Cv.ImwriteFlags.JpegQuality, 100)]);
         return encoded;
     }
 

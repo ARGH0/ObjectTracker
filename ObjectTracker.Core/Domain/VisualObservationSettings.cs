@@ -19,4 +19,6 @@ public sealed record VisualObservationSettings(
         DebugViewEnabled: false);
 
     public byte[]? EncodedBackground { get; init; }
+
+    public byte[]? EncodedRailRoiMask { get; init; }
 }

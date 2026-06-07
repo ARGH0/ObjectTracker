@@ -1,7 +1,7 @@
 # Rail ROI Mask Gates Moving Evidence
 
-Type: AFK  
-Labels: ready-for-agent
+Type: DONE  
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Apply Rail ROI masks before moving object extraction in the Vision Pipeline visu
 
 ## Acceptance criteria
 
-- [ ] Visual observation applies Rail ROI gating before contour extraction.
-- [ ] Motion inside Rail ROI can emit Moving Object Observations.
-- [ ] Motion outside Rail ROI emits no Moving Object Observations or Train Observations.
-- [ ] Tests prove Rail ROI gating affects PipelineSnapshot observation output.
+- [x] Visual observation applies Rail ROI gating before contour extraction.
+- [x] Motion inside Rail ROI can emit Moving Object Observations.
+- [x] Motion outside Rail ROI emits no Moving Object Observations or Train Observations.
+- [x] Tests prove Rail ROI gating affects PipelineSnapshot observation output.
 
 ## Blocked by
 

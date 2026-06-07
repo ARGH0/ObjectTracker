@@ -1,7 +1,7 @@
 # Morph Kernel Size Refines Moving Evidence
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Use motion mask refinement in the visual observation module so Morph Kernel Size
 
 ## Acceptance criteria
 
-- [ ] The visual observation module refines foreground masks before extracting Moving Object Observations.
-- [ ] Morph Kernel Size affects the refinement behavior through observation settings.
-- [ ] Tests prove fragmented motion can be connected by refinement.
-- [ ] Tests prove refinement does not turn tiny noise below Motion Area into valid moving evidence.
+- [x] The visual observation module refines foreground masks before extracting Moving Object Observations.
+- [x] Morph Kernel Size affects the refinement behavior through observation settings.
+- [x] Tests prove fragmented motion can be connected by refinement.
+- [x] Tests prove refinement does not turn tiny noise below Motion Area into valid moving evidence.
 
 ## Blocked by
 

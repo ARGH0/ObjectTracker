@@ -342,17 +342,38 @@ internal sealed class UsbCameraOwner
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var frame = await session.ReadFrameAsync(cancellationToken);
+            UsbCapturedFrame? frame;
+            try
+            {
+                frame = await session.ReadFrameAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
             if (frame is null)
             {
                 emptyFrameReads++;
                 if (emptyFrameReads >= 10 && !fallbackAttempted && activeSettings != UsbCaptureSettings.Default)
                 {
-                    await ReopenWithStableBaselineAsync(cancellationToken);
+                    try
+                    {
+                        await ReopenWithStableBaselineAsync(cancellationToken);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
                     continue;
                 }
 
-                await Task.Delay(10, cancellationToken);
+                if (await DelayUntilNextReadOrCancellationAsync(cancellationToken))
+                {
+                    return;
+                }
+
                 continue;
             }
 
@@ -379,6 +400,17 @@ internal sealed class UsbCameraOwner
 
             completedSignal.TrySetResult(null);
         }
+    }
+
+    private static async Task<bool> DelayUntilNextReadOrCancellationAsync(CancellationToken cancellationToken)
+    {
+        var cancellationSignal = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var cancellationRegistration = cancellationToken.UnsafeRegister(
+            static state => ((TaskCompletionSource<object?>)state!).TrySetResult(null),
+            cancellationSignal);
+
+        var completed = await Task.WhenAny(Task.Delay(10), cancellationSignal.Task);
+        return completed == cancellationSignal.Task;
     }
 
     private async Task ReopenWithStableBaselineAsync(CancellationToken cancellationToken)

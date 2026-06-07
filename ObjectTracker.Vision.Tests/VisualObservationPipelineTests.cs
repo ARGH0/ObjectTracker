@@ -150,6 +150,64 @@ public sealed class VisualObservationPipelineTests
         Assert.Empty(result.TrainObservations);
     }
 
+    [Fact]
+    public async Task ObserveAsync_ConnectsFragmentedMovingEvidence_WhenMorphKernelSizeClosesGap()
+    {
+        var pipelineWithoutRefinement = new VisualObservationPipeline();
+        var pipelineWithRefinement = new VisualObservationPipeline();
+        var baseSettings = VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 20,
+            ProcessMaxWidth = 100
+        };
+
+        await pipelineWithoutRefinement.ObserveAsync(CreateFrame("camera-1", 1000), baseSettings with { MorphKernelSize = 1 }, CancellationToken.None);
+        await pipelineWithRefinement.ObserveAsync(CreateFrame("camera-1", 1000), baseSettings with { MorphKernelSize = 5 }, CancellationToken.None);
+
+        var fragmentedFrame = CreateFrame(
+            "camera-1",
+            1100,
+            new ForegroundRegion(new Cv.Rect(20, 20, 10, 8), Cv.Scalar.White),
+            new ForegroundRegion(new Cv.Rect(32, 20, 10, 8), Cv.Scalar.White));
+
+        var unrefinedResult = await pipelineWithoutRefinement.ObserveAsync(
+            fragmentedFrame,
+            baseSettings with { MorphKernelSize = 1 },
+            CancellationToken.None);
+        var refinedResult = await pipelineWithRefinement.ObserveAsync(
+            fragmentedFrame,
+            baseSettings with { MorphKernelSize = 5 },
+            CancellationToken.None);
+
+        Assert.Equal(2, unrefinedResult.MovingObjectObservations.Count);
+        var observation = Assert.Single(refinedResult.MovingObjectObservations);
+        Assert.InRange(observation.BoxX, 19, 21);
+        Assert.InRange(observation.BoxWidth, 21, 23);
+    }
+
+    [Fact]
+    public async Task ObserveAsync_DoesNotPromoteTinyNoiseBelowMotionArea_WhenMorphKernelSizeRefinesMask()
+    {
+        var pipeline = new VisualObservationPipeline();
+        var settings = VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 40,
+            MorphKernelSize = 5,
+            ProcessMaxWidth = 100
+        };
+
+        await pipeline.ObserveAsync(CreateFrame("camera-1", 1000), settings, CancellationToken.None);
+
+        var result = await pipeline.ObserveAsync(
+            CreateFrame("camera-1", 1100, new Cv.Rect(20, 12, 4, 4)),
+            settings,
+            CancellationToken.None);
+
+        Assert.Empty(result.MovingObjectObservations);
+    }
+
     private static FramePacket CreateFrame(string sourceId, long timestampUtcMs, Cv.Rect foreground, Cv.Scalar? foregroundColor = null)
     {
         return CreateFrame(

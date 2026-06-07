@@ -1,4 +1,5 @@
 using ObjectTracker.Vision.Source;
+using System.Runtime.ExceptionServices;
 using Xunit;
 
 namespace ObjectTracker.Vision.Tests;
@@ -204,6 +205,37 @@ public sealed class UsbCameraOwnerManagerTests
 
         Assert.Equal(1, backend.GetDisposeCount(firstKey));
         Assert.Equal(1, backend.GetDisposeCount(secondKey));
+    }
+
+    [Fact]
+    public async Task StopAllAsync_WhenEmptyReadLoopIsWaiting_DoesNotThrowFirstChanceTaskCanceledException()
+    {
+        var backend = new FakeUsbCaptureBackend(framesPerSession: 0);
+        await using var manager = new UsbCameraOwnerManager(backend);
+        var key = new UsbCameraKey(0, "ANY");
+        var taskCanceledExceptions = 0;
+        void OnFirstChanceException(object? sender, FirstChanceExceptionEventArgs args)
+        {
+            if (args.Exception is TaskCanceledException && args.Exception.StackTrace?.Contains("UsbCameraOwnerManager", StringComparison.Ordinal) == true)
+            {
+                taskCanceledExceptions++;
+            }
+        }
+
+        AppDomain.CurrentDomain.FirstChanceException += OnFirstChanceException;
+        try
+        {
+            await using var lease = await manager.AcquireAsync(key, UsbCaptureSettings.Default, CancellationToken.None);
+            await Task.Delay(25);
+
+            await manager.StopAllAsync(CancellationToken.None);
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.FirstChanceException -= OnFirstChanceException;
+        }
+
+        Assert.Equal(0, taskCanceledExceptions);
     }
 
     [Fact]

@@ -341,7 +341,11 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
                 var frame = await source.ReadFrameAsync(cancellationToken);
                 if (frame is null)
                 {
-                    await Task.Delay(10, cancellationToken);
+                    if (await DelayOrCancellationAsync(TimeSpan.FromMilliseconds(10), cancellationToken))
+                    {
+                        return;
+                    }
+
                     continue;
                 }
 
@@ -401,6 +405,17 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
         }
     }
 
+    private static async Task<bool> DelayOrCancellationAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        var cancellationSignal = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var cancellationRegistration = cancellationToken.UnsafeRegister(
+            static state => ((TaskCompletionSource<object?>)state!).TrySetResult(null),
+            cancellationSignal);
+
+        var completed = await Task.WhenAny(Task.Delay(delay), cancellationSignal.Task);
+        return completed == cancellationSignal.Task;
+    }
+
     private async Task WaitForTargetCadenceAsync(long cycleStartedAt, CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -414,7 +429,10 @@ public sealed class PipelineController : IPipelineController, IAsyncDisposable
 
             var remaining = targetInterval - elapsed;
             var delay = remaining > TimeSpan.FromMilliseconds(10) ? TimeSpan.FromMilliseconds(10) : remaining;
-            await Task.Delay(delay, cancellationToken);
+            if (await DelayOrCancellationAsync(delay, cancellationToken))
+            {
+                return;
+            }
         }
     }
 

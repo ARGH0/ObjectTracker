@@ -1,6 +1,7 @@
 using ObjectTracker.Core.Domain;
 using ObjectTracker.Core.Domain.Enums;
 using ObjectTracker.Core.Ports;
+using System.Runtime.ExceptionServices;
 using Xunit;
 using Cv = OpenCvSharp;
 
@@ -245,6 +246,44 @@ public sealed class PipelineControllerSnapshotTests
 
         Assert.Same(trainState, Assert.Single(snapshot.TrainStates));
         Assert.NotEqual(sourceFrame.EncodedJpeg, snapshot.AnnotatedFrame.EncodedJpeg);
+    }
+
+    [Fact]
+    public async Task StopAsync_WhenLaneIsWaitingForFreshSourceFrame_DoesNotThrowFirstChanceTaskCanceledException()
+    {
+        var sourceFrame = new FramePacket("camera-1", 1234, 2, 2, [1, 2, 3]);
+        var output = new RecordingOutputPort();
+        var taskCanceledExceptions = 0;
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new StubDetectorManager([]),
+            new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        await output.WaitForSnapshotAsync();
+
+        void OnFirstChanceException(object? sender, FirstChanceExceptionEventArgs args)
+        {
+            if (args.Exception is TaskCanceledException && args.Exception.StackTrace?.Contains("PipelineController", StringComparison.Ordinal) == true)
+            {
+                taskCanceledExceptions++;
+            }
+        }
+
+        AppDomain.CurrentDomain.FirstChanceException += OnFirstChanceException;
+        try
+        {
+            await Task.Delay(25);
+            await controller.StopAsync(CancellationToken.None);
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.FirstChanceException -= OnFirstChanceException;
+        }
+
+        Assert.Equal(0, taskCanceledExceptions);
     }
 
     private sealed class SingleFrameSourceFactory(IFrameSource source) : IFrameSourceFactory

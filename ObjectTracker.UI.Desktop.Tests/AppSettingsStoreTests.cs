@@ -7,6 +7,16 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class AppSettingsStoreTests
 {
+    /// <summary>
+    /// <description>Feature: AppSettingsStore returns default grid settings when the settings file is missing.
+    /// 
+    ///   Scenario: Loading from a non-existent path produces sensible defaults for grid dimensions and missing frame behavior.
+    ///     Given an AppSettingsStore initialized with a temporary file path that does not exist,
+    ///     When Load() is called,
+    ///     Then GridColumns should be 32,
+    ///      And GridRows should be 18,
+    ///      And MissingFrameBehavior should be RepeatLastFrame.</description>
+    /// </summary>
     [Fact]
     public void Load_WhenFileMissing_ReturnsDefaultGridSettings()
     {
@@ -21,6 +31,16 @@ public sealed class AppSettingsStoreTests
         Assert.Equal(CameraTileMissingFrameBehavior.RepeatLastFrame, settings.MissingFrameBehavior);
     }
 
+    /// <summary>
+    /// <description>Feature: AppSettingsStore persists grid settings through save and load cycle.
+    /// 
+    ///   Scenario: Saving custom grid dimensions and reloading produces the same values.
+    ///     Given an AppSettingsStore initialized with a temporary file path,
+    ///     When Save(new AppSettings(GridColumns: 40, GridRows: 24)) is called,
+    ///      And Load() is called to reload settings,
+    ///     Then loaded.GridColumns should be 40,
+    ///      And loaded.GridRows should be 24.</description>
+    /// </summary>
     [Fact]
     public void Save_ThenLoad_PersistsGridSettings()
     {
@@ -35,6 +55,15 @@ public sealed class AppSettingsStoreTests
         Assert.Equal(24, loaded.GridRows);
     }
 
+    /// <summary>
+    /// <description>Feature: AppSettingsStore persists missing frame behavior through save and load cycle.
+    /// 
+    ///   Scenario: Saving BlackFrame behavior and reloading produces the same value.
+    ///     Given an AppSettingsStore initialized with a temporary file path,
+    ///     When Save(new AppSettings(GridColumns: 40, GridRows: 24, MissingFrameBehavior: CameraTileMissingFrameBehavior.BlackFrame)) is called,
+    ///      And Load() is called to reload settings,
+    ///     Then loaded.MissingFrameBehavior should be BlackFrame.</description>
+    /// </summary>
     [Fact]
     public void Save_ThenLoad_PersistsMissingFrameBehavior()
     {
@@ -48,6 +77,16 @@ public sealed class AppSettingsStoreTests
         Assert.Equal(CameraTileMissingFrameBehavior.BlackFrame, loaded.MissingFrameBehavior);
     }
 
+    /// <summary>
+    /// <description>Feature: AppSettingsStore clamps grid settings when values are out of range.
+    /// 
+    ///   Scenario: Saving GridColumns=0 and GridRows=999 (both outside valid ranges) produces clamped values on reload.
+    ///     Given an AppSettingsStore initialized with a temporary file path,
+    ///     When Save(new AppSettings(GridColumns: 0, GridRows: 999)) is called,
+    ///      And Load() is called to reload settings,
+    ///     Then loaded.GridColumns should be clamped to 2 (minimum),
+    ///      And loaded.GridRows should be clamped to 200 (maximum).</description>
+    /// </summary>
     [Fact]
     public void Load_WhenValuesOutOfRange_ClampsGridSettings()
     {

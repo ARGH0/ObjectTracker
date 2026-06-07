@@ -6,6 +6,17 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class CameraSourceStatusProjectionTests
 {
+    /// <summary>
+    /// <description>Feature: CameraSourceStatusProjection.BuildUsbStatus projects correct status text and flags for a running USB camera source.
+    /// 
+    ///   Scenario: A USB camera is running normally with no staleness, frame age should be hidden and restart enabled.
+    ///     Given a UsbCameraRuntimeStatus in Running state with IsStale false, LatestFrameVersion 12, dimensions 640x480, FrameAgeMs 20, and null failure message,
+    ///      And BuildUsbStatus is called with isActivelyProcessedByVisionPipeline set to false,
+    ///     Then StatusText should be "USB Camera Source: running",
+    ///      And ShowFrameAge should be false,
+    ///      And RestartEnabled should be true,
+    ///      And ShowPlaceholder should be false.</description>
+    /// </summary>
     [Fact]
     public void BuildUsbStatus_WhenRunningNormally_HidesFrameAgeAndEnablesRestart()
     {
@@ -29,6 +40,15 @@ public sealed class CameraSourceStatusProjectionTests
         Assert.False(projection.ShowPlaceholder);
     }
 
+    /// <summary>
+    /// <description>Feature: CameraSourceStatusProjection.BuildUsbStatus shows frame age when the camera source is stale.
+    /// 
+    ///   Scenario: A USB camera is running but its frames are stale.
+    ///     Given a UsbCameraRuntimeStatus in Running state with IsStale true, LatestFrameVersion 12, dimensions 640x480, FrameAgeMs 1500, and null failure message,
+    ///      And BuildUsbStatus is called with isActivelyProcessedByVisionPipeline set to false,
+    ///     Then StatusText should be "USB Camera Source: stale (1500 ms since last frame)",
+    ///      And ShowFrameAge should be true.</description>
+    /// </summary>
     [Fact]
     public void BuildUsbStatus_WhenStale_ShowsFrameAge()
     {
@@ -50,6 +70,16 @@ public sealed class CameraSourceStatusProjectionTests
         Assert.True(projection.ShowFrameAge);
     }
 
+    /// <summary>
+    /// <description>Feature: CameraSourceStatusProjection.BuildUsbStatus shows placeholder and failure message for a failed USB camera source.
+    /// 
+    ///   Scenario: A USB camera has entered the Failed state with a failure message.
+    ///     Given a UsbCameraRuntimeStatus in Failed state with null LatestFrameVersion, null dimensions, null FrameAgeMs, and FailureMessage "camera unavailable",
+    ///      And BuildUsbStatus is called with isActivelyProcessedByVisionPipeline set to false,
+    ///     Then StatusText should be "USB Camera Source: failed - camera unavailable",
+    ///      And ShowPlaceholder should be true,
+    ///      And RaisesAmbiguityAlert should be false.</description>
+    /// </summary>
     [Fact]
     public void BuildUsbStatus_WhenFailed_ShowsPlaceholderAndFailureWithoutAmbiguityAlert()
     {
@@ -72,6 +102,15 @@ public sealed class CameraSourceStatusProjectionTests
         Assert.False(projection.RaisesAmbiguityAlert);
     }
 
+    /// <summary>
+    /// <description>Feature: CameraSourceStatusProjection.BuildUsbStatus disables restart when the camera source is actively processed by Vision Pipeline.
+    /// 
+    ///   Scenario: A USB camera is running but currently being actively processed by the Vision Pipeline.
+    ///     Given a UsbCameraRuntimeStatus in Running state with IsStale false, LatestFrameVersion 1, dimensions 640x480, FrameAgeMs 20, and null failure message,
+    ///      And BuildUsbStatus is called with isActivelyProcessedByVisionPipeline set to true,
+    ///     Then RestartEnabled should be false,
+    ///      And RestartDisabledReason should be "Stop Vision Pipeline to restart this camera source.".</description>
+    /// </summary>
     [Fact]
     public void BuildUsbStatus_WhenActivelyProcessedByVisionPipeline_DisablesRestart()
     {
@@ -84,6 +123,15 @@ public sealed class CameraSourceStatusProjectionTests
         Assert.Equal("Stop Vision Pipeline to restart this camera source.", projection.RestartDisabledReason);
     }
 
+    /// <summary>
+    /// <description>Feature: CameraSourceStatusProjection.BuildUsbStatus handles stopped state correctly.
+    /// 
+    ///   Scenario: A USB camera is in the Stopped state.
+    ///     Given a UsbCameraRuntimeStatus in Stopped state with null LatestFrameVersion, null dimensions, null FrameAgeMs, and null failure message,
+    ///      And BuildUsbStatus is called with isActivelyProcessedByVisionPipeline set to false,
+    ///     Then StatusText should be "USB Camera Source: stopped",
+    ///      And ShowPlaceholder should be false.</description>
+    /// </summary>
     [Fact]
     public void BuildUsbStatus_WhenStopped_DoesNotShowTilePlaceholder()
     {
@@ -96,6 +144,16 @@ public sealed class CameraSourceStatusProjectionTests
         Assert.False(projection.ShowPlaceholder);
     }
 
+    /// <summary>
+    /// <description>Feature: CameraSourceStatusProjection.BuildFileStatus shows frame age when a file camera source is stale.
+    /// 
+    ///   Scenario: A file-based camera source is running but its frames are stale.
+    ///     Given a FileCameraSourceRuntimeStatus in Running state with IsStale true, LatestFrameVersion 3, dimensions 640x480, FrameAgeMs 1500, and null failure message,
+    ///      And BuildFileStatus is called with isFileCameraSource set to true,
+    ///     Then StatusText should be "File Camera Source: stale (1500 ms since last frame)",
+    ///      And ShowFrameAge should be true,
+    ///      And RaisesAmbiguityAlert should be false.</description>
+    /// </summary>
     [Fact]
     public void BuildFileStatus_WhenStale_ShowsFrameAgeWithoutAmbiguityAlert()
     {

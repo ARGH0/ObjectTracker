@@ -7,6 +7,16 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class CameraZoneLayerRepositoryTests
 {
+    /// <summary>
+    /// <description>Feature: CameraZoneLayerRepository persists and reloads multiple layers of the same type per camera zone.
+    /// 
+    ///   Scenario: Saving two HIGH-CAUTION layers for "zone-a" with different regions and reloading should preserve both.
+    ///     Given a CameraZoneLayerRepository initialized with a temporary file path,
+    ///      And Save is called with layer-1 (Bridge approach, region-1 at cells 1,1;1,2) and layer-2 (Switch cluster, region-2 at cell 5,5),
+    ///     When Load() is called,
+    ///     Then exactly two layers of type HIGH-CAUTION for zone-a should be returned,
+    ///      And both layer-1 and layer-2 should be present.</description>
+    /// </summary>
     [Fact]
     public void SaveThenLoad_PreservesMultipleLayersOfSameTypePerCameraZone()
     {
@@ -43,6 +53,19 @@ public sealed class CameraZoneLayerRepositoryTests
         Assert.Contains(sameTypeLayers, layer => layer.LayerId == "layer-2");
     }
 
+    /// <summary>
+    /// <description>Feature: CameraZoneLayerRepository preserves region identity while allowing editable fields to change.
+    /// 
+    ///   Scenario: Saving a layer twice with modified region data should retain the original RegionId but reflect updated fields.
+    ///     Given a CameraZoneLayerRepository initialized with a temporary file path,
+    ///      And Save is called initially with layer-1 containing region-77 (Original, code 7, cell 2,3),
+    ///      And Save is called again with the same layer but region-77 renamed to "Renamed Region" with code 999 and cell 4,4,
+    ///     When Load() is called,
+    ///     Then loadedRegion.RegionId should be "region-77",
+    ///      And loadedRegion.Name should be "Renamed Region",
+    ///      And loadedRegion.Code should be 999,
+    ///      And the cell should be (4,4).</description>
+    /// </summary>
     [Fact]
     public void SaveThenLoad_PreservesRegionIdentityWhileAllowingEditableFields()
     {
@@ -83,6 +106,14 @@ public sealed class CameraZoneLayerRepositoryTests
         Assert.Equal(new GridCell(4, 4), loadedRegion.Cells.Single());
     }
 
+    /// <summary>
+    /// <description>Feature: CameraZoneLayerRepository returns an empty list when the file is missing.
+    /// 
+    ///   Scenario: Loading from a non-existent path produces an empty layers collection.
+    ///     Given a CameraZoneLayerRepository initialized with a temporary file path that does not exist,
+    ///     When Load() is called,
+    ///     Then loaded should be empty.</description>
+    /// </summary>
     [Fact]
     public void Load_WhenFileMissing_ReturnsEmpty()
     {

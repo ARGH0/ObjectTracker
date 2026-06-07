@@ -5,6 +5,15 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class UsbCaptureSettingsStoreTests
 {
+    /// <summary>
+    /// <description>Feature: UsbCaptureSettingsStore persists and reloads per-camera-source requested settings correctly.
+    /// 
+    ///   Scenario: Saving a dictionary with "usb:0:ANY" = 1280x720@60 and "usb:1:ANY" = 640x480@30 and reloading should preserve both entries.
+    ///     Given a UsbCaptureSettingsStore initialized with a temporary file path,
+    ///      And Save is called with ["usb:0:ANY"] = 1280x720@60 and ["usb:1:ANY"] = 640x480@30,
+    ///     When Load() is called,
+    ///     Then loaded["usb:0:ANY"] should be 1280x720@60 and loaded["usb:1:ANY"] should be 640x480@30.</description>
+    /// </summary>
     [Fact]
     public void SaveThenLoad_PreservesPerCameraSourceRequestedSettings()
     {

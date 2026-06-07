@@ -6,6 +6,24 @@ namespace ObjectTracker.Vision.Tests;
 
 public sealed class ConfiguredCameraSourceFrameSourceFactoryTests
 {
+    /// <summary>
+    /// <description>Feature: ConfiguredCameraSourceFrameSourceFactory creates frame sources through session-owned feeds.
+    /// 
+    ///   Scenario: Factory creates and reads from USB and file camera sources.
+    ///     Given a ConfiguredCameraSourceFrameSourceFactory with one USB source (usb:0:ANY) and one file source (file-bridge), each backed by their respective owner managers,
+    ///      And the available sources list contains both "file-bridge" and "usb:0:ANY",
+    ///     When I create a frame source for "usb:0:ANY" and start it,
+    ///      And I create a frame source for "file-bridge" and start it,
+    ///      And I read one frame from each source,
+    ///      And I attempt to read a second frame from each source,
+    ///     Then the USB backend should have exactly one open count for usb:0:ANY,
+    ///      And the file backend should have exactly one open count for file-bridge,
+    ///      And the first USB frame should have SourceId "usb:0:ANY",
+    ///      And the first file frame should have SourceId "file-bridge",
+    ///      And second reads from both sources should return null,
+    ///      And the USB source DisplayName should be "USB Yard",
+    ///      And the file source DisplayName should be "Bridge File".</description>
+    /// </summary>
     [Fact]
     public async Task Create_ForConfiguredUsbAndFileCameraSources_ReadsFramesThroughSessionOwnedFeeds()
     {

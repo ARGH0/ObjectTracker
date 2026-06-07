@@ -5,6 +5,19 @@ namespace ObjectTracker.Vision.Tests;
 
 public sealed class FileCameraSourceFeedManagerTests
 {
+    /// <summary>
+    /// <description>Feature: FileCameraSourceFeedManager shares one playback feed between multiple leases for the same source.
+    /// 
+    ///   Scenario: Two leases for the same camera source share a single backend open and produce identical frames.
+    ///     Given a FileCameraSourceFeedManager backed by FakeFileCameraSourcePlaybackBackend with one source ("source-bridge"),
+    ///      And a first lease acquired from the manager,
+    ///      And a second lease acquired from the manager for the same source,
+    ///     When both leases wait for their next frame,
+    ///     Then the backend open count should be exactly 1,
+    ///      And both frames should be non-null,
+    ///      And both frames should have identical FrameVersion values,
+    ///      And the first frame SourceId should be "source-bridge".</description>
+    /// </summary>
     [Fact]
     public async Task AcquireAsync_SameCameraSourceTwice_UsesOnePlaybackFeedTimeline()
     {
@@ -25,6 +38,19 @@ public sealed class FileCameraSourceFeedManagerTests
         Assert.Equal("source-bridge", firstFrame.Value.SourceId);
     }
 
+    /// <summary>
+    /// <description>Feature: FileCameraSourceFeedManager reports correct runtime status after a frame is produced.
+    /// 
+    ///   Scenario: Status reflects running state with latest frame metadata.
+    ///     Given a FileCameraSourceFeedManager backed by FakeFileCameraSourcePlaybackBackend with one source,
+    ///      And a lease acquired from the manager,
+    ///     When the lease reads its next frame and GetStatus is called with the frame timestamp,
+    ///     Then the status State should be Running,
+    ///      And IsStale should be false,
+    ///      And LatestFrameVersion should match the frame's FrameVersion,
+    ///      And Width should match the frame's Width,
+    ///      And Height should match the frame's Height.</description>
+    /// </summary>
     [Fact]
     public async Task GetStatus_AfterCameraSourceProducesFrame_ReportsRunningWithLatestFrameMetadata()
     {
@@ -44,6 +70,19 @@ public sealed class FileCameraSourceFeedManagerTests
         Assert.Equal(frame?.Height, status.Height);
     }
 
+    /// <summary>
+    /// <description>Feature: FileCameraSourceFeedManager starts independent playback feeds for different camera sources.
+    /// 
+    ///   Scenario: Two distinct sources each get their own backend open and produce frames independently.
+    ///     Given a FileCameraSourceFeedManager backed by FakeFileCameraSourcePlaybackBackend with two different sources ("source-bridge" and "source-yard"),
+    ///      And the bridge source is acquired with loop enabled,
+    ///      And the yard source is acquired without looping,
+    ///     When both leases wait for their next frame,
+    ///     Then the backend open count for each source should be exactly 1,
+    ///      And both frames should be non-null,
+    ///      And the first frame SourceId should be "source-bridge",
+    ///      And the second frame SourceId should be "source-yard".</description>
+    /// </summary>
     [Fact]
     public async Task AcquireAsync_DifferentCameraSources_StartsIndependentPlaybackFeeds()
     {

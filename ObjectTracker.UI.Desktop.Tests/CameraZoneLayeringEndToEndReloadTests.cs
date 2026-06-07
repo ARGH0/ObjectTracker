@@ -8,6 +8,20 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class CameraZoneLayeringEndToEndReloadTests
 {
+    /// <summary>
+    /// <description>Feature: Camera zone layering end-to-end reload preserves app grid, camera zones, and regions through save/load cycles.
+    /// 
+    ///   Scenario: Saving app settings, layer types, zone bindings, and layers to temporary files, then reloading them should produce correct composition results.
+    ///     Given an AppSettingsStore with a 32x18 grid,
+    ///      And a LayerTypeCatalogService with NO-VISION (precedence 0) and NEUTRAL (precedence 20),
+    ///      And a CameraZoneBindingStore with zone "zone-1" (Bridge Zone) bound to "video-a.mp4",
+    ///      And a CameraZoneLayerRepository with two layers: layer-hc (NO-VISION, region-100 at cell 3,3 with code 100) and layer-n (NEUTRAL, region-200 at cells 3,3 and 4,3),
+    ///     When all stores are loaded back from disk and EffectiveZoneCompositionService.Compose is called for "zone-1",
+    ///     Then GridColumns should be 32 and GridRows should be 18,
+    ///      And the zone snapshot should contain one zone with CameraZoneId "zone-1",
+    ///      And the preserved region should have RegionId "region-100", Name "Bridge Underpass", and Code 100,
+    ///      And the cell at (3,3) in composition should resolve to NO-VISION layer type with region-100.</description>
+    /// </summary>
     [Fact]
     public void ReloadRoundTrip_PreservesAppGridCameraZoneAndRegions()
     {
@@ -80,6 +94,17 @@ public sealed class CameraZoneLayeringEndToEndReloadTests
         Assert.Equal("region-100", overlapCell.RegionId);
     }
 
+    /// <summary>
+    /// <description>Feature: Camera zone layering end-to-end reload produces deterministic composition results.
+    /// 
+    ///   Scenario: Saving and reloading layers with the same type overlapping on the same cell should produce a consistent winner based on layer ID ordering.
+    ///     Given a LayerTypeCatalogService with HIGH-CAUTION (precedence 5),
+    ///      And a CameraZoneLayerRepository with two layers "layer-z" and "layer-a" both of type HIGH-CAUTION overlapping at cell (1,1),
+    ///     When all stores are loaded back from disk and EffectiveZoneCompositionService.Compose is called for "zone-1",
+    ///     Then composition should contain exactly one entry,
+    ///      And the winning layer should be "layer-a" (alphabetically first),
+    ///      And the winning region should be "region-a".</description>
+    /// </summary>
     [Fact]
     public void ReloadRoundTrip_CompositionRemainsDeterministic()
     {

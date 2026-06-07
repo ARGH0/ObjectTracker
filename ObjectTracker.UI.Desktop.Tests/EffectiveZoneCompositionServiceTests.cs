@@ -6,6 +6,18 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class EffectiveZoneCompositionServiceTests
 {
+    /// <summary>
+    /// <description>Feature: EffectiveZoneCompositionService.Compose resolves overlapping cells by giving priority to the higher-priority layer type.
+    /// 
+    ///   Scenario: Two layers of different types overlap on cell (1,1), the NO-VISION layer should win over NEUTRAL.
+    ///     Given an EffectiveZoneCompositionService,
+    ///      And a LayerTypeCatalog with NO-VISION (precedence 0) and NEUTRAL (precedence 30),
+    ///      And two layers: layer-a (NEUTRAL, region-a at cell 1,1) and layer-b (NO-VISION, region-b at cell 1,1),
+    ///     When Compose("zone-1", layers, catalog) is called,
+    ///     Then exactly one result should be returned,
+    ///      And the result LayerTypeId should be "NO-VISION",
+    ///      And the result RegionId should be "region-b".</description>
+    /// </summary>
     [Fact]
     public void Compose_WhenCellsOverlap_HigherPriorityLayerTypeWins()
     {
@@ -35,6 +47,17 @@ public sealed class EffectiveZoneCompositionServiceTests
         Assert.Equal("region-b", result[0].RegionId);
     }
 
+    /// <summary>
+    /// <description>Feature: EffectiveZoneCompositionService.Compose produces a null RegionId when the winning type uses MergeForEffectiveMask.
+    /// 
+    ///   Scenario: A single NEUTRAL layer with MergeForEffectiveMask policy overlaps on cell (2,3).
+    ///     Given an EffectiveZoneCompositionService,
+    ///      And a LayerTypeCatalog with NEUTRAL (precedence 10, MergeForEffectiveMask),
+    ///      And one layer: layer-a (NEUTRAL, region-a at cell 2,3),
+    ///     When Compose("zone-1", layers, catalog) is called,
+    ///     Then exactly one result should be returned,
+    ///      And the result RegionId should be null.</description>
+    /// </summary>
     [Fact]
     public void Compose_WhenWinningTypeIsMergeForEffectiveMask_RegionIdIsNull()
     {
@@ -58,6 +81,18 @@ public sealed class EffectiveZoneCompositionServiceTests
         Assert.Null(result[0].RegionId);
     }
 
+    /// <summary>
+    /// <description>Feature: EffectiveZoneCompositionService.Compose produces deterministic results when layers of the same type overlap.
+    /// 
+    ///   Scenario: Two HIGH-CAUTION layers overlap on cell (2,2), the winner is determined by layer ID and region ID ordering.
+    ///     Given an EffectiveZoneCompositionService,
+    ///      And a LayerTypeCatalog with HIGH-CAUTION (precedence 10, PreserveRegions),
+    ///      And two layers: layer-z (region-z at cell 2,2) and layer-a (region-a at cell 2,2),
+    ///     When Compose("zone-1", layers, catalog) is called,
+    ///     Then exactly one result should be returned,
+    ///      And the result LayerId should be "layer-a" (alphabetically first),
+    ///      And the result RegionId should be "region-a".</description>
+    /// </summary>
     [Fact]
     public void Compose_WithSameTypeOverlap_IsDeterministicByLayerAndRegionId()
     {

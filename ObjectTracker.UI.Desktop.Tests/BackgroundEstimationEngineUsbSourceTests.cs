@@ -6,6 +6,19 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class BackgroundEstimationEngineUsbSourceTests
 {
+    /// <summary>
+    /// <description>Feature: BackgroundEstimationEngine.ProcessUsbCameraSourceAsync uses shared owner and fresh frames when a tile lease is held.
+    /// 
+    ///   Scenario: Processing a USB camera source with an active tile lease maintains proper resource management.
+    ///     Given a UsbCameraOwnerManager with a CountingUsbCaptureBackend,
+    ///      And a tile lease acquired for key "usb:0:ANY",
+    ///      And BackgroundEstimationEngine.ProcessUsbCameraSourceAsync is invoked with sampleCount of 5 and threshold of 25,
+    ///     When processing completes normally,
+    ///     Then result.Success should be true,
+    ///      And the backend open count for the key should remain at 1,
+    ///      And the last returned frame version should be at least 7,
+    ///      And at least 2 frames should have been processed.</description>
+    /// </summary>
     [Fact]
     public async Task ProcessUsbCameraSourceAsync_WithExistingTileLease_UsesSharedOwnerAndFreshFrameVersions()
     {
@@ -42,6 +55,18 @@ public sealed class BackgroundEstimationEngineUsbSourceTests
         Assert.True(processedFrames >= 2);
     }
 
+    /// <summary>
+    /// <description>Feature: BackgroundEstimationEngine.ProcessUsbCameraSourceAsync continues processing when tile lease ends.
+    /// 
+    ///   Scenario: Tile lease is disposed while background estimation is still running, processing should continue from the shared owner.
+    ///     Given a UsbCameraOwnerManager with a CountingUsbCaptureBackend that has frame delay,
+    ///      And a tile lease acquired for key "usb:0:ANY",
+    ///      And BackgroundEstimationEngine.ProcessUsbCameraSourceAsync is invoked and begins processing frames,
+    ///     When the tile lease is disposed while processing continues,
+    ///     Then result.Success should be true,
+    ///      And the backend open count for the key should remain at 1,
+    ///      And at least 3 frames should have been processed.</description>
+    /// </summary>
     [Fact]
     public async Task ProcessUsbCameraSourceAsync_WhenTileLeaseEnds_ContinuesProcessingFromSharedOwner()
     {

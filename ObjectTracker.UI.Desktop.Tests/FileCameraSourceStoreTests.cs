@@ -7,6 +7,17 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class FileCameraSourceStoreTests
 {
+    /// <summary>
+    /// <description>Feature: FileCameraSourceStore persists and reloads file camera sources with per-source loop behavior.
+    /// 
+    ///   Scenario: Saving two file camera sources (one looping, one not) and reloading should preserve all properties.
+    ///     Given a FileCameraSourceStore initialized with a temporary file path,
+    ///      And Save is called with "source-bridge" (/videos/bridge.mp4, LoopVideo=true) and "source-yard" (/videos/yard.mp4, LoopVideo=false),
+    ///     When Load() is called,
+    ///     Then loaded.Count should be 2,
+    ///      And source-bridge should have CameraId "source-bridge", DisplayName "Bridge Camera", VideoPath "/videos/bridge.mp4", and LoopVideo true,
+    ///      And source-yard should have CameraId "source-yard", DisplayName "Yard Camera", VideoPath "/videos/yard.mp4", and LoopVideo false.</description>
+    /// </summary>
     [Fact]
     public void SaveThenLoad_PreservesOneVideoPathAndPerSourceLoopBehavior()
     {

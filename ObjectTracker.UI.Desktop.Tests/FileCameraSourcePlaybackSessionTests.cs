@@ -5,6 +5,18 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class FileCameraSourcePlaybackSessionTests
 {
+    /// <summary>
+    /// <description>Feature: FileCameraSourcePlaybackSession.ReadNextFrame stops non-looping sources and restarts looping ones at end of video.
+    /// 
+    ///   Scenario: A non-looping source ends after one frame, while a looping source restarts when it reaches the end.
+    ///     Given a FakeVideoFrameReader that yields 1 read before ending for both noLoopReader and loopReader,
+    ///      And a FileCameraSourcePlaybackSession with loopVideo=false using noLoopReader,
+    ///      And a FileCameraSourcePlaybackSession with loopVideo=true using loopReader,
+    ///     When ReadNextFrame() is called twice on the non-looping session,
+    ///     Then the first call should return FrameAvailable and the second Ended,
+    ///      And the looping session should return FrameAvailable for both calls,
+    ///      And loopReader.RestartCount should be 1.</description>
+    /// </summary>
     [Fact]
     public void ReadNextFrame_StopsNoLoopSourcesAndRestartsLoopSourcesAtEndOfVideo()
     {

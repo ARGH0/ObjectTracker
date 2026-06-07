@@ -5,6 +5,18 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class CameraTileRawFeedConsumerTests
 {
+    /// <summary>
+    /// <description>Feature: CameraTileRawFeedConsumer.RenderNextFrameAsync uses the same latest frame behavior for both USB and file feeds.
+    /// 
+    ///   Scenario: A raw feed consumer renders frames from both a USB camera source and a file camera source, returning correct version numbers.
+    ///     Given a CameraTileRawFeedConsumer,
+    ///      And a FakeRawFrameFeed for "usb:0:ANY" with frame version 1 and bytes [1],
+    ///      And a FakeRawFrameFeed for "file-bridge" with frame version 1 and bytes [2],
+    ///     When RenderNextFrameAsync is called for both feeds with previousVersion 0,
+    ///     Then usbVersion should be 1,
+    ///      And fileVersion should be 1,
+    ///      And rendered should contain "usb:0:ANY:1:1" and "file-bridge:1:2".</description>
+    /// </summary>
     [Fact]
     public async Task RenderNextFrameAsync_UsesSameLatestFrameBehaviorForUsbAndFileFeeds()
     {

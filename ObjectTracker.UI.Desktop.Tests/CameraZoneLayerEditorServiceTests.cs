@@ -6,6 +6,16 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class CameraZoneLayerEditorServiceTests
 {
+    /// <summary>
+    /// <description>Feature: CameraZoneLayerEditorService.AddLayer appends a new layer for a camera zone.
+    /// 
+    ///   Scenario: Adding a layer to an empty set of layers creates a single layer with the correct properties.
+    ///     Given a CameraZoneLayerEditorService,
+    ///     When AddLayer is called with an empty layers array, "zone-a", "HIGH-CAUTION", and "Bridge",
+    ///     Then exactly one layer should be returned,
+    ///      And the layer CameraZoneId should be "zone-a",
+    ///      And the layer LayerTypeId should be "HIGH-CAUTION".</description>
+    /// </summary>
     [Fact]
     public void AddLayer_AppendsLayerForCameraZone()
     {
@@ -17,6 +27,14 @@ public sealed class CameraZoneLayerEditorServiceTests
         Assert.Equal("HIGH-CAUTION", layers[0].LayerTypeId);
     }
 
+    /// <summary>
+    /// <description>Feature: CameraZoneLayerEditorService.UpsertRegion rejects cell coordinates outside the configured grid bounds.
+    /// 
+    ///   Scenario: Attempting to upsert a region with a cell coordinate beyond the app settings grid dimensions should throw.
+    ///     Given a CameraZoneLayerEditorService and an existing layer for "zone-a" of type "HIGH-CAUTION",
+    ///     When UpsertRegion is called with cell "99,99" on a 32x18 grid,
+    ///     Then an InvalidOperationException should be thrown containing "outside configured grid".</description>
+    /// </summary>
     [Fact]
     public void UpsertRegion_RejectsCellOutsideGridBounds()
     {
@@ -29,6 +47,15 @@ public sealed class CameraZoneLayerEditorServiceTests
         Assert.Contains("outside configured grid", exception.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// <description>Feature: CameraZoneLayerEditorService.UpsertRegion and RemoveRegion correctly update layer regions.
+    /// 
+    ///   Scenario: Adding a region to a layer and then removing it should result in an empty regions collection.
+    ///     Given a CameraZoneLayerEditorService and an existing layer for "zone-a" of type "HIGH-CAUTION",
+    ///      And UpsertRegion is called to add a region "Entry" with cells "1,1;2,1",
+    ///      And RemoveRegion is called on that same layer and region,
+    ///     Then the resulting layer should have zero regions.</description>
+    /// </summary>
     [Fact]
     public void UpsertRegion_ThenRemoveRegion_UpdatesLayerRegions()
     {

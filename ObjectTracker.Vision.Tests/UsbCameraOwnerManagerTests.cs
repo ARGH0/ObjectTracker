@@ -7,6 +7,18 @@ namespace ObjectTracker.Vision.Tests;
 
 public sealed class UsbCameraOwnerManagerTests
 {
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager shares one physical capture owner between multiple leases for the same camera key.
+    /// 
+    ///   Scenario: Two leases for the same USB camera source share a single backend open and produce identical frame versions.
+    ///     Given a UsbCameraOwnerManager backed by FakeUsbCaptureBackend with one camera key (usb:0:ANY),
+    ///      And a first lease acquired from the manager,
+    ///      And a second lease acquired from the manager for the same key,
+    ///     When both leases wait for their next frame,
+    ///     Then the backend open count should be exactly 1,
+    ///      And both frames should be non-null,
+    ///      And both frames should have identical FrameVersion values.</description>
+    /// </summary>
     [Fact]
     public async Task AcquireAsync_SameCameraSourceTwice_UsesOnePhysicalCaptureOwner()
     {
@@ -26,6 +38,19 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.Equal(firstFrame.Value.FrameVersion, secondFrame.Value.FrameVersion);
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager starts independent physical owners for different camera sources.
+    /// 
+    ///   Scenario: Two distinct USB camera keys each get their own backend open and produce frames with correct source IDs.
+    ///     Given a UsbCameraOwnerManager backed by FakeUsbCaptureBackend with two different keys (usb:0:ANY and usb:1:ANY),
+    ///      And a first lease acquired for key 0,
+    ///      And a second lease acquired for key 1,
+    ///     When both leases wait for their next frame,
+    ///     Then the backend open count for each key should be exactly 1,
+    ///      And both frames should be non-null,
+    ///      And the first frame SourceId should be "usb:0:ANY",
+    ///      And the second frame SourceId should be "usb:1:ANY".</description>
+    /// </summary>
     [Fact]
     public async Task AcquireAsync_DifferentCameraSources_StartsIndependentPhysicalOwners()
     {
@@ -48,6 +73,20 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.Equal("usb:1:ANY", secondFrame.Value.SourceId);
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager returns increasing frame versions on successive reads.
+    /// 
+    ///   Scenario: Each call to WaitForNextFrameAsync with an incremented previousVersion produces a newer frame.
+    ///     Given a UsbCameraOwnerManager backed by FakeUsbCaptureBackend that produces 2 frames per session,
+    ///      And a lease acquired for camera key (usb:0:ANY),
+    ///     When the first call to WaitForNextFrameAsync(previousVersion: 0) returns a frame,
+    ///      And the second call to WaitForNextFrameAsync(firstFrame.FrameVersion) is made,
+    ///     Then both frames should be non-null,
+    ///      And the second FrameVersion should be greater than the first,
+    ///      And the second frame Width should be 2,
+    ///      And the second frame Height should be 2,
+    ///      And the second frame EncodedJpeg should not be empty.</description>
+    /// </summary>
     [Fact]
     public async Task WaitForNextFrameAsync_ReturnsIncreasingFrameVersions()
     {
@@ -68,6 +107,15 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.NotEmpty(secondFrame.Value.EncodedJpeg);
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager returns no frame without throwing when the caller cancels.
+    /// 
+    ///   Scenario: A pre-cancelled CancellationToken causes WaitForNextFrameAsync to return null immediately instead of throwing.
+    ///     Given a UsbCameraOwnerManager backed by FakeUsbCaptureBackend that produces 0 frames per session,
+    ///      And a lease acquired for camera key (usb:0:ANY),
+    ///     When a CancellationTokenSource is cancelled before calling WaitForNextFrameAsync,
+    ///     Then the returned frame should be null.</description>
+    /// </summary>
     [Fact]
     public async Task WaitForNextFrameAsync_WhenCallerCancels_ReturnsNoFrameWithoutThrowing()
     {
@@ -83,6 +131,19 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.Null(frame);
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager reports correct runtime status after a frame is produced.
+    /// 
+    ///   Scenario: GetStatus reflects running state with latest frame metadata and no staleness.
+    ///     Given a UsbCameraOwnerManager backed by FakeUsbCaptureBackend with one camera key,
+    ///      And a lease acquired from the manager,
+    ///     When the lease reads its next frame and GetStatus is called with the frame timestamp,
+    ///     Then the status State should be Running,
+    ///      And IsStale should be false,
+    ///      And LatestFrameVersion should match the frame's FrameVersion,
+    ///      And Width should match the frame's Width,
+    ///      And Height should match the frame's Height.</description>
+    /// </summary>
     [Fact]
     public async Task GetStatus_AfterCameraSourceProducesFrame_ReportsRunningWithLatestFrameMetadata()
     {
@@ -102,6 +163,17 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.Equal(frame?.Height, status.Height);
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager reports stale frame age when the latest frame is older than one second.
+    /// 
+    ///   Scenario: GetStatus with a timestamp 1001ms after the last frame produces a stale status with correct FrameAgeMs.
+    ///     Given a UsbCameraOwnerManager backed by FakeUsbCaptureBackend with one camera key,
+    ///      And a lease acquired from the manager,
+    ///     When the lease reads its next frame and GetStatus is called with timestamp equal to (frame.TimestampUtcMs + 1001),
+    ///     Then the status State should be Running,
+    ///      And IsStale should be true,
+    ///      And FrameAgeMs should be exactly 1001.</description>
+    /// </summary>
     [Fact]
     public async Task GetStatus_WhenLatestFrameIsOlderThanOneSecond_ReportsStaleFrameAge()
     {
@@ -119,6 +191,17 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.Equal(1001, status.FrameAgeMs);
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager reports failed state with failure message when open fails.
+    /// 
+    ///   Scenario: An open failure produces an InvalidOperationException and GetStatus reflects the failure state.
+    ///     Given a UsbCameraOwnerManager backed by FakeUsbCaptureBackend configured to fail opens with message "camera unavailable",
+    ///      And one camera key (usb:0:ANY),
+    ///     When AcquireAsync is called,
+    ///     Then an InvalidOperationException should be thrown,
+    ///      And GetStatus should return State equal to Failed,
+    ///      And FailureMessage should equal "camera unavailable".</description>
+    /// </summary>
     [Fact]
     public async Task GetStatus_WhenOpenFails_ReportsFailedWithMessage()
     {
@@ -135,6 +218,19 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.Equal("camera unavailable", status.FailureMessage);
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager updates status to Running when RestartAsync succeeds after a failed open.
+    /// 
+    ///   Scenario: A ToggleableUsbCaptureBackend that transitions from failure to success allows the manager to recover on restart.
+    ///     Given a UsbCameraOwnerManager backed by ToggleableUsbCaptureBackend configured to fail opens with message "camera unavailable",
+    ///      And one camera key (usb:0:ANY),
+    ///     When AcquireAsync is called and throws InvalidOperationException,
+    ///      And backend.OpenFailure is set to null (simulating recovery),
+    ///      And RestartAsync is called with the same key and settings,
+    ///     Then GetStatus should return State equal to Running,
+    ///      And FailureMessage should be null,
+    ///      And backend.GetOpenCount(key) should be 2 (one failed attempt + one successful restart).</description>
+    /// </summary>
     [Fact]
     public async Task RestartAsync_AfterFailedOpen_UpdatesStatusToRunningWhenCameraSourceRecovers()
     {
@@ -154,6 +250,18 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.Equal(2, backend.GetOpenCount(key));
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager preserves previous failure message while a restart is in progress.
+    /// 
+    ///   Scenario: A ControlledRestartUsbCaptureBackend that blocks during open allows inspection of the Starting state with preserved failure context.
+    ///     Given a UsbCameraOwnerManager backed by ControlledRestartUsbCaptureBackend configured to fail opens with message "camera unavailable",
+    ///      And one camera key (usb:0:ANY),
+    ///     When AcquireAsync is called and throws InvalidOperationException,
+    ///      And backend.OpenFailure is set to null (simulating recovery),
+    ///      And RestartAsync is called but blocked on WaitForOpenAttemptAsync(),
+    ///     Then GetStatus should return State equal to Starting,
+    ///      And FailureMessage should still be "camera unavailable" (preserved from previous failure).</description>
+    /// </summary>
     [Fact]
     public async Task RestartAsync_WhileStarting_PreservesPreviousFailureMessage()
     {
@@ -177,6 +285,17 @@ public sealed class UsbCameraOwnerManagerTests
         await restartTask;
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager retries stable baseline mode when the requested mode opens but produces no frames.
+    /// 
+    ///   Scenario: A FallbackModeUsbCaptureBackend that only succeeds at 20 FPS (not the requested 60) causes the manager to fall back gracefully.
+    ///     Given a UsbCameraOwnerManager backed by FallbackModeUsbCaptureBackend,
+    ///      And one camera key (usb:1:ANY),
+    ///     When AcquireAsync is called with UsbCaptureSettings(640, 480, 60),
+    ///      And the lease waits for its next frame,
+    ///     Then the returned frame should be non-null,
+    ///      And backend.OpenedTargetFps should contain [60, 20] (requested mode attempted first, then fallback).</description>
+    /// </summary>
     [Fact]
     public async Task AcquireAsync_WhenRequestedModeOpensButProducesNoFrames_RetriesStableBaselineMode()
     {
@@ -191,6 +310,19 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.Equal(new[] { 60, 20 }, backend.OpenedTargetFps.ToArray());
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager samples background using shared USB feed without opening a competing camera handle.
+    /// 
+    ///   Scenario: SampleBackgroundAsync acquires frames through the manager, then a runtime lease can still access the same physical device.
+    ///     Given a UsbCameraOwnerManager backed by ControlledSequenceUsbCaptureBackend with one camera key (usb:0:ANY),
+    ///      And 3 background frames enqueued for sampling,
+    ///     When SampleBackgroundAsync is called with sampleCount=3 and processMaxWidth=80,
+    ///      And a runtime lease is acquired for the same key,
+    ///      And a foreground frame (white rectangle) is enqueued after the background samples,
+    ///      And VisualObservationPipeline observes the foreground frame with the sampled background as reference,
+    ///     Then backend.GetOpenCount(key) should be exactly 1 (no competing handle opened),
+    ///      And the observation result should contain exactly one MovingObjectObservation.</description>
+    /// </summary>
     [Fact]
     public async Task SampleBackgroundAsync_UsesSharedUsbFeedWithoutOpeningCompetingCameraHandle()
     {
@@ -228,6 +360,16 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.Single(result.MovingObjectObservations);
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager disposes active physical owners when StopAllAsync is called.
+    /// 
+    ///   Scenario: Two leases for different camera keys are both disposed after calling StopAllAsync.
+    ///     Given a UsbCameraOwnerManager backed by FakeUsbCaptureBackend with two camera keys (usb:0:ANY and usb:1:ANY),
+    ///      And both leases acquired from the manager,
+    ///     When StopAllAsync is called with CancellationToken.None,
+    ///     Then backend.GetDisposeCount(firstKey) should be 1,
+    ///      And backend.GetDisposeCount(secondKey) should be 1.</description>
+    /// </summary>
     [Fact]
     public async Task StopAllAsync_DisposesActivePhysicalOwners()
     {
@@ -245,6 +387,17 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.Equal(1, backend.GetDisposeCount(secondKey));
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager does not throw FirstChanceTaskCanceledException when stopping with an empty read loop waiting.
+    /// 
+    ///   Scenario: Calling StopAllAsync while a lease's read loop is blocked (waiting for frames that never arrive) should not produce TaskCanceledExceptions in the manager call stack.
+    ///     Given a UsbCameraOwnerManager backed by FakeUsbCaptureBackend that produces 0 frames per session,
+    ///      And one camera key (usb:0:ANY),
+    ///      And a FirstChanceException handler counts TaskCanceledExceptions originating from UsbCameraOwnerManager,
+    ///     When a lease is acquired and we wait 25ms (allowing the read loop to enter its idle state),
+    ///      And StopAllAsync is called with CancellationToken.None,
+    ///     Then taskCanceledExceptions should be exactly 0.</description>
+    /// </summary>
     [Fact]
     public async Task StopAllAsync_WhenEmptyReadLoopIsWaiting_DoesNotThrowFirstChanceTaskCanceledException()
     {
@@ -276,6 +429,14 @@ public sealed class UsbCameraOwnerManagerTests
         Assert.Equal(0, taskCanceledExceptions);
     }
 
+    /// <summary>
+    /// <description>Feature: UsbCameraOwnerManager serializes physical open when multiple camera sources start concurrently.
+    /// 
+    ///   Scenario: Two concurrent AcquireAsync calls for different keys are serialized so only one opens at a time.
+    ///     Given a UsbCameraOwnerManager backed by FakeUsbCaptureBackend configured with a 25ms open delay,
+    ///     When manager.AcquireAsync(key0) and manager.AcquireAsync(key1) are started simultaneously via Task.WhenAll,
+    ///     Then backend.MaxConcurrentOpens should be exactly 1.</description>
+    /// </summary>
     [Fact]
     public async Task AcquireAsync_ConcurrentCameraSourceStartup_SerializesPhysicalOpen()
     {

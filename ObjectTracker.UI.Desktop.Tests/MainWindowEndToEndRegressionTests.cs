@@ -15,6 +15,19 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class MainWindowEndToEndRegressionTests
 {
+    /// <summary>
+    /// <description>Feature: MainWindow workspace visibility and runtime controls preserve navigation state and validity across all workspaces.
+    /// 
+    ///   Scenario: Building workspace visibility for Camera, Layers, and Settings workspaces with stopped Vision Pipeline menu and pending restart status should produce correct booleans and text.
+    ///     Given BuildWorkspaceVisibility is called for Workspace.Camera, Workspace.Layers, and Workspace.Settings,
+    ///      And BuildVisionPipelineMenuState is called for both running=false and running=true,
+    ///      And BuildBottomStatusSnapshot is called with isAmbiguityActive=false and hasPendingVisionPipelineRestart=true,
+    ///     Then all three workspace visibility booleans should be true (CameraVisible, LayersVisible, SettingsVisible),
+    ///      And stoppedMenu.StartEnabled should be true and StopEnabled should be false,
+    ///      And runningMenu.StartEnabled should be false and StopEnabled should be true,
+    ///      And pendingStatus.PendingRestart should be "Pending restart: required",
+    ///      And IsWorkspaceNavigationAllowedDuringAmbiguity() should return true.</description>
+    /// </summary>
     [Fact]
     public void WorkspaceAndRuntimeControls_EndToEnd_PreserveNavigationAndRuntimeValidity()
     {
@@ -39,6 +52,19 @@ public sealed class MainWindowEndToEndRegressionTests
         Assert.True(MainWindow.IsWorkspaceNavigationAllowedDuringAmbiguity());
     }
 
+    /// <summary>
+    /// <description>Feature: MainWindow camera workspace controls project correct render modes and guard destructive actions based on pipeline state.
+    /// 
+    ///   Scenario: Building camera grid projection with raw, debug, and hidden cameras, then computing view state and destructive action states should produce correct results for both running and stopped conditions.
+    ///     Given BuildCameraGridProjection is called with "cam-raw" (visible, excluded), "cam-debug" (visible, included, debug enabled), and "cam-hidden" (hidden),
+    ///      And BuildCameraTileViewState is called on that projection,
+    ///      And BuildCameraDestructiveActionsState is called for both running=true and running=false with selected camera and counts 3 and 1 respectively,
+    ///     Then viewState.CameraIds should be ["cam-raw", "cam-debug"],
+    ///      And viewState.RenderModes should be [RawFeed, DebugView],
+    ///      And runningDestructiveState.DeleteSelectedEnabled should be false and ClearAllEnabled should be false,
+    ///      And stoppedDestructiveState.DeleteSelectedEnabled should be true and ClearAllEnabled should be true,
+    ///      And stoppedDestructiveState.DeleteSelectedRequiresConfirmation should be true and ClearAllRequiresConfirmation should be true.</description>
+    /// </summary>
     [Fact]
     public void CameraWorkspaceControls_EndToEnd_ProjectCameraModesAndGuardDestructiveActions()
     {
@@ -74,6 +100,14 @@ public sealed class MainWindowEndToEndRegressionTests
         Assert.True(stoppedDestructiveState.ClearAllRequiresConfirmation);
     }
 
+    /// <summary>
+    /// <description>Feature: MainWindow file-based camera source projection preserves video path and per-source loop behavior.
+    /// 
+    ///   Scenario: Building a file camera source projection with two sources (one looping, one not) should produce correct projected properties for each source.
+    ///     Given BuildFileCameraSourceProjection is called with "source-bridge" (/videos/bridge.mp4, LoopVideo=true) and "source-yard" (/videos/yard.mp4, LoopVideo=false),
+    ///     Then sources[0] should have CameraId "source-bridge", DisplayName "Bridge Camera", VideoPath "/videos/bridge.mp4", and LoopVideo true,
+    ///      And sources[1] should have CameraId "source-yard", DisplayName "Yard Camera", VideoPath "/videos/yard.mp4", and LoopVideo false.</description>
+    /// </summary>
     [Fact]
     public void FileBasedCameraSources_EndToEnd_ProjectOneVideoPathAndPerSourceLoopBehavior()
     {
@@ -101,6 +135,20 @@ public sealed class MainWindowEndToEndRegressionTests
             });
     }
 
+    /// <summary>
+    /// <description>Feature: MainWindow layers and settings end-to-end blocks in-use layer type deletion and signals pending restart.
+    /// 
+    ///   Scenario: Building layer type usage projection, delete state, settings save impact, and bottom status snapshot should correctly block deletion of used layer types and signal pending Vision Pipeline restart for grid changes.
+    ///     Given BuildLayerTypeUsageProjection is called for NO-VISION with a bridge no-vision layer on zone-bridge bound to source-bridge,
+    ///      And BuildLayerTypeDeleteState("NO-VISION", usage) is called,
+    ///      And BuildSettingsSaveImpact is called with grid change from 32x18 to 40x18 while running=true,
+    ///      And BuildBottomStatusSnapshot is called with hasPendingVisionPipelineRestart=saveImpact.RequiresVisionPipelineRestart,
+    ///     Then deleteState.CanDelete should be false,
+    ///      And deleteState.Message should contain "Bridge Camera" and "Bridge No-Vision",
+    ///      And saveImpact.RequiresVisionPipelineRestart should be true and HasPendingVisionPipelineRestart should be true,
+    ///      And saveImpact.SettingsStatusText should be "Settings: saved, pending Vision Pipeline restart",
+    ///      And bottomStatus.PendingRestart should be "Pending restart: required".</description>
+    /// </summary>
     [Fact]
     public void LayersAndSettings_EndToEnd_BlockInUseLayerTypeDeleteAndSignalPendingRestart()
     {
@@ -140,6 +188,24 @@ public sealed class MainWindowEndToEndRegressionTests
         Assert.Equal("Pending restart: required", bottomStatus.PendingRestart);
     }
 
+    /// <summary>
+    /// <description>Feature: MainWindow USB camera source flow end-to-end preserves feeds and projects operator decisions across discovery, status projection, settings service, and capture mode projection.
+    /// 
+    ///   Scenario: Starting a CameraTileFeedCoordinator with file and USB sources, adding another USB source, discovering available cameras, projecting various runtime statuses (starting, stale, failed, active), applying and reverting settings, and building mode/apply decisions should produce consistent results across all projections.
+    ///     Given a CameraTileFeedCoordinator is started with "file-a:VideoFile" and "usb:0:ANY:Usb", then a third source "usb:1:ANY:Usb" is added,
+    ///      And UsbCameraDiscoveryService discovers usb:0:ANY (already added) and usb:1:ANY (available at 1280x720),
+    ///      And BuildUsbStatus is called for starting, stale, failed, and active states,
+    ///      And UsbCaptureSettingsService applies a draft from 640x480@30 to 1280x720@60 then reverts it,
+    ///      And Build mode projection with requested 1280x720@60 and running 640x480@20,
+    ///      And BuildApplyDecision is called for a running source and a failed source,
+    ///     Then starts should be ["file-a:VideoFile", "usb:0:ANY:Usb", "usb:1:ANY:Usb"] with no stops,
+    ///      And probed should contain [1],
+    ///      And discovered[0] is usb:0:ANY (not available), discovered[1] is usb:1:ANY (available),
+    ///      And startingStatus.ShowPlaceholder should be true, staleStatus.StatusText should show "stale (1500 ms since last frame)", failedStatus.ShowPlaceholder should be true and RaisesAmbiguityAlert false, activeStatus.RestartEnabled should be false,
+    ///      And applied settings should be 1280x720@60 for usb:0:ANY, reverted should be 1280x720@60 (the draft before revert),
+    ///      And modeProjection.ModeStatusText should be "Requested: 1280x720@60; running: 640x480@20",
+    ///      And pendingDecision.RequiresVisionPipelineRestart should be true and ShouldRestartCameraSource false, failedDecision.ShouldRestartCameraSource should be false.</description>
+    /// </summary>
     [Fact]
     public async Task UsbCameraSourceFlow_EndToEnd_PreservesFeedsAndProjectsOperatorDecisions()
     {
@@ -251,6 +317,35 @@ public sealed class MainWindowEndToEndRegressionTests
         Assert.False(failedDecision.ShouldRestartCameraSource);
     }
 
+    /// <summary>
+    /// <description>Feature: MainWindow Vision Pipeline snapshot flow end-to-end routes frames, statuses, train tracking state, and runtime changes through the full pipeline.
+    /// 
+    ///   Scenario: Starting with file camera source projection, building camera grid projections for stopped and running states, rendering pipeline snapshots (annotated then debug), changing vision pipeline inclusion to excluded, computing stale lane status, stopping the Vision Pipeline, and verifying all frame routing, train state, ambiguity alerts, and display overlays should produce consistent results across the full flow.
+    ///     Given BuildFileCameraSourceProjection for "file-bridge" with LoopVideo=true,
+    ///      And BuildCameraGridProjection and BuildCameraTileFrameRouting are called for stopped (isVisionPipelineRunning=false) and running states with 4 cameras (visible included, visible excluded, hidden included, hidden excluded),
+    ///      And CameraTileDisplayProjection.Build is called for a starting lane placeholder,
+    ///      And PipelineController starts with ControlledFrameSources for "file-bridge" and "handoff-hidden", Vision Pipeline inclusion set true for both, FPS set to 12,
+    ///      And snapshots are waited for and an Ambiguity Alert status appears,
+    ///      And CameraTilePipelineSnapshotRenderer renders the annotated frame for "file-bridge" using running routing,
+    ///      And debug view is enabled on "file-bridge", a new frame is enqueued, and a debug snapshot is rendered with debug routing,
+    ///      And Vision Pipeline inclusion is set to false for "file-bridge", waiting for the source to stop,
+    ///      And stale snapshot display and status panel are built from running camera source status and stale lane status,
+    ///      And StopAsync is called on the controller, then stopped routing is rebuilt,
+    ///     Then fileSourceProjection should have one source "file-bridge" with LoopVideo=true,
+    ///      And all stopped routes should be RawCameraSourceFeed,
+    ///      And running projection tiles should contain only "file-bridge" and "usb:0:ANY",
+    ///      And running routing should have file-bridge routed to PipelineSnapshotAnnotatedFrame and usb:0:ANY to RawCameraSourceFeed,
+    ///      And first snapshot placeholder FrameDisplay should be Placeholder,
+    ///      And snapshots should contain one for "handoff-hidden",
+    ///      And single annotated frame should exist with CameraId "file-bridge",
+    ///      And debug frames should contain a "train-tracking" frame at 12 FPS with LocalTrainId "train-001",
+    ///      And output statuses should contain an Ambiguity Alert message,
+    ///      And excluded routing for file-bridge should be RawCameraSourceFeed,
+    ///      And staleSnapshotDisplay.ShowVisionPipelineLaneStatusOverlay should be true and ShowCameraSourceStatusOverlay false,
+    ///      And statusPanel CameraSourceStatusText should be "running" and VisionPipelineLaneStatusText should be "stale",
+    ///      And stopped again routing should all be RawCameraSourceFeed,
+    ///      And fileSource.StopCount should be 1 and handoffSource.StopCount should be 1.</description>
+    /// </summary>
     [Fact]
     public async Task VisionPipelineSnapshotFlow_EndToEnd_RoutesFramesStatusesTrainTrackingAndRuntimeChanges()
     {

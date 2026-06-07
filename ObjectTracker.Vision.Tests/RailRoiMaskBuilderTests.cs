@@ -5,6 +5,17 @@ namespace ObjectTracker.Vision.Tests;
 
 public sealed class RailRoiMaskBuilderTests
 {
+    /// <summary>
+    /// <description>Feature: RailRoiMaskBuilder builds a corridor mask from a rail-like background image.
+    /// 
+    ///   Scenario: A 100x100 grayscale image with a horizontal line seed produces an ROI mask covering more than 5% but less than 95% of the frame.
+    ///     Given a 100x100 background Mat filled with value 230 (light gray),
+    ///      And a white line drawn from (10,50) to (90,50) representing the rail seed,
+    ///      And RailRoiMaskBuilder configured with Options(kernelSize=21, minCoverage=0.01, maxCoverage=0.95),
+    ///     When BuildFromBackground is called on the background image,
+    ///     Then the ROI mask coverage (non-zero pixels / total pixels) should be greater than 5%,
+    ///      And the ROI mask coverage should be less than 95%.</description>
+    /// </summary>
     [Fact]
     public void BuildFromBackground_ReturnsCorridorMask_ForRailLikeBackground()
     {
@@ -19,6 +30,15 @@ public sealed class RailRoiMaskBuilderTests
         Assert.True(coverage < 0.95, $"Expected coverage below 95%, got {coverage:P2}");
     }
 
+    /// <summary>
+    /// <description>Feature: RailRoiMaskBuilder falls back to full-frame mask when no rail seed is found in the background.
+    /// 
+    ///   Scenario: A uniform grayscale image without any distinguishing features produces a fully white ROI mask covering every pixel.
+    ///     Given an 80x80 background Mat filled with value 128 (uniform gray, no rail structure),
+    ///      And RailRoiMaskBuilder configured with Options(kernelSize=21, minCoverage=0.01, maxCoverage=0.85),
+    ///     When BuildFromBackground is called on the background image,
+    ///     Then every pixel in the ROI mask should be non-zero (full-frame coverage).</description>
+    /// </summary>
     [Fact]
     public void BuildFromBackground_FallsBackToFullFrame_WhenNoRailSeedIsFound()
     {

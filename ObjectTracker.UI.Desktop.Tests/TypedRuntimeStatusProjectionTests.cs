@@ -6,6 +6,13 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class TypedRuntimeStatusProjectionTests
 {
+    /// <summary>
+    /// <description>Feature: Typed runtime statuses use distinct types but share the same canonical state names.
+    /// 
+    ///   Scenario: Creating a CameraSourceStatus and VisionPipelineLaneStatus both in Stale state should be of different types, each with matching GetStateName output and identical GetCanonicalStateNames arrays.
+    ///     Given new CameraSourceStatus(CameraSourceStatusState.Stale, LatestFrameVersion:4) and new VisionPipelineLaneStatus(VisionPipelineLaneStatusState.Stale, LatestSnapshotVersion:7),
+    ///     Then cameraSourceStatus should be of type CameraSourceStatus, laneStatus should be of type VisionPipelineLaneStatus, GetStateName for both should return "stale", and GetCanonicalStateNames for both should return ["starting","running","stale","failed","stopped"].</description>
+    /// </summary>
     [Fact]
     public void RuntimeStatuses_UseDistinctTypesWithSameCanonicalStates()
     {
@@ -20,6 +27,13 @@ public sealed class TypedRuntimeStatusProjectionTests
         Assert.Equal(new[] { "starting", "running", "stale", "failed", "stopped" }, VisionPipelineLaneStatusProjection.GetCanonicalStateNames());
     }
 
+    /// <summary>
+    /// <description>Feature: CameraPanelStatusProjection.Build shows camera source and Vision Pipeline lane status separately.
+    /// 
+    ///   Scenario: Building a panel status projection with a running camera source and a failed lane should produce correct separate status text for each component.
+    ///     Given Build is called with CameraSourceStatus(Running, LatestFrameVersion:4) and VisionPipelineLaneStatus(Failed, LatestSnapshotVersion:2, FailureMessage:"mask missing"),
+    ///     Then projection.CameraSourceStatus.State should be Running, projection.VisionPipelineLaneStatus.State should be Failed, projection.CameraSourceStatusText should be "Camera Source Status: running", and projection.VisionPipelineLaneStatusText should be "Vision Pipeline Lane Status: failed - mask missing".</description>
+    /// </summary>
     [Fact]
     public void BuildCameraPanelStatusProjection_ShowsCameraSourceAndVisionPipelineLaneStatusSeparately()
     {
@@ -33,6 +47,13 @@ public sealed class TypedRuntimeStatusProjectionTests
         Assert.Equal("Vision Pipeline Lane Status: failed - mask missing", projection.VisionPipelineLaneStatusText);
     }
 
+    /// <summary>
+    /// <description>Feature: CameraTileStatusProjection.Build shows compact camera source and Vision Pipeline lane status separately.
+    /// 
+    ///   Scenario: Building a tile status projection with a stale camera source and running lane should produce correct separate badge text for each component.
+    ///     Given Build is called with CameraSourceStatus(Stale, LatestFrameVersion:4) and VisionPipelineLaneStatus(Running, LatestSnapshotVersion:8),
+    ///     Then projection.CameraSourceState should be Stale, projection.VisionPipelineLaneState should be Running, projection.CameraSourceBadgeText should be "FEED STALE", and projection.VisionPipelineLaneBadgeText should be "LANE RUNNING".</description>
+    /// </summary>
     [Fact]
     public void BuildTileStatusProjection_ShowsCompactCameraSourceAndVisionPipelineLaneStatusSeparately()
     {

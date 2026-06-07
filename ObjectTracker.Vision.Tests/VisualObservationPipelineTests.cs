@@ -208,6 +208,41 @@ public sealed class VisualObservationPipelineTests
         Assert.Empty(result.MovingObjectObservations);
     }
 
+    [Fact]
+    public async Task ObserveAsync_ReportsObservationsInProcessMaxWidthCoordinateSpace_WhenSourceFrameIsResized()
+    {
+        var pipeline = new VisualObservationPipeline();
+        var settings = VisualObservationSettings.Default with
+        {
+            Threshold = 20,
+            MotionArea = 20,
+            MorphKernelSize = 1,
+            ProcessMaxWidth = 80,
+            ColorMinPixels = 20,
+            ColorCalibrations = [new ColorCalibrationProfile("Red", 0, 10, 100, 255, 100, 255)]
+        };
+
+        await pipeline.ObserveAsync(CreateFrame("camera-1", 1000, width: 160, height: 100), settings, CancellationToken.None);
+
+        var result = await pipeline.ObserveAsync(
+            CreateFrame("camera-1", 1100, width: 160, height: 100, new ForegroundRegion(new Cv.Rect(40, 20, 40, 20), Cv.Scalar.Red)),
+            settings,
+            CancellationToken.None);
+
+        var movingObjectObservation = Assert.Single(result.MovingObjectObservations);
+        Assert.InRange(movingObjectObservation.BoxX, 19, 21);
+        Assert.InRange(movingObjectObservation.BoxY, 9, 11);
+        Assert.InRange(movingObjectObservation.BoxWidth, 19, 21);
+        Assert.InRange(movingObjectObservation.BoxHeight, 9, 11);
+
+        var trainObservation = Assert.Single(result.TrainObservations);
+        Assert.Equal("Red", trainObservation.TrainColor);
+        Assert.InRange(trainObservation.BoxX, 19, 21);
+        Assert.InRange(trainObservation.BoxY, 9, 11);
+        Assert.InRange(trainObservation.BoxWidth, 19, 21);
+        Assert.InRange(trainObservation.BoxHeight, 9, 11);
+    }
+
     private static FramePacket CreateFrame(string sourceId, long timestampUtcMs, Cv.Rect foreground, Cv.Scalar? foregroundColor = null)
     {
         return CreateFrame(
@@ -218,7 +253,12 @@ public sealed class VisualObservationPipelineTests
 
     private static FramePacket CreateFrame(string sourceId, long timestampUtcMs, params ForegroundRegion[] foregroundRegions)
     {
-        using var image = new Cv.Mat(50, 80, Cv.MatType.CV_8UC3, Cv.Scalar.Black);
+        return CreateFrame(sourceId, timestampUtcMs, width: 80, height: 50, foregroundRegions);
+    }
+
+    private static FramePacket CreateFrame(string sourceId, long timestampUtcMs, int width, int height, params ForegroundRegion[] foregroundRegions)
+    {
+        using var image = new Cv.Mat(height, width, Cv.MatType.CV_8UC3, Cv.Scalar.Black);
         foreach (var foregroundRegion in foregroundRegions)
         {
             Cv.Cv2.Rectangle(image, foregroundRegion.Rect, foregroundRegion.Color, -1);

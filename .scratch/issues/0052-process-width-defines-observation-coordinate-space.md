@@ -1,7 +1,7 @@
 # Process Width Defines Observation Coordinate Space
 
 Type: AFK  
-Labels: ready-for-agent
+Labels: done
 
 ## Parent
 
@@ -13,10 +13,10 @@ Apply Process Max Width consistently so Source Frame processing, Moving Object O
 
 ## Acceptance criteria
 
-- [ ] Process Max Width controls visual observation processing size without breaking frame routing.
-- [ ] Observation coordinates are in the same coordinate space as Annotated Frames and Debug Frames.
-- [ ] Tests prove resized processing still emits correctly positioned observations.
-- [ ] Existing Annotated Frame rendering remains aligned with Train State positions.
+- [x] Process Max Width controls visual observation processing size without breaking frame routing.
+- [x] Observation coordinates are in the same coordinate space as Annotated Frames and Debug Frames.
+- [x] Tests prove resized processing still emits correctly positioned observations.
+- [x] Existing Annotated Frame rendering remains aligned with Train State positions.
 
 ## Blocked by
 

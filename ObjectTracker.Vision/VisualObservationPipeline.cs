@@ -58,8 +58,10 @@ public sealed class VisualObservationPipeline : IVisualObservationPipeline
         }
 
         var processSize = BuildProcessSize(sourceFrame.Width, sourceFrame.Height, settings.ProcessMaxWidth);
+        using var colorResized = new Cv.Mat();
         using var gray = new Cv.Mat();
         using var resized = new Cv.Mat();
+        Cv.Cv2.Resize(color, colorResized, processSize, interpolation: Cv.InterpolationFlags.Area);
         Cv.Cv2.CvtColor(color, gray, Cv.ColorConversionCodes.BGR2GRAY);
         Cv.Cv2.Resize(gray, resized, processSize, interpolation: Cv.InterpolationFlags.Area);
 
@@ -84,7 +86,7 @@ public sealed class VisualObservationPipeline : IVisualObservationPipeline
             Cv.Cv2.Threshold(diff, mask, settings.Threshold, 255, Cv.ThresholdTypes.Binary);
             using var refinedMask = motionMaskRefiner.Refine(mask, BuildRefinerOptions(settings.MorphKernelSize));
             var movingObjectObservations = GetMovingObjectObservations(refinedMask, sourceFrame, settings.MotionArea);
-            var trainObservations = GetTrainObservations(color, refinedMask, movingObjectObservations, sourceFrame, settings);
+            var trainObservations = GetTrainObservations(colorResized, refinedMask, movingObjectObservations, sourceFrame, settings);
 
             return Task.FromResult(new VisualObservationResult(movingObjectObservations, trainObservations, []));
         }

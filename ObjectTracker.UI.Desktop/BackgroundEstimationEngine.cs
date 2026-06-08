@@ -11,11 +11,14 @@ using OpenCvSharp;
 
 namespace ObjectTracker.UI.Desktop;
 
-internal sealed class BackgroundEstimationEngine
+internal sealed class BackgroundEstimationEngine(
+    SessionCalibrationService? sessionCalibration = null,
+    RailRoiMaskBuilder? railRoiMaskBuilder = null,
+    MotionMaskRefiner? motionMaskRefiner = null)
 {
-    private readonly SessionCalibrationService sessionCalibration = new();
-    private readonly RailRoiMaskBuilder railRoiMaskBuilder = new();
-    private readonly MotionMaskRefiner motionMaskRefiner = new();
+    private readonly SessionCalibrationService _sessionCalibration = sessionCalibration ?? new();
+    private readonly RailRoiMaskBuilder _railRoiMaskBuilder = railRoiMaskBuilder ?? new();
+    private readonly MotionMaskRefiner _motionMaskRefiner = motionMaskRefiner ?? new();
 
     public async Task<VideoProcessResult> ProcessVideoAsync(
         string videoPath,
@@ -66,7 +69,7 @@ internal sealed class BackgroundEstimationEngine
         await onStatus($"using baked background: {Path.GetFileName(bakedPath)}");
 
         capture.PosFrames = 0;
-        using var railRoiMask = railRoiMaskBuilder.BuildFromBackground(medianBackground);
+        using var railRoiMask = _railRoiMaskBuilder.BuildFromBackground(medianBackground);
         return await ProcessCaptureFramesAsync(
             capture,
             Path.GetFileName(videoPath),
@@ -120,7 +123,7 @@ internal sealed class BackgroundEstimationEngine
         previousVersion = background.LastFrameVersion;
 
         using var medianBackground = background.MedianBackground;
-        using var railRoiMask = railRoiMaskBuilder.BuildFromBackground(medianBackground);
+        using var railRoiMask = _railRoiMaskBuilder.BuildFromBackground(medianBackground);
 
         return await ProcessUsbCameraSourceFramesAsync(
             lease,
@@ -213,7 +216,7 @@ internal sealed class BackgroundEstimationEngine
             Cv2.Absdiff(medianBackground, resized, diff);
             Cv2.Threshold(diff, mask, activeThreshold, 255, ThresholdTypes.Binary);
             Cv2.BitwiseAnd(mask, railRoiMask, mask);
-            using var refined = motionMaskRefiner.Refine(mask, BuildRefinerOptions(activeMorphKernelSize));
+            using var refined = _motionMaskRefiner.Refine(mask, BuildRefinerOptions(activeMorphKernelSize));
             refined.CopyTo(refinedMask);
 
             var movingRects = GetMovingObjectRectangles(refinedMask, activeMinMotionArea);
@@ -263,7 +266,7 @@ internal sealed class BackgroundEstimationEngine
 
     public Task PreBakeBackgroundAsync(string videoPath, int sampleCount, CancellationToken cancellationToken)
     {
-        return sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, ProcessingOptions.Default.ProcessMaxWidth, cancellationToken);
+        return _sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, ProcessingOptions.Default.ProcessMaxWidth, cancellationToken);
     }
 
     public async Task<string> EnsureBakedBackgroundAsync(
@@ -274,7 +277,7 @@ internal sealed class BackgroundEstimationEngine
         CancellationToken cancellationToken,
         Func<string, Task>? onStatus = null)
     {
-        return await sessionCalibration.EnsureBakedBackgroundAsync(
+        return await _sessionCalibration.EnsureBakedBackgroundAsync(
             videoPath,
             sampleCount,
             options.ProcessMaxWidth,
@@ -285,7 +288,7 @@ internal sealed class BackgroundEstimationEngine
 
     public Task PreBakeBackgroundAsync(string videoPath, int sampleCount, ProcessingOptions options, CancellationToken cancellationToken)
     {
-        return sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, options.ProcessMaxWidth, cancellationToken);
+        return _sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, options.ProcessMaxWidth, cancellationToken);
     }
 
     private static async Task<UsbBackgroundSample> CreateMedianBackgroundForUsbCameraSourceAsync(
@@ -410,7 +413,7 @@ internal sealed class BackgroundEstimationEngine
             Cv2.Absdiff(medianBackground, resized, diff);
             Cv2.Threshold(diff, mask, activeThreshold, 255, ThresholdTypes.Binary);
             Cv2.BitwiseAnd(mask, railRoiMask, mask);
-            using var refined = motionMaskRefiner.Refine(mask, BuildRefinerOptions(activeMorphKernelSize));
+            using var refined = _motionMaskRefiner.Refine(mask, BuildRefinerOptions(activeMorphKernelSize));
             refined.CopyTo(refinedMask);
 
             var movingRects = GetMovingObjectRectangles(refinedMask, activeMinMotionArea);

@@ -127,6 +127,20 @@ public partial class MainWindow : AppWindow
         string ToggleButtonText,
         string PinButtonText);
 
+    internal static IReadOnlyList<CameraProfile> GetIncludedCameraProfiles(IReadOnlyList<CameraProfile> cameras)
+    {
+        var included = new List<CameraProfile>();
+        foreach (var camera in cameras)
+        {
+            if (camera.IsIncludedInVisionPipeline)
+            {
+                included.Add(camera);
+            }
+        }
+
+        return included;
+    }
+
     public static WorkspaceVisibility BuildWorkspaceVisibility(Workspace workspace)
     {
         return workspace switch
@@ -400,8 +414,6 @@ public partial class MainWindow : AppWindow
     private readonly Dictionary<string, DebugTileImageSet> cameraTileDebugImagesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> pendingUsbCaptureSettingsCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
     private Task? runTask;
-    private long lastPreviewRenderTick;
-    private int previewRenderBusy;
     private int selectedCameraIndex = -1;
     private int requestedCameraIndex = -1;
     private string selectedCalibrationColor = "red";
@@ -415,7 +427,6 @@ public partial class MainWindow : AppWindow
     private bool isCameraPanelOpen = true;
     private bool isCameraPanelPinned = true;
     private Workspace activeWorkspace = Workspace.Camera;
-    private string? activeVisionPipelineCameraId;
     internal Func<string, string, Task<bool>> ConfirmDestructiveActionAsync { get; set; }
     internal Func<Task<SettingsNavigationDecision>> PromptSettingsNavigationDecisionAsync { get; set; }
 
@@ -1108,7 +1119,6 @@ public partial class MainWindow : AppWindow
 
         UpdateSelectedCameraSettingsFromUi(logChange: false);
 
-        var startIndex = selectedCameraIndex >= 0 ? selectedCameraIndex : 0;
         var loopCameraVideos = LoopPlaylistCheckBox.IsChecked == true;
         var runStopwatch = Stopwatch.StartNew();
         var stopReason = "completed";
@@ -1116,15 +1126,20 @@ public partial class MainWindow : AppWindow
         runCts = new CancellationTokenSource();
         var token = runCts.Token;
         sessionAuditLogger.StartSession();
-        var selectedCamera = GetSelectedCamera();
+
+        List<CameraProfile> snapshot;
+        lock (cameraSync)
+        {
+            snapshot = cameras.ToList();
+        }
+
+        var includedCameras = GetIncludedCameraProfiles(snapshot);
         sessionAuditLogger.AppendEvent(
             SessionAuditLogger.EventRunStart,
             "Processing run started.",
             ("cameraCount", GetCameraCount().ToString()),
-            ("startIndex", startIndex.ToString()),
-            ("loopVideos", loopCameraVideos.ToString()),
-            ("startCameraId", selectedCamera?.Id ?? string.Empty),
-            ("startCameraName", selectedCamera?.DisplayName ?? string.Empty));
+            ("includedCameraCount", includedCameras.Count.ToString()),
+            ("loopVideos", loopCameraVideos.ToString()));
 
         if (!string.IsNullOrWhiteSpace(sessionAuditLogger.CurrentFilePath))
         {
@@ -1134,7 +1149,7 @@ public partial class MainWindow : AppWindow
         hasPendingVisionPipelineRestart = false;
         SetRunState(isRunning: true);
         StartBakeForAllCameras(token);
-        runTask = Task.Run(() => RunCameraSelectionAsync(startIndex, loopCameraVideos, token), token);
+        runTask = Task.Run(() => RunAllCamerasAsync(includedCameras, loopCameraVideos, token), token);
 
         try
         {
@@ -1287,151 +1302,103 @@ public partial class MainWindow : AppWindow
         UpdateBottomStatusBar();
     }
 
-    private async Task RunCameraSelectionAsync(int startCameraIndex, bool loopCameraVideos, CancellationToken cancellationToken)
+    private async Task RunAllCamerasAsync(IReadOnlyList<CameraProfile> cameras, bool loopCameraVideos, CancellationToken cancellationToken)
     {
-        var cameraIndex = startCameraIndex;
+        var tasks = new List<Task>();
 
-        while (!cancellationToken.IsCancellationRequested)
+        foreach (var camera in cameras)
         {
-            if (!TryGetCamera(cameraIndex, out var camera))
-            {
-                await Dispatcher.UIThread.InvokeAsync(() => SetStatus("Status: no cameras available."));
-                break;
-            }
-
-            selectedCameraIndex = cameraIndex;
-            Interlocked.Exchange(ref selectedCameraIndex, cameraIndex);
-
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                PlaylistListBox.SelectedIndex = cameraIndex;
-                ApplySettingsToUi(GetSettingsForCamera(camera.Id));
-                CurrentVideoText.Text = BuildCurrentSourceText(camera);
-                OpenBakedMaskButton.IsEnabled = camera.CanOpenBakedMask;
-            });
-
-            await ProcessCameraAsync(camera, loopCameraVideos, cancellationToken);
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
-
-            if (TryConsumeCameraSwitchRequest(out var requestedIndex))
-            {
-                cameraIndex = requestedIndex;
-                continue;
-            }
-
-            // Stay on the currently selected camera loop unless explicitly switched.
-            cameraIndex = Math.Clamp(selectedCameraIndex, 0, Math.Max(0, GetCameraCount() - 1));
+            var engine = new BackgroundEstimationEngine();
+            var cameraCopy = camera;
+            tasks.Add(Task.Run(() => ProcessCameraAsync(cameraCopy, loopCameraVideos, engine, cancellationToken), cancellationToken));
         }
+
+        await Task.WhenAll(tasks);
     }
 
-    private async Task ProcessCameraAsync(CameraProfile camera, bool loopCameraVideos, CancellationToken cancellationToken)
+    private async Task ProcessCameraAsync(CameraProfile camera, bool loopCameraVideos, BackgroundEstimationEngine engine, CancellationToken cancellationToken)
     {
-        activeVisionPipelineCameraId = camera.Id;
-        try
+        if (camera.IsUsbCamera && camera.UsbCamera is { } usbCamera)
         {
-            if (camera.IsUsbCamera && camera.UsbCamera is { } usbCamera)
-            {
-                var settings = GetSettingsForCamera(camera.Id);
-                var options = new BackgroundEstimationEngine.ProcessingOptions(
-                    settings.ProcessMaxWidth,
-                    settings.MotionArea,
-                    settings.ColorMinPixels,
-                    settings.MorphKernelSize,
-                    settings.ColorCalibrations);
+            var settings = GetSettingsForCamera(camera.Id);
+            var options = new BackgroundEstimationEngine.ProcessingOptions(
+                settings.ProcessMaxWidth,
+                settings.MotionArea,
+                settings.ColorMinPixels,
+                settings.MorphKernelSize,
+                settings.ColorCalibrations);
 
-                var key = new UsbCameraKey(usbCamera.CameraIndex, usbCamera.Api.ToString().ToUpperInvariant());
-                var startupSettings = ToUsbCaptureSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id));
-                var result = await engine.ProcessUsbCameraSourceAsync(
-                    usbCameraOwnerManager,
-                    key,
-                    startupSettings,
-                    camera.DisplayName,
-                    settings.SampleCount,
-                    settings.Threshold,
-                    options,
-                    GetBakeImagePath(settings),
-                    onFrame: frameSet =>
-                    {
-                        QueuePreviewFrame(frameSet, cancellationToken);
-                        return Task.CompletedTask;
-                    },
-                    onStatus: async message => await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {message}")),
-                    getLiveTuning: () => GetLiveTuningForCamera(camera.Id),
-                    shouldStopEarly: HasPendingCameraSwitchRequest,
-                    cancellationToken: cancellationToken);
-
-                if (!result.Success)
+            var key = new UsbCameraKey(usbCamera.CameraIndex, usbCamera.Api.ToString().ToUpperInvariant());
+            var startupSettings = ToUsbCaptureSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id));
+            var result = await engine.ProcessUsbCameraSourceAsync(
+                usbCameraOwnerManager,
+                key,
+                startupSettings,
+                camera.DisplayName,
+                settings.SampleCount,
+                settings.Threshold,
+                options,
+                GetBakeImagePath(settings),
+                onFrame: frameSet =>
                 {
-                    await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {result.Message}"));
-                }
+                    QueuePreviewFrame(camera.Id, frameSet, cancellationToken);
+                    return Task.CompletedTask;
+                },
+                onStatus: async message => await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {message}")),
+                getLiveTuning: () => GetLiveTuningForCamera(camera.Id),
+                shouldStopEarly: null,
+                cancellationToken: cancellationToken);
 
-                return;
+            if (!result.Success)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {result.Message}"));
             }
 
-            for (var videoIndex = 0; !cancellationToken.IsCancellationRequested; videoIndex++)
-            {
-                if (TryConsumeCameraSwitchRequest(out var _))
-                {
-                    return;
-                }
-
-                var settings = GetSettingsForCamera(camera.Id);
-                var options = new BackgroundEstimationEngine.ProcessingOptions(
-                    settings.ProcessMaxWidth,
-                    settings.MotionArea,
-                    settings.ColorMinPixels,
-                    settings.MorphKernelSize,
-                    settings.ColorCalibrations);
-
-                if (videoIndex >= camera.VideoPaths.Count)
-                {
-                    if (!loopCameraVideos)
-                    {
-                        break;
-                    }
-
-                    videoIndex = 0;
-                }
-
-                var videoPath = camera.VideoPaths[videoIndex];
-                await Dispatcher.UIThread.InvokeAsync(() => CurrentVideoText.Text = BuildCurrentSourceText(camera, Path.GetFileName(videoPath)));
-
-                var result = await engine.ProcessVideoAsync(
-                    videoPath,
-                    settings.SampleCount,
-                    settings.Threshold,
-                    options,
-                    GetBakeImagePath(settings),
-                    onFrame: frameSet =>
-                    {
-                        QueuePreviewFrame(frameSet, cancellationToken);
-                        return Task.CompletedTask;
-                    },
-                    onStatus: async message => await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {message}")),
-                    getLiveTuning: () => GetLiveTuningForCamera(camera.Id),
-                    shouldStopEarly: HasPendingCameraSwitchRequest,
-                    cancellationToken: cancellationToken);
-
-                if (!result.Success)
-                {
-                    await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {result.Message}"));
-                }
-
-                if (TryConsumeCameraSwitchRequest(out var _))
-                {
-                    return;
-                }
-            }
+            return;
         }
-        finally
+
+        for (var videoIndex = 0; !cancellationToken.IsCancellationRequested; videoIndex++)
         {
-            if (string.Equals(activeVisionPipelineCameraId, camera.Id, StringComparison.OrdinalIgnoreCase))
+            var settings = GetSettingsForCamera(camera.Id);
+            var options = new BackgroundEstimationEngine.ProcessingOptions(
+                settings.ProcessMaxWidth,
+                settings.MotionArea,
+                settings.ColorMinPixels,
+                settings.MorphKernelSize,
+                settings.ColorCalibrations);
+
+            if (videoIndex >= camera.VideoPaths.Count)
             {
-                activeVisionPipelineCameraId = null;
+                if (!loopCameraVideos)
+                {
+                    break;
+                }
+
+                videoIndex = 0;
+            }
+
+            var videoPath = camera.VideoPaths[videoIndex];
+            await Dispatcher.UIThread.InvokeAsync(() => CurrentVideoText.Text = BuildCurrentSourceText(camera, Path.GetFileName(videoPath)));
+
+            var result = await engine.ProcessVideoAsync(
+                videoPath,
+                settings.SampleCount,
+                settings.Threshold,
+                options,
+                GetBakeImagePath(settings),
+                onFrame: frameSet =>
+                {
+                    QueuePreviewFrame(camera.Id, frameSet, cancellationToken);
+                    return Task.CompletedTask;
+                },
+                onStatus: async message => await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {message}")),
+                getLiveTuning: () => GetLiveTuningForCamera(camera.Id),
+                shouldStopEarly: null,
+                cancellationToken: cancellationToken);
+
+            if (!result.Success)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {result.Message}"));
             }
         }
     }
@@ -1485,7 +1452,7 @@ public partial class MainWindow : AppWindow
         }
     }
 
-    private void QueuePreviewFrame(BackgroundEstimationEngine.PreviewFrameSet frameSet, CancellationToken cancellationToken)
+    private void QueuePreviewFrame(string cameraId, BackgroundEstimationEngine.PreviewFrameSet frameSet, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested)
         {
@@ -1493,15 +1460,26 @@ public partial class MainWindow : AppWindow
         }
 
         var now = Environment.TickCount64;
-        var last = Interlocked.Read(ref lastPreviewRenderTick);
-        if (now - last < PreviewIntervalMs)
-        {
-            return;
-        }
 
-        if (Interlocked.CompareExchange(ref previewRenderBusy, 1, 0) != 0)
+        lock (cameraPreviewThrottleSync)
         {
-            return;
+            if (!cameraPreviewLastTick.TryGetValue(cameraId, out var last))
+            {
+                last = 0;
+            }
+
+            if (now - last < PreviewIntervalMs)
+            {
+                return;
+            }
+
+            if (cameraPreviewBusy.Contains(cameraId))
+            {
+                return;
+            }
+
+            cameraPreviewBusy.Add(cameraId);
+            cameraPreviewLastTick[cameraId] = now;
         }
 
         _ = Task.Run(async () =>
@@ -1513,8 +1491,7 @@ public partial class MainWindow : AppWindow
                     return;
                 }
 
-                await Dispatcher.UIThread.InvokeAsync(() => RenderFrameSet(frameSet));
-                Interlocked.Exchange(ref lastPreviewRenderTick, Environment.TickCount64);
+                await Dispatcher.UIThread.InvokeAsync(() => RenderFrameSet(cameraId, frameSet));
             }
             catch
             {
@@ -1522,14 +1499,20 @@ public partial class MainWindow : AppWindow
             }
             finally
             {
-                Interlocked.Exchange(ref previewRenderBusy, 0);
+                lock (cameraPreviewThrottleSync)
+                {
+                    cameraPreviewBusy.Remove(cameraId);
+                }
             }
         }, cancellationToken);
     }
 
-    private void RenderFrameSet(BackgroundEstimationEngine.PreviewFrameSet frameSet)
+    private readonly object cameraPreviewThrottleSync = new();
+    private readonly Dictionary<string, long> cameraPreviewLastTick = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> cameraPreviewBusy = new(StringComparer.OrdinalIgnoreCase);
+
+    private void RenderFrameSet(string cameraId, BackgroundEstimationEngine.PreviewFrameSet frameSet)
     {
-        var cameraId = activeVisionPipelineCameraId;
         if (string.IsNullOrWhiteSpace(cameraId))
         {
             return;
@@ -1982,12 +1965,6 @@ public partial class MainWindow : AppWindow
             return;
         }
 
-        if (string.Equals(activeVisionPipelineCameraId, camera.Value.Id, StringComparison.OrdinalIgnoreCase))
-        {
-            SetStatus("Status: stop Vision Pipeline to restart this camera source.");
-            return;
-        }
-
         var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
         try
         {
@@ -2081,7 +2058,7 @@ public partial class MainWindow : AppWindow
             camera.Value.IsUsbCamera,
             camera.Value.IsVisible,
             camera.Value.IsIncludedInVisionPipeline,
-            string.Equals(activeVisionPipelineCameraId, camera.Value.Id, StringComparison.OrdinalIgnoreCase),
+            runTask is not null,
             status);
         if (decision.ShouldRestartCameraSource)
         {
@@ -2150,7 +2127,7 @@ public partial class MainWindow : AppWindow
         var status = usbCameraOwnerManager.GetStatus(key, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         return CameraSourceStatusProjection.BuildUsbStatus(
             isUsbCameraSource: true,
-            isActivelyProcessedByVisionPipeline: string.Equals(activeVisionPipelineCameraId, camera.Id, StringComparison.OrdinalIgnoreCase),
+            isActivelyProcessedByVisionPipeline: runTask is not null,
             status);
     }
 
@@ -3126,17 +3103,6 @@ public partial class MainWindow : AppWindow
             && (settings.BakeSourceMode == BakeSourceMode.Samples || !string.IsNullOrWhiteSpace(settings.BakeImagePath));
     }
 
-    private bool HasPendingCameraSwitchRequest()
-    {
-        return Interlocked.CompareExchange(ref requestedCameraIndex, -1, -1) >= 0;
-    }
-
-    private bool TryConsumeCameraSwitchRequest(out int requestedIndex)
-    {
-        requestedIndex = Interlocked.Exchange(ref requestedCameraIndex, -1);
-        return requestedIndex >= 0;
-    }
-
     private void SetStatus(string text)
     {
         StatusText.Text = text;
@@ -3348,7 +3314,7 @@ public partial class MainWindow : AppWindow
         return name;
     }
 
-    private enum CameraSourceKind
+    internal enum CameraSourceKind
     {
         VideoFiles,
         UsbCamera
@@ -3361,9 +3327,9 @@ public partial class MainWindow : AppWindow
     }
 
     [StructLayout(LayoutKind.Auto)]
-    private readonly record struct UsbCameraSource(int CameraIndex, VideoCaptureAPIs Api);
+    internal readonly record struct UsbCameraSource(int CameraIndex, VideoCaptureAPIs Api);
 
-    private readonly record struct CameraProfile(
+    internal readonly record struct CameraProfile(
         string Id,
         string DisplayName,
         bool IsVisible,

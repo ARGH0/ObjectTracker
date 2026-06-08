@@ -204,7 +204,7 @@ public sealed class PipelineControllerSnapshotTests
     }
 
     /// <summary>
-    /// <description>Feature: PipelineController does not publish full-frame color detections as train observations.
+    /// <description>Feature: PipelineController with configured background publishes moving object observation from first file source frame.
     /// 
     ///   Scenario: A static color blob detected by StubDetectorManager is excluded from TrainObservations to prevent false positives on full-frame detections.
     ///     Given a PipelineController with one single frame source ("camera-1", timestamp 2300),
@@ -273,7 +273,85 @@ public sealed class PipelineControllerSnapshotTests
     }
 
     /// <summary>
-    /// <description>Feature: PipelineController with configured background publishes moving object observation from first file source frame.
+    /// <description>Feature: Debug View receives visual evidence debug frames from the same PipelineSnapshot flow as Annotated Frames.
+    /// 
+    ///   Scenario: A file camera frame with motion produces observations and named debug frames when VisualObservationPipeline runs with an encoded background,
+    ///     and SetDebugViewEnabled is called before StartAsync to gate those debug frames into the snapshot.</description>
+    /// </summary>
+    [Fact]
+    public async Task StartAsync_WithDebugViewEnabled_PublishesVisualEvidenceDebugFrames()
+    {
+        using var bgMat = new Cv.Mat(50, 80, Cv.MatType.CV_8UC3, Cv.Scalar.Black);
+        Cv.Cv2.ImEncode(".jpg", bgMat, out var encodedBackground);
+
+        var sourceFrame = JpegFrame("camera-1", 3000, new Cv.Rect(20, 12, 12, 10));
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new VisualObservationPipeline(),
+            new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        controller.SetVisualObservationSettings("camera-1", VisualObservationSettings.Default with
+        {
+            Threshold = 30,
+            MotionArea = 20,
+            EncodedBackground = encodedBackground
+        });
+
+        controller.SetDebugViewEnabled("camera-1", enabled: true);
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        var snapshot = await output.WaitForSnapshotAsync();
+        await controller.StopAsync(CancellationToken.None);
+
+        Assert.NotEmpty(snapshot.DebugFrames);
+    }
+
+    /// <summary>
+    /// <description>Feature: No PipelineSnapshot is published from stale repeated Source Frames.
+    /// 
+    ///   Scenario: A source factory provides one frame, and the controller must not publish a second snapshot
+    ///     when no fresh frame arrives on subsequent reads.</description>
+    /// </summary>
+    [Fact]
+    public async Task StartAsync_NoFreshFrame_PublishesOnlyOneSnapshot()
+    {
+        using var bgMat = new Cv.Mat(50, 80, Cv.MatType.CV_8UC3, Cv.Scalar.Black);
+        Cv.Cv2.ImEncode(".jpg", bgMat, out var encodedBackground);
+
+        var sourceFrame = JpegFrame("camera-1", 4000, new Cv.Rect(20, 12, 12, 10));
+        var output = new RecordingOutputPort();
+        await using var controller = new PipelineController(
+            new SingleFrameSourceFactory(new SingleFrameSource(sourceFrame)),
+            new VisualObservationPipeline(),
+            new StubTracker([]),
+            [output],
+            new StubClock(sourceFrame.TimestampUtcMs));
+
+        controller.SetVisualObservationSettings("camera-1", VisualObservationSettings.Default with
+        {
+            Threshold = 30,
+            MotionArea = 20,
+            EncodedBackground = encodedBackground
+        });
+
+        await controller.StartAsync("camera-1", CancellationToken.None);
+        
+        // Wait for the first snapshot and verify it has observations
+        var snapshot1 = await output.WaitForSnapshotAsync();
+        Assert.NotEmpty(snapshot1.MovingObjectObservations);
+
+        // Give a brief moment to see if a second snapshot would appear from stale processing
+        await Task.Delay(50);
+        await controller.StopAsync(CancellationToken.None);
+
+        // Only one snapshot should have been published — no duplicate from the same frame
+        Assert.Single(output.Snapshots);
+    }
+
+    /// <summary>
     /// 
     ///   Scenario: A foreground region (white rectangle) in a file camera frame produces a MovingObjectObservation when compared against the encoded background.
     ///     Given a PipelineController with one single frame source ("file-bridge", timestamp 2400, white rectangle at (20,12) size 12x10),
@@ -585,6 +663,38 @@ public sealed class PipelineControllerSnapshotTests
         public IReadOnlyList<FrameSourceInfo> GetAvailableSources() => [new(source.Id, source.DisplayName)];
 
         public IFrameSource Create(string sourceId) => source;
+    }
+
+    private sealed class RepeatedFrameSourceFactory(FramePacket frame) : IFrameSourceFactory
+    {
+        private int callCount = 0;
+        private readonly Lock lockObj = new();
+
+        public IReadOnlyList<FrameSourceInfo> GetAvailableSources() => [new(frame.SourceId, frame.SourceId)];
+
+        public IFrameSource Create(string sourceId) => new RepeatedFrameSource(frame, () =>
+        {
+            lock (lockObj) return callCount++;
+        });
+    }
+
+    private sealed class RepeatedFrameSource(FramePacket frame, Func<int> counter) : IFrameSource
+    {
+        public string Id => frame.SourceId;
+        public string DisplayName => frame.SourceId;
+        public string Diagnostics => "repeated test source";
+
+        public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<FramePacket?> ReadFrameAsync(CancellationToken cancellationToken)
+        {
+            if (counter() >= 2) return Task.FromResult<FramePacket?>(null);
+            return Task.FromResult<FramePacket?>(frame);
+        }
+
+        public string? ConsumeDiagnosticEvent() => null;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class SingleFrameSource(FramePacket frame) : IFrameSource

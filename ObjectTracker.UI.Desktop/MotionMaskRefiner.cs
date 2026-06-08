@@ -1,6 +1,7 @@
+using System;
 using OpenCvSharp;
 
-namespace ObjectTracker.Vision;
+namespace ObjectTracker;
 
 public sealed class MotionMaskRefiner
 {

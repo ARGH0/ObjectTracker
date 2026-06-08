@@ -16,8 +16,6 @@ internal sealed class SessionAuditLogger : IDisposable
     public const string EventStatus = "status";
     public const string EventCameraSwitch = "camera-switch";
     public const string EventCalibrationChange = "calibration-change";
-    public const string EventAmbiguityRaised = "ambiguity-raised";
-    public const string EventAmbiguityResolved = "ambiguity-resolved";
 
     public string? CurrentFilePath { get; private set; }
 

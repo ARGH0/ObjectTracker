@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ObjectTracker.UI.Desktop;
-using ObjectTracker.Vision.Source;
 using OpenCvSharp;
 using Xunit;
 
@@ -20,7 +19,6 @@ public sealed class MainWindowEndToEndRegressionTests
         var runningMenu = MainWindow.BuildVisionPipelineMenuState(isVisionPipelineRunning: true);
         var pendingStatus = MainWindow.BuildBottomStatusSnapshot(
             isVisionPipelineRunning: true,
-            isAmbiguityActive: false,
             hasPendingVisionPipelineRestart: true);
 
         Assert.True(cameraWorkspace.CameraVisible);
@@ -31,7 +29,6 @@ public sealed class MainWindowEndToEndRegressionTests
         Assert.False(runningMenu.StartEnabled);
         Assert.True(runningMenu.StopEnabled);
         Assert.Equal("Pending restart: required", pendingStatus.PendingRestart);
-        Assert.True(MainWindow.IsWorkspaceNavigationAllowedDuringAmbiguity());
     }
 
     [Fact]
@@ -46,12 +43,10 @@ public sealed class MainWindowEndToEndRegressionTests
         var viewState = MainWindow.BuildCameraTileViewState(projection);
         var runningDestructiveState = MainWindow.BuildCameraDestructiveActionsState(
             isVisionPipelineRunning: true,
-            isAmbiguityActive: false,
             hasSelectedCamera: true,
             cameraCount: 3);
         var stoppedDestructiveState = MainWindow.BuildCameraDestructiveActionsState(
             isVisionPipelineRunning: false,
-            isAmbiguityActive: false,
             hasSelectedCamera: true,
             cameraCount: 1);
 
@@ -96,7 +91,6 @@ public sealed class MainWindowEndToEndRegressionTests
             isVisionPipelineRunning: true);
         var bottomStatus = MainWindow.BuildBottomStatusSnapshot(
             isVisionPipelineRunning: true,
-            isAmbiguityActive: false,
             hasPendingVisionPipelineRestart: saveImpact.HasPendingVisionPipelineRestart);
 
         Assert.False(deleteState.CanDelete);
@@ -209,7 +203,6 @@ public sealed class MainWindowEndToEndRegressionTests
         Assert.True(startingStatus.ShowPlaceholder);
         Assert.Equal("USB Camera Source: stale (1500 ms since last frame)", staleStatus.StatusText);
         Assert.True(failedStatus.ShowPlaceholder);
-        Assert.False(failedStatus.RaisesAmbiguityAlert);
         Assert.False(activeStatus.RestartEnabled);
         Assert.Equal(new UsbCaptureSettingsRequest(1280, 720, 60), applied.SettingsByCameraSourceId["usb:0:ANY"]);
         Assert.Equal(new UsbCaptureSettingsRequest(1280, 720, 60), reverted);

@@ -85,37 +85,3 @@ _Avoid_: Global region map
 **Processing Unit**:
 The runtime boundary that processes one or more camera zones and owns Local Train IDs within that boundary.
 _Avoid_: Node, host
-
-### Safety And Intervention
-
-**Automatic Action**:
-Any downstream system behavior taken without immediate operator input, based on reported Train State.
-_Avoid_: Autonomous decision, automatic control
-
-**Operator Intervention**:
-A manual resolution of ambiguity or mapping problems, such as marking a Train removed from track or reconnecting it to the correct identity.
-_Avoid_: Override, manual fix
-
-**Ambiguity Alert**:
-A blocking alert raised when Train identity or state is unsafe to trust. It remains active until an Operator Intervention resolves it.
-_Avoid_: Warning, notification
-
-## Flagged Ambiguities
-
-- **Train vs wagon**: The system tracks whole Trains, not individual wagons.
-- **Identity continuity**: Local Train IDs may differ between Processing Units, but PLC ID mapping must remain correct.
-- **Gone-from-track vs uncertain**: `uncertain` is a temporary low-confidence state; `gone-from-track` is the safety fallback after the allowed uncertainty window expires.
-
-## Example Dialogue
-
-Developer: "If the blue train stops under the bridge, do we still track it?"
-
-Domain expert: "Yes. It remains the same Train with the same PLC ID, but its Motion State may become `stationary` and its Confidence may drop if the bridge hides it."
-
-Developer: "When do we treat it as gone from track?"
-
-Domain expert: "Only after the uncertainty window expires and no Operator Intervention has resolved the Ambiguity Alert."
-
-Developer: "If another camera sees it later, does it keep the same Local Train ID?"
-
-Domain expert: "Not necessarily. The destination Processing Unit can assign a different Local Train ID, but the operator-configured PLC ID must still be correct."

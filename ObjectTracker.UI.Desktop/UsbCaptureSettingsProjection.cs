@@ -1,4 +1,4 @@
-using ObjectTracker.Vision.Source;
+using ObjectTracker;
 
 namespace ObjectTracker.UI.Desktop;
 

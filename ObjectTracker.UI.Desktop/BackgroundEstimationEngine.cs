@@ -4,13 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ObjectTracker.Core.Domain;
-using ObjectTracker.Vision;
-using ObjectTracker.Vision.Source;
 using OpenCvSharp;
 
 namespace ObjectTracker.UI.Desktop;

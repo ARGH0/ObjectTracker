@@ -1,5 +1,4 @@
 using ObjectTracker.UI.Desktop;
-using ObjectTracker.Vision.Source;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;
@@ -51,7 +50,7 @@ public sealed class CameraSourceStatusProjectionTests
     }
 
     [Fact]
-    public void BuildUsbStatus_WhenFailed_ShowsPlaceholderAndFailureWithoutAmbiguityAlert()
+    public void BuildUsbStatus_WhenFailed_ShowsPlaceholderAndFailure()
     {
         var status = new UsbCameraRuntimeStatus(
             UsbCameraOwnerState.Failed,
@@ -69,7 +68,6 @@ public sealed class CameraSourceStatusProjectionTests
 
         Assert.Equal("USB Camera Source: failed - camera unavailable", projection.StatusText);
         Assert.True(projection.ShowPlaceholder);
-        Assert.False(projection.RaisesAmbiguityAlert);
     }
 
     [Fact]

@@ -1,5 +1,3 @@
-using ObjectTracker.Vision.Source;
-
 namespace ObjectTracker.UI.Desktop;
 
 public readonly record struct CameraSourceStatusView(
@@ -7,8 +5,7 @@ public readonly record struct CameraSourceStatusView(
     bool ShowFrameAge,
     bool ShowPlaceholder,
     bool RestartEnabled,
-    string RestartDisabledReason,
-    bool RaisesAmbiguityAlert);
+    string RestartDisabledReason);
 
 public static class CameraSourceStatusProjection
 {
@@ -19,7 +16,7 @@ public static class CameraSourceStatusProjection
     {
         if (!isUsbCameraSource)
         {
-            return new CameraSourceStatusView(string.Empty, false, false, false, string.Empty, false);
+            return new CameraSourceStatusView(string.Empty, false, false, false, string.Empty);
         }
 
         var restartEnabled = !isActivelyProcessedByVisionPipeline;
@@ -34,36 +31,31 @@ public static class CameraSourceStatusProjection
                 ShowFrameAge: status.FrameAgeMs is not null,
                 ShowPlaceholder: true,
                 restartEnabled,
-                restartDisabledReason,
-                RaisesAmbiguityAlert: false),
+                restartDisabledReason),
             UsbCameraOwnerState.Starting => new CameraSourceStatusView(
                 "USB Camera Source: starting",
                 ShowFrameAge: false,
                 ShowPlaceholder: true,
                 restartEnabled,
-                restartDisabledReason,
-                RaisesAmbiguityAlert: false),
+                restartDisabledReason),
             UsbCameraOwnerState.Running when status.IsStale => new CameraSourceStatusView(
                 $"USB Camera Source: stale ({status.FrameAgeMs ?? 0} ms since last frame)",
                 ShowFrameAge: true,
                 ShowPlaceholder: false,
                 restartEnabled,
-                restartDisabledReason,
-                RaisesAmbiguityAlert: false),
+                restartDisabledReason),
             UsbCameraOwnerState.Running => new CameraSourceStatusView(
                 "USB Camera Source: running",
                 ShowFrameAge: false,
                 ShowPlaceholder: false,
                 restartEnabled,
-                restartDisabledReason,
-                RaisesAmbiguityAlert: false),
+                restartDisabledReason),
             _ => new CameraSourceStatusView(
                 "USB Camera Source: stopped",
                 ShowFrameAge: false,
                 ShowPlaceholder: false,
                 restartEnabled,
-                restartDisabledReason,
-                RaisesAmbiguityAlert: false)
+                restartDisabledReason)
         };
     }
 }

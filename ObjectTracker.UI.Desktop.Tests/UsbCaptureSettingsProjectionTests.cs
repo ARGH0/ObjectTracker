@@ -1,5 +1,4 @@
 using ObjectTracker.UI.Desktop;
-using ObjectTracker.Vision.Source;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;
@@ -94,6 +93,6 @@ public sealed class UsbCaptureSettingsProjectionTests
         var startupSettings = UsbCaptureSettingsProjection.BuildRawTileStartupSettings(
             requested: new UsbCaptureSettingsRequest(1920, 1080, 60));
 
-        Assert.Equal(new ObjectTracker.Vision.Source.UsbCaptureSettings(640, 480, 20), startupSettings);
+        Assert.Equal(new UsbCaptureSettings(640, 480, 20), startupSettings);
     }
 }

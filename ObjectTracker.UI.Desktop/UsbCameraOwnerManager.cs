@@ -1,4 +1,10 @@
-namespace ObjectTracker.Vision.Source;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace ObjectTracker;
 
 public readonly record struct UsbCameraKey(int CameraIndex, string Api);
 

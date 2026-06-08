@@ -1,6 +1,9 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 using OpenCvSharp;
 
-namespace ObjectTracker.Vision.Source;
+namespace ObjectTracker;
 
 public sealed class OpenCvUsbCaptureBackend : IUsbCaptureBackend
 {

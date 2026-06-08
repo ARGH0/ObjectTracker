@@ -37,12 +37,6 @@ public sealed class MainWindowWorkspaceShellTests
     }
 
     [Fact]
-    public void WorkspaceNavigation_IsAllowed_DuringAmbiguityAlert()
-    {
-        Assert.True(MainWindow.IsWorkspaceNavigationAllowedDuringAmbiguity());
-    }
-
-    [Fact]
     public void RuntimeLog_IsVisible_OnlyInCameraWorkspace()
     {
         Assert.True(MainWindow.IsRuntimeLogVisibleForWorkspace(MainWindow.Workspace.Camera));
@@ -51,37 +45,10 @@ public sealed class MainWindowWorkspaceShellTests
     }
 
     [Fact]
-    public void BottomStatusSnapshot_ShowsRunningAndActiveAmbiguityStates()
-    {
-        var snapshot = MainWindow.BuildBottomStatusSnapshot(
-            isVisionPipelineRunning: true,
-            isAmbiguityActive: true,
-            hasPendingVisionPipelineRestart: false);
-
-        Assert.Equal("Vision Pipeline: running", snapshot.VisionPipeline);
-        Assert.Equal("Ambiguity Alert: active", snapshot.AmbiguityAlert);
-        Assert.Equal("Calibration: unknown", snapshot.Calibration);
-        Assert.Equal("Pending restart: none", snapshot.PendingRestart);
-    }
-
-    [Fact]
-    public void BottomStatusSnapshot_ShowsStoppedAndClearAmbiguityStates()
-    {
-        var snapshot = MainWindow.BuildBottomStatusSnapshot(
-            isVisionPipelineRunning: false,
-            isAmbiguityActive: false,
-            hasPendingVisionPipelineRestart: false);
-
-        Assert.Equal("Vision Pipeline: stopped", snapshot.VisionPipeline);
-        Assert.Equal("Ambiguity Alert: clear", snapshot.AmbiguityAlert);
-    }
-
-    [Fact]
     public void BottomStatusSnapshot_ShowsPendingRestartWhenRequired()
     {
         var snapshot = MainWindow.BuildBottomStatusSnapshot(
             isVisionPipelineRunning: true,
-            isAmbiguityActive: false,
             hasPendingVisionPipelineRestart: true);
 
         Assert.Equal("Pending restart: required", snapshot.PendingRestart);
@@ -162,7 +129,6 @@ public sealed class MainWindowWorkspaceShellTests
     {
         var state = MainWindow.BuildCameraDestructiveActionsState(
             isVisionPipelineRunning: true,
-            isAmbiguityActive: false,
             hasSelectedCamera: true,
             cameraCount: 2);
 
@@ -177,7 +143,6 @@ public sealed class MainWindowWorkspaceShellTests
     {
         var state = MainWindow.BuildCameraDestructiveActionsState(
             isVisionPipelineRunning: false,
-            isAmbiguityActive: false,
             hasSelectedCamera: true,
             cameraCount: 1);
 

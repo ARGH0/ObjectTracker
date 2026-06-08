@@ -17,7 +17,6 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Windowing;
 using ObjectTracker.Core.Domain;
-using ObjectTracker.Vision.Source;
 using OpenCvSharp;
 using VideoCapture = OpenCvSharp.VideoCapture;
 using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
@@ -38,7 +37,6 @@ public partial class MainWindow : AppWindow
 
     public readonly record struct BottomStatusSnapshot(
         string VisionPipeline,
-        string AmbiguityAlert,
         string Calibration,
         string PendingRestart);
 
@@ -138,11 +136,6 @@ public partial class MainWindow : AppWindow
             Workspace.Settings => new WorkspaceVisibility(false, false, true),
             _ => new WorkspaceVisibility(true, false, false)
         };
-    }
-
-    public static bool IsWorkspaceNavigationAllowedDuringAmbiguity()
-    {
-        return true;
     }
 
     public static bool IsRuntimeLogVisibleForWorkspace(Workspace workspace)
@@ -250,11 +243,10 @@ public partial class MainWindow : AppWindow
 
     public static CameraDestructiveActionsState BuildCameraDestructiveActionsState(
         bool isVisionPipelineRunning,
-        bool isAmbiguityActive,
         bool hasSelectedCamera,
         int cameraCount)
     {
-        var runtimeBlocked = isVisionPipelineRunning || isAmbiguityActive;
+        var runtimeBlocked = isVisionPipelineRunning;
         return new CameraDestructiveActionsState(
             DeleteSelectedEnabled: hasSelectedCamera && !runtimeBlocked,
             ClearAllEnabled: cameraCount > 0 && !runtimeBlocked,
@@ -364,11 +356,10 @@ public partial class MainWindow : AppWindow
             pendingRestart ? "Settings: saved, pending Vision Pipeline restart" : "Settings: saved");
     }
 
-    public static BottomStatusSnapshot BuildBottomStatusSnapshot(bool isVisionPipelineRunning, bool isAmbiguityActive, bool hasPendingVisionPipelineRestart)
+    public static BottomStatusSnapshot BuildBottomStatusSnapshot(bool isVisionPipelineRunning, bool hasPendingVisionPipelineRestart)
     {
         return new BottomStatusSnapshot(
             VisionPipeline: isVisionPipelineRunning ? "Vision Pipeline: running" : "Vision Pipeline: stopped",
-            AmbiguityAlert: isAmbiguityActive ? "Ambiguity Alert: active" : "Ambiguity Alert: clear",
             Calibration: "Calibration: unknown",
             PendingRestart: hasPendingVisionPipelineRestart ? "Pending restart: required" : "Pending restart: none");
     }
@@ -414,8 +405,6 @@ public partial class MainWindow : AppWindow
     private int selectedCameraIndex = -1;
     private int requestedCameraIndex = -1;
     private string selectedCalibrationColor = "red";
-    private bool ambiguityActive;
-    private string ambiguityMessage = "Ambiguity detected. Resolve before automatic processing continues.";
     private bool applyingCameraZoneUi;
     private bool applyingCameraVisibilityUi;
     private bool applyingCameraInclusionUi;
@@ -491,7 +480,6 @@ public partial class MainWindow : AppWindow
         DeleteSelectedCameraMenuItem.Click += RemoveCameraButtonOnClick;
         MoveCameraUpButton.Click += MoveCameraUpButtonOnClick;
         MoveCameraDownButton.Click += MoveCameraDownButtonOnClick;
-        ClearPlaylistButton.Click += ClearCamerasButtonOnClick;
         ClearCamerasMenuItem.Click += ClearCamerasButtonOnClick;
         PreviousVideoButton.Click += PreviousCameraButtonOnClick;
         NextVideoButton.Click += NextCameraButtonOnClick;
@@ -521,11 +509,6 @@ public partial class MainWindow : AppWindow
         BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
         SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
         ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
-        MarkAmbiguityButton.Click += MarkAmbiguityButtonOnClick;
-        ResolveRemovedButton.Click += ResolveRemovedButtonOnClick;
-        ResolveRelinkButton.Click += ResolveRelinkButtonOnClick;
-        ResolveFalseButton.Click += ResolveFalseButtonOnClick;
-        ResolveOtherButton.Click += ResolveOtherButtonOnClick;
         OpenCameraWorkspaceMenuItem.Click += CameraWorkspaceButtonOnClick;
         LayersWorkspaceMenuItem.Click += LayersWorkspaceButtonOnClick;
         SettingsWorkspaceMenuItem.Click += SettingsWorkspaceButtonOnClick;
@@ -553,7 +536,6 @@ public partial class MainWindow : AppWindow
         ValueLowerTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
         ValueUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
 
-        UpdateAmbiguityUi();
     }
 
     private async void CameraWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
@@ -1115,12 +1097,6 @@ public partial class MainWindow : AppWindow
     {
         if (runTask is not null)
         {
-            return;
-        }
-
-        if (ambiguityActive)
-        {
-            SetStatus("Status: ambiguity is active. Resolve alert before starting automatic processing.");
             return;
         }
 
@@ -1747,16 +1723,16 @@ public partial class MainWindow : AppWindow
                 return;
             }
 
-        using var videoCapture = new VideoCapture(camera.PrimaryVideoPath);
-        if (!videoCapture.IsOpened())
-        {
-            return;
-        }
+            using var videoCapture = new VideoCapture(camera.PrimaryVideoPath);
+            if (!videoCapture.IsOpened())
+            {
+                return;
+            }
 
-        var sourceFps = videoCapture.Get(VideoCaptureProperties.Fps);
-        var frameIntervalMs = sourceFps > 0.1
-            ? Math.Max(1, (int)Math.Round(1000d / sourceFps))
-            : PreviewIntervalMs;
+            var sourceFps = videoCapture.Get(VideoCaptureProperties.Fps);
+            var frameIntervalMs = sourceFps > 0.1
+                ? Math.Max(1, (int)Math.Round(1000d / sourceFps))
+                : PreviewIntervalMs;
 
             using var videoFrame = new Mat();
             while (!cancellationToken.IsCancellationRequested)
@@ -2394,15 +2370,13 @@ public partial class MainWindow : AppWindow
     private void SetRunState(bool isRunning)
     {
         StartStopButton.Content = isRunning ? "Stop" : "Start";
-        StartStopButton.IsEnabled = isRunning || !ambiguityActive;
+        StartStopButton.IsEnabled = isRunning;
         var menuState = BuildVisionPipelineMenuState(isRunning);
         StartVisionPipelineMenuItem.IsEnabled = menuState.StartEnabled;
         StopVisionPipelineMenuItem.IsEnabled = menuState.StopEnabled;
-        AddVideosButton.IsEnabled = !isRunning && !ambiguityActive;
-        RemoveSelectedButton.IsEnabled = !isRunning && !ambiguityActive;
-        ClearPlaylistButton.IsEnabled = !isRunning && !ambiguityActive;
-        LoopPlaylistCheckBox.IsEnabled = !isRunning && !ambiguityActive;
-        MarkAmbiguityButton.IsEnabled = !ambiguityActive;
+        AddVideosButton.IsEnabled = !isRunning;
+        RemoveSelectedButton.IsEnabled = !isRunning;
+        LoopPlaylistCheckBox.IsEnabled = !isRunning;
 
         if (!isRunning)
         {
@@ -2430,13 +2404,11 @@ public partial class MainWindow : AppWindow
         var hasSelectedCamera = selectedIndex >= 0 && selectedIndex < cameraCount;
         var state = BuildCameraDestructiveActionsState(
             isVisionPipelineRunning: runTask is not null,
-            isAmbiguityActive: ambiguityActive,
             hasSelectedCamera: hasSelectedCamera,
             cameraCount: cameraCount);
 
         RemoveSelectedButton.IsEnabled = state.DeleteSelectedEnabled;
         DeleteSelectedCameraMenuItem.IsEnabled = state.DeleteSelectedEnabled;
-        ClearPlaylistButton.IsEnabled = state.ClearAllEnabled;
         ClearCamerasMenuItem.IsEnabled = state.ClearAllEnabled;
     }
 
@@ -2582,91 +2554,10 @@ public partial class MainWindow : AppWindow
         return result;
     }
 
-    private async void MarkAmbiguityButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        if (ambiguityActive)
-        {
-            return;
-        }
-
-        if (runTask is not null)
-        {
-            await StopProcessingAsync();
-        }
-
-        RaiseAmbiguity("Operator marked identity ambiguity and halted automatic processing.");
-    }
-
-    private void ResolveRemovedButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        ResolveAmbiguity("removed-from-track");
-    }
-
-    private void ResolveRelinkButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        ResolveAmbiguity("relinked-to-correct-id");
-    }
-
-    private void ResolveFalseButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        ResolveAmbiguity("false-ambiguity");
-    }
-
-    private void ResolveOtherButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        ResolveAmbiguity("other");
-    }
-
-    private void RaiseAmbiguity(string reason)
-    {
-        ambiguityActive = true;
-        ambiguityMessage = reason;
-        UpdateAmbiguityUi();
-        SetRunState(isRunning: runTask is not null);
-        SetStatus("Status: ambiguity raised. Automatic processing blocked until operator resolution.");
-
-        sessionAuditLogger.AppendEvent(
-            SessionAuditLogger.EventAmbiguityRaised,
-            reason,
-            ("cameraId", GetSelectedCamera()?.Id ?? string.Empty),
-            ("cameraName", GetSelectedCamera()?.DisplayName ?? string.Empty));
-    }
-
-    private void ResolveAmbiguity(string outcome)
-    {
-        if (!ambiguityActive)
-        {
-            return;
-        }
-
-        ambiguityActive = false;
-        var previousMessage = ambiguityMessage;
-        ambiguityMessage = "Ambiguity detected. Resolve before automatic processing continues.";
-        UpdateAmbiguityUi();
-        SetRunState(isRunning: runTask is not null);
-        SetStatus($"Status: ambiguity resolved ({outcome}). You can resume automatic processing.");
-
-        sessionAuditLogger.AppendEvent(
-            SessionAuditLogger.EventAmbiguityResolved,
-            $"Resolved ambiguity: {outcome}.",
-            ("outcome", outcome),
-            ("originalReason", previousMessage),
-            ("cameraId", GetSelectedCamera()?.Id ?? string.Empty),
-            ("cameraName", GetSelectedCamera()?.DisplayName ?? string.Empty));
-    }
-
-    private void UpdateAmbiguityUi()
-    {
-        AmbiguityBanner.IsVisible = ambiguityActive;
-        AmbiguityText.Text = ambiguityMessage;
-        UpdateBottomStatusBar();
-    }
-
     private void UpdateBottomStatusBar()
     {
-        var snapshot = BuildBottomStatusSnapshot(runTask is not null, ambiguityActive, hasPendingVisionPipelineRestart);
+        var snapshot = BuildBottomStatusSnapshot(runTask is not null, hasPendingVisionPipelineRestart);
         BottomVisionPipelineStateText.Text = snapshot.VisionPipeline;
-        BottomAmbiguityStateText.Text = snapshot.AmbiguityAlert;
         BottomCalibrationStateText.Text = snapshot.Calibration;
         BottomPendingRestartStateText.Text = snapshot.PendingRestart;
     }

@@ -107,7 +107,7 @@
                                     Content="Remove" />
                         </Grid>
 
-                        <Grid Grid.Row="1"
+                        <Grid Grid.Row="2"
                               ColumnDefinitions="*,6,*">
                             <Button x:Name="MoveCameraUpButton"
                                     Grid.Column="0"
@@ -118,11 +118,6 @@
                                     Classes="ghost"
                                     Content="Move Down" />
                         </Grid>
-
-                        <Button Grid.Row="2"
-                                x:Name="ClearPlaylistButton"
-                                Classes="ghost"
-                                Content="Clear Cameras" />
 
                         <Border Grid.Row="4"
                                 Classes="surfaceAlt"
@@ -588,45 +583,7 @@
                                         x:Name="NextVideoButton"
                                         Classes="ghost"
                                         Content="Next" />
-                                <Button Grid.Column="4"
-                                        x:Name="MarkAmbiguityButton"
-                                        Classes="destructive"
-                                        Content="Mark Ambiguity" />
                             </Grid>
-                        </Grid>
-                    </Border>
-
-                    <Border Grid.Row="2"
-                            x:Name="AmbiguityBanner"
-                            Background="#4A1E25"
-                            BorderBrush="#D17A86"
-                            BorderThickness="1"
-                            Padding="8"
-                            IsVisible="False">
-                        <Grid ColumnDefinitions="*,8,Auto,6,Auto,6,Auto,6,Auto">
-                            <TextBlock x:Name="AmbiguityText"
-                                       Grid.Column="0"
-                                       Text="Ambiguity detected. Resolve before automatic processing continues."
-                                       Foreground="#FFEDEE"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center"
-                                       TextWrapping="Wrap" />
-                            <Button x:Name="ResolveRemovedButton"
-                                    Grid.Column="2"
-                                    Classes="ghost"
-                                    Content="Removed" />
-                            <Button x:Name="ResolveRelinkButton"
-                                    Grid.Column="4"
-                                    Classes="ghost"
-                                    Content="Relinked" />
-                            <Button x:Name="ResolveFalseButton"
-                                    Grid.Column="6"
-                                    Classes="ghost"
-                                    Content="False" />
-                            <Button x:Name="ResolveOtherButton"
-                                    Grid.Column="8"
-                                    Classes="ghost"
-                                    Content="Other" />
                         </Grid>
                     </Border>
 
@@ -827,9 +784,6 @@
                            Grid.Column="0"
                            Text="Vision Pipeline: stopped"
                            FontWeight="SemiBold" />
-                <TextBlock x:Name="BottomAmbiguityStateText"
-                           Grid.Column="2"
-                           Text="Ambiguity Alert: clear" />
                 <TextBlock x:Name="BottomCalibrationStateText"
                            Grid.Column="4"
                            Text="Calibration: unknown" />

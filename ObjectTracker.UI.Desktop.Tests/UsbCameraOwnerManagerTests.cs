@@ -1,7 +1,6 @@
-using ObjectTracker.Vision.Source;
 using Xunit;
 
-namespace ObjectTracker.Vision.Tests;
+namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class UsbCameraOwnerManagerTests
 {

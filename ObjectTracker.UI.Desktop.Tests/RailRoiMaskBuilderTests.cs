@@ -1,7 +1,7 @@
 using OpenCvSharp;
 using Xunit;
 
-namespace ObjectTracker.Vision.Tests;
+namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class RailRoiMaskBuilderTests
 {

@@ -13,7 +13,6 @@ internal sealed class SessionAuditLogger : IDisposable
 
     public const string EventRunStart = "run-start";
     public const string EventRunStop = "run-stop";
-    public const string EventStatus = "status";
     public const string EventCameraSwitch = "camera-switch";
     public const string EventCalibrationChange = "calibration-change";
 
@@ -54,17 +53,9 @@ internal sealed class SessionAuditLogger : IDisposable
         }
     }
 
-    public void Append(string line)
-    {
-        lock (sync)
-        {
-            writer?.WriteLine(line);
-        }
-    }
-
     public void AppendStatus(string status)
     {
-        AppendEvent(EventStatus, status);
+        AppendEvent("status", status);
     }
 
     public void AppendEvent(string eventType, string message, params (string Key, string Value)[] fields)

@@ -7,7 +7,6 @@ public sealed class MotionMaskRefiner
 {
     public readonly record struct Options(int CloseKernelSize, int OpenKernelSize)
     {
-        public static Options FromLegacyKernelSize(int legacyKernelSize) => new(legacyKernelSize, legacyKernelSize);
     }
 
     public Mat Refine(Mat sourceMask, Options options)

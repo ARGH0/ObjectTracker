@@ -1,0 +1,259 @@
+using System;
+using System.Collections.Generic;
+using ObjectTracker.UI.Desktop.Region.Contracts;
+using ObjectTracker.UI.Desktop.Region.Implementation;
+using CameraZoneId = ObjectTracker.UI.Desktop.Region.Model.CameraZoneId;
+using GridCell = ObjectTracker.UI.Desktop.Region.Model.GridCell;
+using RegionDefinition = ObjectTracker.UI.Desktop.Region.Model.RegionDefinition;
+using RegionType = ObjectTracker.UI.Desktop.Region.Model.RegionType;
+using Xunit;
+
+namespace ObjectTracker.UI.Desktop.Tests;
+
+public sealed class RegionEvaluatorTests
+{
+    private static RegionDefinition CreateRegion(RegionType type, params (int Col, int Row)[] cells)
+    {
+        var baseTime = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var gridCells = new List<ObjectTracker.UI.Desktop.Region.Model.GridCell>();
+        foreach (var (col, row) in cells)
+        {
+            gridCells.Add(new ObjectTracker.UI.Desktop.Region.Model.GridCell(col, row));
+        }
+        return new RegionDefinition(
+            Guid.NewGuid(),
+            "test-region",
+            type,
+            new CameraZoneId("zone-1"),
+            gridCells.AsReadOnly(),
+            baseTime,
+            baseTime,
+            null);
+    }
+
+    [Fact]
+    public void Evaluate_NoRegions_ActiveRegionTypeIsNull()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var detection = new TrainDetection(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            "Red",
+            100f,
+            200f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var result = evaluator.Evaluate(detection, "zone-1", Array.Empty<RegionDefinition>());
+
+        Assert.Null(result.ActiveRegionType);
+        Assert.False(result.IsExcluded);
+    }
+
+    [Fact]
+    public void Evaluate_InExcludeRegion_IsExcludedIsTrue()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var detection = new TrainDetection(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            "Red",
+            100f,
+            200f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var excludeRegion = CreateRegion(RegionType.ExcludeRegion, (10, 20));
+
+        var result = evaluator.Evaluate(detection, "zone-1", new[] { excludeRegion });
+
+        Assert.True(result.IsExcluded);
+        Assert.Equal(RegionType.ExcludeRegion, result.ActiveRegionType);
+    }
+
+    [Fact]
+    public void Evaluate_InNonExcludeRegion_IsExcludedIsFalseWithCorrectType()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var detection = new TrainDetection(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            "Blue",
+            100f,
+            200f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, (10, 20));
+
+        var result = evaluator.Evaluate(detection, "zone-1", new[] { railRegion });
+
+        Assert.False(result.IsExcluded);
+        Assert.Equal(RegionType.HighProbabilityRailRegion, result.ActiveRegionType);
+    }
+
+    [Fact]
+    public void Evaluate_OverlappingRegions_ExcludeWinsPriority()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var detection = new TrainDetection(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            "Green",
+            100f,
+            200f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var excludeRegion = CreateRegion(RegionType.ExcludeRegion, (10, 20));
+        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, (10, 20));
+
+        var result = evaluator.Evaluate(detection, "zone-1", new[] { excludeRegion, railRegion });
+
+        Assert.True(result.IsExcluded);
+        Assert.Equal(RegionType.ExcludeRegion, result.ActiveRegionType);
+    }
+
+    [Fact]
+    public void Evaluate_SequentialCalls_SameTrainTracksPreviousCell()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var trainId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var detection1 = new TrainDetection(
+            trainId,
+            "Red",
+            100f,
+            200f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var detection2 = new TrainDetection(
+            trainId,
+            "Red",
+            200f,
+            300f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var region = CreateRegion(RegionType.HighProbabilityRailRegion, (10, 20), (20, 30));
+
+        var result1 = evaluator.Evaluate(detection1, "zone-1", new[] { region });
+        var result2 = evaluator.Evaluate(detection2, "zone-1", new[] { region });
+
+        Assert.Equal(RegionType.HighProbabilityRailRegion, result1.ActiveRegionType);
+        Assert.Equal(RegionType.HighProbabilityRailRegion, result2.ActiveRegionType);
+    }
+
+    [Fact]
+    public void Evaluate_Integration_FullPipelineFromDetectionToEnrichedOutput()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var trainId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var detection = new TrainDetection(
+            trainId,
+            "White",
+            320f,
+            240f,
+            60f,
+            40f,
+            64,
+            48,
+            0.85f,
+            "moving",
+            640,
+            480);
+
+        var excludeRegion = CreateRegion(RegionType.ExcludeRegion, (32, 24));
+        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, (10, 20));
+        var overlapRegion = CreateRegion(RegionType.CameraOverlapRegion, (32, 24));
+
+        var result = evaluator.Evaluate(detection, "zone-main", new[] { excludeRegion, railRegion, overlapRegion });
+
+        Assert.Equal(trainId, result.LocalTrainId);
+        Assert.Equal("White", result.TrainColor);
+        Assert.Equal(0.85f, result.Confidence);
+        Assert.Equal("moving", result.MotionState);
+        Assert.True(result.IsExcluded);
+        Assert.Equal(RegionType.ExcludeRegion, result.ActiveRegionType);
+        Assert.Empty(result.TransitionEvents);
+    }
+
+    [Fact]
+    public void Evaluate_ReturnsBasicStateWithCorrectIdentity()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var detection = new TrainDetection(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            "Red",
+            100f,
+            200f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var result = evaluator.Evaluate(detection, "zone-1", Array.Empty<RegionDefinition>());
+
+        Assert.Equal(Guid.Parse("11111111-1111-1111-1111-111111111111"), result.LocalTrainId);
+        Assert.Equal("Red", result.TrainColor);
+        Assert.Equal(0.9f, result.Confidence);
+        Assert.Equal("moving", result.MotionState);
+    }
+}

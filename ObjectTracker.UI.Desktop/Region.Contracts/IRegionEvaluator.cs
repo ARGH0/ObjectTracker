@@ -14,7 +14,9 @@ public readonly record struct TrainDetection(
     int GridCols,
     int GridRows,
     float Confidence,
-    string MotionState);
+    string MotionState,
+    int ImageWidth,
+    int ImageHeight);
 
 public readonly record struct EnrichedTrainState(
     Guid LocalTrainId,
@@ -29,5 +31,5 @@ public readonly record struct EnrichedTrainState(
 
 public interface IRegionEvaluator
 {
-    EnrichedTrainState Evaluate(TrainDetection detection, IEnumerable<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition> regions);
+    EnrichedTrainState Evaluate(TrainDetection detection, string zoneId, IEnumerable<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition> regions);
 }

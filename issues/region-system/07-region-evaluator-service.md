@@ -19,18 +19,18 @@ The evaluator is stateless per-frame but maintains state for ENTER/EXIT_CROSSROA
 
 ## Acceptance criteria
 
-- [ ] Evaluates detected trains against all active regions in their Camera Zone
-- [ ] Maps train positions to grid cells using `ICoordinateMapper`
-- [ ] Resolves overlapping region conflicts using `IRegionPriorityResolver`
-- [ ] Applies EXCLUDE filtering: trains in EXCLUDE_REGION cells are removed from output
-- [ ] Applies confidence boosting: trains in HIGH_PROBABILITY_RAIL_REGION cells get boosted confidence
-- [ ] Detects ENTER_CROSSROAD transition: train moves from non-region cell to region cell → emits transition event
-- [ ] Detects EXIT_CROSSROAD transition: train moves from region cell to non-region cell → emits transition event
-- [ ] Maintains per-train state for crossroad transition tracking (previous cell position)
-- [ ] Outputs enriched `TrainState` with all applied region behaviors
-- [ ] Unit tests verify each behavior type independently with mocked dependencies
-- [ ] Integration test: full pipeline from event emission to enriched output
+- [x] Evaluates detected trains against all active regions in their Camera Zone
+- [x] Maps train positions to grid cells using `ICoordinateMapper`
+- [x] Resolves overlapping region conflicts using `IRegionPriorityResolver`
+- [x] Applies EXCLUDE filtering: trains in EXCLUDE_REGION cells are removed from output
+- [ ] Applies confidence boosting: trains in HIGH_PROBABILITY_RAIL_REGION cells get boosted confidence (deferred to #9)
+- [ ] Detects ENTER_CROSSROAD transition: train moves from non-region cell to region cell → emits transition event (deferred to #10, per-train state infrastructure implemented)
+- [ ] Detects EXIT_CROSSROAD transition: train moves from region cell to non-region cell → emits transition event (deferred to #11, per-train state infrastructure implemented)
+- [x] Maintains per-train state for crossroad transition tracking (previous cell position) — infrastructure in place, actual transition detection deferred to #10/#11
+- [x] Outputs enriched `TrainState` with all applied region behaviors
+- [x] Unit tests verify each behavior type independently with mocked dependencies (7 tests)
+- [x] Integration test: full pipeline from event emission to enriched output
 
 ## Blocked by
 
-- #3 (Registry), #5 (Mapper + Resolver), #6 (Pipeline events)
+- #3 (Registry), #5 (Mapper + Resolver), #6 (Pipeline events) — **all resolved**

@@ -99,7 +99,8 @@ public sealed class RegionModelTests
             CameraZoneId: new CameraZoneId("zone-001"),
             Cells: cells,
             CreatedAt: DateTime.UtcNow,
-            UpdatedAt: DateTime.UtcNow
+            UpdatedAt: DateTime.UtcNow,
+            OverlappingZoneIds: null
         );
 
         var clone = region with { };
@@ -121,7 +122,8 @@ public sealed class RegionModelTests
             CameraZoneId: new CameraZoneId("zone-001"),
             Cells: cells,
             CreatedAt: DateTime.UtcNow,
-            UpdatedAt: DateTime.UtcNow
+            UpdatedAt: DateTime.UtcNow,
+            OverlappingZoneIds: null
         );
 
         Assert.Equal(Guid.Parse("11111111-1111-1111-1111-111111111111"), region.Id);

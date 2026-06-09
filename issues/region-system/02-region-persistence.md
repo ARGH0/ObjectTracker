@@ -26,12 +26,12 @@ CAMERA_OVERLAP_REGION entries include `overlappingZoneIds` array. Load at startu
 
 ## Acceptance criteria
 
-- [ ] `LoadAsync()` reads and deserializes `regions.json` into a list of `Region` objects
-- [ ] `SaveAsync(list)` writes the region list to `regions.json` with correct schema
-- [ ] Load/save round-trip preserves all fields (id, name, type, zoneId, cells, timestamps, overlappingZoneIds)
-- [ ] Empty region list serializes to `{ "regions": [] }`
-- [ ] `FakeRegionPersistence` implements `IRegionPersistence` with in-memory storage, no file I/O
-- [ ] Unit tests verify round-trip for: empty list, single region, multiple zones, CAMERA_OVERLAP_REGION spanning zones
+- [x] `LoadAsync()` reads and deserializes `regions.json` into a list of `Region` objects
+- [x] `SaveAsync(list)` writes the region list to `regions.json` with correct schema
+- [x] Load/save round-trip preserves all fields (id, name, type, zoneId, cells, timestamps, overlappingZoneIds)
+- [x] Empty region list serializes to `{ "regions": [] }`
+- [x] `FakeRegionPersistence` implements `IRegionPersistence` with in-memory storage, no file I/O
+- [x] Unit tests verify round-trip for: empty list, single region, multiple zones, CAMERA_OVERLAP_REGION spanning zones
 
 ## Blocked by
 

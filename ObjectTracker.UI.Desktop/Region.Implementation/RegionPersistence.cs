@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using RegionDefinition = ObjectTracker.UI.Desktop.Region.Model.RegionDefinition;
 
 namespace ObjectTracker.UI.Desktop.Region.Implementation;
@@ -14,27 +15,38 @@ public sealed class RegionPersistence : ObjectTracker.UI.Desktop.Region.Contract
         _filePath = filePath;
     }
 
-    public IEnumerable<RegionDefinition> Load()
+    public async ValueTask<IEnumerable<RegionDefinition>> LoadAsync()
     {
         if (!System.IO.File.Exists(_filePath))
         {
             return Enumerable.Empty<RegionDefinition>();
         }
 
-        var json = System.IO.File.ReadAllText(_filePath);
+        var json = await System.IO.File.ReadAllTextAsync(_filePath);
         var options = new JsonSerializerOptions
         {
-            PropertyNameCaseInsensitive = true
+            PropertyNameCaseInsensitive = true,
+            WriteIndented = false
         };
         var wrapper = JsonSerializer.Deserialize<RegionWrapper>(json, options) ?? new RegionWrapper([]);
         return wrapper.Regions;
     }
 
-    public void Save(IEnumerable<RegionDefinition> regions)
+    public async ValueTask SaveAsync(IEnumerable<RegionDefinition> regions)
     {
-        var wrapper = new RegionWrapper(regions.ToList());
-        var json = JsonSerializer.Serialize(wrapper, new JsonSerializerOptions { WriteIndented = true });
-        System.IO.File.WriteAllText(_filePath, json);
+        var list = regions.ToList();
+        var wrapper = new RegionWrapper(list);
+        var options = new JsonSerializerOptions
+        {
+            WriteIndented = true
+        };
+        var json = JsonSerializer.Serialize(wrapper, options);
+        var directory = System.IO.Path.GetDirectoryName(_filePath)!;
+        if (!string.IsNullOrEmpty(directory) && !System.IO.Directory.Exists(directory))
+        {
+            System.IO.Directory.CreateDirectory(directory);
+        }
+        await System.IO.File.WriteAllTextAsync(_filePath, json);
     }
 
     private sealed record RegionWrapper(IList<RegionDefinition> Regions);

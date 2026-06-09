@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using CameraZoneId = ObjectTracker.UI.Desktop.Region.Model.CameraZoneId;
 using RegionDefinition = ObjectTracker.UI.Desktop.Region.Model.RegionDefinition;
 
@@ -14,10 +15,16 @@ public sealed class RegionRegistry : ObjectTracker.UI.Desktop.Region.Contracts.I
     public RegionRegistry(ObjectTracker.UI.Desktop.Region.Contracts.IRegionPersistence persistence)
     {
         _persistence = persistence;
-        foreach (var region in _persistence.Load())
+    }
+
+    public static async ValueTask<RegionRegistry> CreateAsync(ObjectTracker.UI.Desktop.Region.Contracts.IRegionPersistence persistence)
+    {
+        var registry = new RegionRegistry(persistence);
+        foreach (var region in await persistence.LoadAsync())
         {
-            _regions[region.Id] = region;
+            registry._regions[region.Id] = region;
         }
+        return registry;
     }
 
     public IReadOnlyCollection<RegionDefinition> GetAll() => _regions.Values.ToList();

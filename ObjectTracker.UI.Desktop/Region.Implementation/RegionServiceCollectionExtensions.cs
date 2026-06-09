@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using ObjectTracker.UI.Desktop.Region.Contracts;
 using ObjectTracker.UI.Desktop.Region.Implementation;
@@ -16,7 +17,11 @@ public static class RegionServiceCollectionExtensions
         services.AddSingleton<ICoordinateMapper, CoordinateMapper>();
         services.AddSingleton<IRegionPriorityResolver, RegionPriorityResolver>();
         services.AddSingleton<IRegionPersistence>(sp => new RegionPersistence(filePath ?? defaultPath));
-        services.AddSingleton<IRegionRegistry, RegionRegistry>();
+        services.AddSingleton<IRegionRegistry>(sp =>
+        {
+            var persistence = sp.GetRequiredService<IRegionPersistence>();
+            return RegionRegistry.CreateAsync(persistence).GetAwaiter().GetResult();
+        });
         services.AddSingleton<IHandoffResolver, HandoffResolver>();
         services.AddSingleton<IRegionEvaluator, RegionEvaluator>();
         services.AddSingleton<IRegionProcessorService, RegionProcessorService>();

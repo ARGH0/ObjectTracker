@@ -10,4 +10,5 @@ public readonly record struct RegionDefinition(
     CameraZoneId CameraZoneId,
     IReadOnlyCollection<GridCell> Cells,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    IReadOnlyCollection<string>? OverlappingZoneIds);

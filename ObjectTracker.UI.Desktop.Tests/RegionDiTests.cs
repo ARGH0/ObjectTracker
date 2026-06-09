@@ -202,7 +202,7 @@ public sealed class RegionDiTests
     {
         private readonly List<RegionDefinition> _regions = new();
 
-        public IEnumerable<RegionDefinition> Load() => _regions;
-        public void Save(IEnumerable<RegionDefinition> regions) { _regions.Clear(); _regions.AddRange(regions); }
+        public ValueTask<IEnumerable<RegionDefinition>> LoadAsync() => ValueTask.FromResult<IEnumerable<RegionDefinition>>(_regions);
+        public ValueTask SaveAsync(IEnumerable<RegionDefinition> regions) { _regions.Clear(); _regions.AddRange(regions); return ValueTask.CompletedTask; }
     }
 }

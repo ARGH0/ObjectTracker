@@ -1,0 +1,176 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using ObjectTracker.UI.Desktop.Region.Contracts;
+using ObjectTracker.UI.Desktop.Region.Implementation;
+using Xunit;
+
+namespace ObjectTracker.UI.Desktop.Tests;
+
+public sealed class RegionPersistenceTests : IDisposable
+{
+    private readonly string _testFilePath;
+
+    public RegionPersistenceTests()
+    {
+        _testFilePath = Path.Combine(Path.GetTempPath(), $"objecttracker-test-regions-{Guid.NewGuid()}.json");
+    }
+
+    public void Dispose()
+    {
+        if (File.Exists(_testFilePath))
+        {
+            File.Delete(_testFilePath);
+        }
+    }
+
+    [Fact]
+    public async Task RoundTrip_EmptyList_SerializesToEmptyArray()
+    {
+        var persistence = new RegionPersistence(_testFilePath);
+
+        await persistence.SaveAsync(Array.Empty<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition>());
+
+        var loaded = await persistence.LoadAsync();
+        var list = loaded.ToList();
+
+        Assert.Empty(list);
+    }
+
+    [Fact]
+    public async Task RoundTrip_SingleRegion_PreservesAllFields()
+    {
+        var cells = new ObjectTracker.UI.Desktop.Region.Model.GridCell[] { new(12, 5), new(13, 5) };
+        var original = new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
+            Id: Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
+            Name: "North Crossing Entry",
+            Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.EnterCrossroadRegion,
+            CameraZoneId: new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-abc-123"),
+            Cells: cells,
+            CreatedAt: new DateTime(2026, 6, 9, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt: new DateTime(2026, 6, 9, 14, 30, 0, DateTimeKind.Utc),
+            OverlappingZoneIds: null
+        );
+
+        var persistence = new RegionPersistence(_testFilePath);
+        await persistence.SaveAsync(new[] { original });
+
+        var loaded = (await persistence.LoadAsync()).ToList();
+
+        Assert.Single(loaded);
+        var region = loaded[0];
+        Assert.Equal(original.Id, region.Id);
+        Assert.Equal(original.Name, region.Name);
+        Assert.Equal(original.Type, region.Type);
+        Assert.Equal(original.CameraZoneId, region.CameraZoneId);
+        Assert.Equal(original.Cells.Count, region.Cells.Count);
+        Assert.Equal(original.CreatedAt, region.CreatedAt);
+        Assert.Equal(original.UpdatedAt, region.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task RoundTrip_MultipleZones_PreservesAllRegions()
+    {
+        var regions = new[]
+        {
+            new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
+                Id: Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                Name: "Zone A Region",
+                Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.ExcludeRegion,
+                CameraZoneId: new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-a"),
+                Cells: new ObjectTracker.UI.Desktop.Region.Model.GridCell[] { new(0, 0) },
+                CreatedAt: DateTime.UtcNow,
+                UpdatedAt: DateTime.UtcNow,
+                OverlappingZoneIds: null
+            ),
+            new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
+                Id: Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                Name: "Zone B Region",
+                Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.HighProbabilityRailRegion,
+                CameraZoneId: new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-b"),
+                Cells: new ObjectTracker.UI.Desktop.Region.Model.GridCell[] { new(1, 1), new(2, 1) },
+                CreatedAt: DateTime.UtcNow,
+                UpdatedAt: DateTime.UtcNow,
+                OverlappingZoneIds: null
+            )
+        };
+
+        var persistence = new RegionPersistence(_testFilePath);
+        await persistence.SaveAsync(regions);
+
+        var loaded = (await persistence.LoadAsync()).ToList();
+
+        Assert.Equal(2, loaded.Count);
+        var byId = loaded.ToDictionary(r => r.Id);
+        Assert.True(byId.ContainsKey(regions[0].Id));
+        Assert.True(byId.ContainsKey(regions[1].Id));
+        Assert.Equal(regions[0].Name, byId[regions[0].Id].Name);
+        Assert.Equal(regions[1].Name, byId[regions[1].Id].Name);
+    }
+
+    [Fact]
+    public async Task RoundTrip_CameraOverlapRegion_PreservesOverlappingZoneIds()
+    {
+        var overlappingIds = new List<string> { "zone-a", "zone-b" }.AsReadOnly();
+        var original = new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
+            Id: Guid.Parse("33333333-3333-3333-3333-333333333333"),
+            Name: "Overlap Zone",
+            Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.CameraOverlapRegion,
+            CameraZoneId: new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-a"),
+            Cells: new ObjectTracker.UI.Desktop.Region.Model.GridCell[] { new(5, 5) },
+            CreatedAt: DateTime.UtcNow,
+            UpdatedAt: DateTime.UtcNow,
+            OverlappingZoneIds: overlappingIds
+        );
+
+        var persistence = new RegionPersistence(_testFilePath);
+        await persistence.SaveAsync(new[] { original });
+
+        var loaded = (await persistence.LoadAsync()).ToList();
+
+        Assert.Single(loaded);
+        var region = loaded[0];
+        Assert.NotNull(region.OverlappingZoneIds);
+        Assert.Equal(2, region.OverlappingZoneIds.Count);
+        Assert.Contains("zone-a", region.OverlappingZoneIds);
+        Assert.Contains("zone-b", region.OverlappingZoneIds);
+    }
+
+    [Fact]
+    public async Task LoadAsync_FileDoesNotExist_ReturnsEmpty()
+    {
+        var persistence = new RegionPersistence(_testFilePath);
+
+        var loaded = await persistence.LoadAsync();
+
+        Assert.Empty(loaded);
+    }
+
+    [Fact]
+    public async Task FakeRegionPersistence_StoresAndReturnsRegions()
+    {
+        var fake = new FakeRegionPersistence();
+
+        var cells = new ObjectTracker.UI.Desktop.Region.Model.GridCell[] { new(1, 1) };
+        var region = new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
+            Id: System.Guid.NewGuid(),
+            Name: "Fake Test",
+            Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.ExcludeRegion,
+            CameraZoneId: new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-1"),
+            Cells: cells,
+            CreatedAt: System.DateTime.UtcNow,
+            UpdatedAt: System.DateTime.UtcNow,
+            OverlappingZoneIds: null
+        );
+
+        await fake.SaveAsync(new[] { region });
+
+        var loaded = (await fake.LoadAsync()).ToList();
+
+        Assert.Single(loaded);
+        Assert.Equal(region.Id, loaded[0].Id);
+        Assert.Equal(region.Name, loaded[0].Name);
+    }
+}

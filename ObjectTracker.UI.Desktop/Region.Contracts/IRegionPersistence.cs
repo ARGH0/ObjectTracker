@@ -1,9 +1,10 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace ObjectTracker.UI.Desktop.Region.Contracts;
 
 public interface IRegionPersistence
 {
-    IEnumerable<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition> Load();
-    void Save(IEnumerable<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition> regions);
+    ValueTask<IEnumerable<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition>> LoadAsync();
+    ValueTask SaveAsync(IEnumerable<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition> regions);
 }

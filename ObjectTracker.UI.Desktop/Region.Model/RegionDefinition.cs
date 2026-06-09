@@ -11,4 +11,5 @@ public readonly record struct RegionDefinition(
     IReadOnlyCollection<GridCell> Cells,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    IReadOnlyCollection<string>? OverlappingZoneIds);
+    IReadOnlyCollection<string>? OverlappingZoneIds,
+    float ConfidenceBoost = 0f);

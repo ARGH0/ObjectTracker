@@ -17,15 +17,15 @@ The confidence boost factor is configurable per-region or globally defined. The 
 
 ## Acceptance criteria
 
-- [ ] Operator can create HIGH_PROBABILITY_RAIL_REGION via Grid Editor Dialog
-- [ ] Region persists and loads correctly in Registry
-- [ ] Train detected within HIGH_PROBABILITY_RAIL_REGION cells receives confidence boost
-- [ ] Confidence boost is configurable (per-region or global factor)
-- [ ] Train detected outside rail region retains original confidence
-- [ ] HIGH_PROBABILITY_RAIL_REGION has priority 10 — loses to EXCLUDE_REGION but overrides ENTER/EXIT_CROSSROAD and CAMERA_OVERLAP
-- [ ] Boosted confidence applied before downstream logic (e.g., collision warnings, PLC mapping)
-- [ ] Unit tests verify confidence boost calculation with mocked regions
-- [ ] Integration test: full flow from dialog selection to boosted output
+- [ ] Operator can create HIGH_PROBABILITY_RAIL_REGION via Grid Editor Dialog (UI wiring deferred to #13)
+- [x] Region persists and loads correctly in Registry (ConfidenceBoost survives JSON round-trip)
+- [x] Train detected within HIGH_PROBABILITY_RAIL_REGION cells receives confidence boost
+- [x] Confidence boost is configurable (per-region factor on RegionDefinition)
+- [x] Train detected outside rail region retains original confidence
+- [x] HIGH_PROBABILITY_RAIL_REGION has priority 10 — loses to EXCLUDE_REGION but overrides ENTER/EXIT_CROSSROAD and CAMERA_OVERLAP
+- [x] Boosted confidence applied before downstream logic (enriched output carries boosted value)
+- [x] Unit tests verify confidence boost calculation with mocked regions
+- [ ] Integration test: full flow from dialog selection to boosted output (UI wiring deferred to #13)
 
 ## Blocked by
 

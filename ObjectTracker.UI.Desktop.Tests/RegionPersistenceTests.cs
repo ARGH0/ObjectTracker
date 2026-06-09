@@ -173,4 +173,32 @@ public sealed class RegionPersistenceTests : IDisposable
         Assert.Equal(region.Id, loaded[0].Id);
         Assert.Equal(region.Name, loaded[0].Name);
     }
+
+    [Fact]
+    public async Task RoundTrip_HighProbabilityRailRegion_PreservesConfidenceBoost()
+    {
+        var cells = new ObjectTracker.UI.Desktop.Region.Model.GridCell[] { new(10, 20) };
+        var original = new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
+            Id: Guid.Parse("44444444-4444-4444-4444-444444444444"),
+            Name: "Main Rail Path",
+            Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.HighProbabilityRailRegion,
+            CameraZoneId: new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-rail"),
+            Cells: cells,
+            CreatedAt: DateTime.UtcNow,
+            UpdatedAt: DateTime.UtcNow,
+            OverlappingZoneIds: null,
+            ConfidenceBoost: 0.25f
+        );
+
+        var persistence = new RegionPersistence(_testFilePath);
+        await persistence.SaveAsync(new[] { original });
+
+        var loaded = (await persistence.LoadAsync()).ToList();
+
+        Assert.Single(loaded);
+        var region = loaded[0];
+        Assert.Equal(original.Id, region.Id);
+        Assert.Equal(original.Type, region.Type);
+        Assert.Equal(0.25f, region.ConfidenceBoost);
+    }
 }

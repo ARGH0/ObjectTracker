@@ -25,8 +25,15 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
         var imageWidth = detection.ImageWidth > 0 ? detection.ImageWidth : 640;
         var imageHeight = detection.ImageHeight > 0 ? detection.ImageHeight : 480;
         var cell = _mapper.MapPixelToCell(detection.PixelX, detection.PixelY, detection.GridCols, detection.GridRows, imageWidth, imageHeight);
-        var matchingRegions = regions.Where(r => r.Cells.Any(c => c.Column == cell.Column && c.Row == cell.Row));
-        var activeType = matchingRegions.Any() ? _priorityResolver.Resolve(matchingRegions) : (RegionType?)null;
+        var matchingRegions = regions.Where(r => r.Cells.Any(c => c.Column == cell.Column && c.Row == cell.Row)).ToList();
+        var resolved = matchingRegions.Any() ? _priorityResolver.ResolveAll(matchingRegions).ToList() : new List<(RegionDefinition, RegionType)>();
+        var activeType = resolved.Any() ? (RegionType?)resolved.First().Item2 : null;
+
+        float confidence = detection.Confidence;
+        if (activeType == RegionType.HighProbabilityRailRegion && resolved.Count > 0)
+        {
+            confidence = detection.Confidence + resolved.First().Item1.ConfidenceBoost;
+        }
 
         _previousCells[detection.LocalTrainId] = cell;
 
@@ -35,7 +42,7 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
             detection.TrainColor,
             detection.PixelX,
             detection.PixelY,
-            detection.Confidence,
+            confidence,
             detection.MotionState,
             activeType == RegionType.ExcludeRegion,
             activeType,

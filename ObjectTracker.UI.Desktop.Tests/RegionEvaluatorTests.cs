@@ -12,7 +12,7 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class RegionEvaluatorTests
 {
-    private static RegionDefinition CreateRegion(RegionType type, params (int Col, int Row)[] cells)
+    private static RegionDefinition CreateRegion(RegionType type, float confidenceBoost = 0f, params (int Col, int Row)[] cells)
     {
         var baseTime = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var gridCells = new List<ObjectTracker.UI.Desktop.Region.Model.GridCell>();
@@ -28,7 +28,8 @@ public sealed class RegionEvaluatorTests
             gridCells.AsReadOnly(),
             baseTime,
             baseTime,
-            null);
+            null,
+            confidenceBoost);
     }
 
     [Fact]
@@ -79,7 +80,7 @@ public sealed class RegionEvaluatorTests
             640,
             480);
 
-        var excludeRegion = CreateRegion(RegionType.ExcludeRegion, (10, 20));
+        var excludeRegion = CreateRegion(RegionType.ExcludeRegion, cells: [(10, 20)]);
 
         var result = evaluator.Evaluate(detection, "zone-1", new[] { excludeRegion });
 
@@ -108,7 +109,7 @@ public sealed class RegionEvaluatorTests
             640,
             480);
 
-        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, (10, 20));
+        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, cells: [(10, 20)]);
 
         var result = evaluator.Evaluate(detection, "zone-1", new[] { railRegion });
 
@@ -137,8 +138,8 @@ public sealed class RegionEvaluatorTests
             640,
             480);
 
-        var excludeRegion = CreateRegion(RegionType.ExcludeRegion, (10, 20));
-        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, (10, 20));
+        var excludeRegion = CreateRegion(RegionType.ExcludeRegion, cells: [(10, 20)]);
+        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, cells: [(10, 20)]);
 
         var result = evaluator.Evaluate(detection, "zone-1", new[] { excludeRegion, railRegion });
 
@@ -182,7 +183,7 @@ public sealed class RegionEvaluatorTests
             640,
             480);
 
-        var region = CreateRegion(RegionType.HighProbabilityRailRegion, (10, 20), (20, 30));
+        var region = CreateRegion(RegionType.HighProbabilityRailRegion, cells: [(10, 20), (20, 30)]);
 
         var result1 = evaluator.Evaluate(detection1, "zone-1", new[] { region });
         var result2 = evaluator.Evaluate(detection2, "zone-1", new[] { region });
@@ -213,9 +214,9 @@ public sealed class RegionEvaluatorTests
             640,
             480);
 
-        var excludeRegion = CreateRegion(RegionType.ExcludeRegion, (32, 24));
-        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, (10, 20));
-        var overlapRegion = CreateRegion(RegionType.CameraOverlapRegion, (32, 24));
+        var excludeRegion = CreateRegion(RegionType.ExcludeRegion, cells: [(32, 24)]);
+        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, cells: [(10, 20)]);
+        var overlapRegion = CreateRegion(RegionType.CameraOverlapRegion, cells: [(32, 24)]);
 
         var result = evaluator.Evaluate(detection, "zone-main", new[] { excludeRegion, railRegion, overlapRegion });
 
@@ -226,6 +227,97 @@ public sealed class RegionEvaluatorTests
         Assert.True(result.IsExcluded);
         Assert.Equal(RegionType.ExcludeRegion, result.ActiveRegionType);
         Assert.Empty(result.TransitionEvents);
+    }
+
+    [Fact]
+    public void Evaluate_InHighProbabilityRailRegion_ConfidenceIsBoosted()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var detection = new TrainDetection(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            "Red",
+            100f,
+            200f,
+            50f,
+            30f,
+            64,
+            48,
+            0.5f,
+            "moving",
+            640,
+            480);
+
+        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, 0.2f, cells: [(10, 20)]);
+
+        var result = evaluator.Evaluate(detection, "zone-1", new[] { railRegion });
+
+        Assert.Equal(0.7f, result.Confidence);
+        Assert.Equal(RegionType.HighProbabilityRailRegion, result.ActiveRegionType);
+        Assert.False(result.IsExcluded);
+    }
+
+    [Fact]
+    public void Evaluate_OutsideRailRegion_ConfidenceUnchanged()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var detection = new TrainDetection(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            "Red",
+            100f,
+            200f,
+            50f,
+            30f,
+            64,
+            48,
+            0.6f,
+            "moving",
+            640,
+            480);
+
+        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, 0.2f, cells: [(30, 40)]);
+
+        var result = evaluator.Evaluate(detection, "zone-1", new[] { railRegion });
+
+        Assert.Equal(0.6f, result.Confidence);
+        Assert.Null(result.ActiveRegionType);
+        Assert.False(result.IsExcluded);
+    }
+
+    [Fact]
+    public void Evaluate_ExcludeAndRailOnSameCell_ExcludeWinsAndNoBoost()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var detection = new TrainDetection(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            "Red",
+            100f,
+            200f,
+            50f,
+            30f,
+            64,
+            48,
+            0.5f,
+            "moving",
+            640,
+            480);
+
+        var excludeRegion = CreateRegion(RegionType.ExcludeRegion, cells: [(10, 20)]);
+        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, 0.2f, cells: [(10, 20)]);
+
+        var result = evaluator.Evaluate(detection, "zone-1", new[] { excludeRegion, railRegion });
+
+        Assert.True(result.IsExcluded);
+        Assert.Equal(RegionType.ExcludeRegion, result.ActiveRegionType);
+        Assert.Equal(0.5f, result.Confidence);
     }
 
     [Fact]

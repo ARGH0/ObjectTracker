@@ -31,8 +31,8 @@
                     <MenuItem Header="Clear Cameras"
                               x:Name="ClearCamerasMenuItem" />
                 </MenuItem>
-                <MenuItem Header="Layers"
-                          x:Name="LayersWorkspaceMenuItem" />
+                <MenuItem Header="Regions"
+                          x:Name="RegionsWorkspaceMenuItem" />
                 <MenuItem Header="Settings"
                           x:Name="SettingsWorkspaceMenuItem" />
                 <MenuItem Header="Vision Pipeline"
@@ -164,57 +164,6 @@
                                                 Classes="ghost"
                                                 Content="Revert" />
                                     </Grid>
-                                </StackPanel>
-                                  <ComboBox x:Name="CameraZoneComboBox" />
-                                <Button x:Name="ToggleGridEditorButton"
-                                        Classes="ghost"
-                                        Content="Open Grid Region Editor" />
-
-                                <StackPanel x:Name="GridEditorPanel"
-                                            Spacing="6"
-                                            IsVisible="False">
-                                    <TextBlock Text="Grid Region Editor"
-                                               Classes="sectionTitle"
-                                               Margin="0,8,0,0" />
-                                    <ComboBox x:Name="LayerTypeComboBox" />
-                                    <Grid ColumnDefinitions="*,8,*">
-                                        <Button x:Name="AddLayerButton"
-                                                Grid.Column="0"
-                                                Classes="ghost"
-                                                Content="Add Layer" />
-                                        <Button x:Name="DeleteLayerButton"
-                                                Grid.Column="2"
-                                                Classes="ghost"
-                                                Content="Delete Layer" />
-                                    </Grid>
-                                    <ListBox x:Name="LayersListBox"
-                                             MinHeight="70"
-                                             MaxHeight="120" />
-                                    <ListBox x:Name="RegionsListBox"
-                                             MinHeight="70"
-                                             MaxHeight="120" />
-                                    <TextBox x:Name="RegionNameTextBox"
-                                             Watermark="Region name" />
-                                    <TextBox x:Name="RegionCodeTextBox"
-                                             Watermark="Region code (optional)" />
-                                    <TextBox x:Name="RegionCellsTextBox"
-                                             Watermark="Cells: 1,1;2,1" />
-                                    <Grid ColumnDefinitions="*,8,*">
-                                        <Button x:Name="SaveRegionButton"
-                                                Grid.Column="0"
-                                                Classes="primary"
-                                                Content="Save Region" />
-                                        <Button x:Name="DeleteRegionButton"
-                                                Grid.Column="2"
-                                                Classes="ghost"
-                                                Content="Delete Region" />
-                                    </Grid>
-                                    <Button x:Name="RefreshCompositionPreviewButton"
-                                            Classes="ghost"
-                                            Content="Refresh Composition Preview" />
-                                    <ListBox x:Name="CompositionPreviewListBox"
-                                             MinHeight="80"
-                                             MaxHeight="140" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -608,7 +557,7 @@
             </Expander>
         </Grid>
 
-        <Border x:Name="LayersWorkspacePanel"
+        <Border x:Name="RegionsWorkspacePanel"
                 Grid.Row="1"
                 Classes="surface"
                 IsVisible="False"
@@ -619,9 +568,9 @@
                             Grid.Column="0"
                             Grid.ColumnSpan="3"
                             Spacing="4">
-                    <TextBlock Text="Layers Workspace"
+                    <TextBlock Text="Regions Workspace"
                                Classes="sectionTitle" />
-                    <TextBlock Text="Global Layer Type management and read-only camera usage."
+                    <TextBlock Text="Manage camera zone regions for train detection behavior."
                                Classes="muted" />
                 </StackPanel>
 
@@ -629,17 +578,13 @@
                         Grid.Column="0"
                         Classes="surfaceAlt"
                         Padding="10">
-                    <Grid RowDefinitions="Auto,8,*,8,Auto">
+                    <Grid RowDefinitions="Auto,8,*">
                         <TextBlock Grid.Row="0"
-                                   Text="Layer Types"
+                                   Text="Camera Zone Regions"
                                    Classes="sectionTitle" />
                         <ListBox Grid.Row="2"
-                                 x:Name="GlobalLayerTypesListBox"
+                                 x:Name="RegionsListBox"
                                  SelectionMode="Single" />
-                        <Button Grid.Row="4"
-                                x:Name="DeleteGlobalLayerTypeButton"
-                                Classes="destructive"
-                                Content="Delete Layer Type" />
                     </Grid>
                 </Border>
 
@@ -654,42 +599,58 @@
                             <TextBlock Grid.Row="0"
                                        Grid.Column="0"
                                        Grid.ColumnSpan="5"
-                                       Text="Global Layer Type"
+                                       Text="Create Region"
                                        Classes="sectionTitle" />
                             <TextBox Grid.Row="2"
                                      Grid.Column="0"
-                                     x:Name="GlobalLayerTypeIdTextBox"
-                                     Watermark="Layer Type ID" />
-                            <TextBox Grid.Row="2"
-                                     Grid.Column="2"
-                                     x:Name="GlobalLayerTypeNameTextBox"
-                                     Watermark="Display name" />
-                            <TextBox Grid.Row="2"
-                                     Grid.Column="4"
-                                     x:Name="GlobalLayerTypePrecedenceTextBox"
-                                     Watermark="Precedence" />
+                                     x:Name="RegionNameTextBox"
+                                     Watermark="Region name" />
+                            <ComboBox Grid.Row="2"
+                                      Grid.Column="2"
+                                      x:Name="RegionTypeComboBox">
+                                <ComboBoxItem Content="Exclude Region" Tag="0" />
+                                <ComboBoxItem Content="High Probability Rail Region" Tag="10" />
+                                <ComboBoxItem Content="Enter Crossroad Region" Tag="20" />
+                                <ComboBoxItem Content="Exit Crossroad Region" Tag="30" />
+                                <ComboBoxItem Content="Camera Overlap Region" Tag="40" />
+                            </ComboBox>
                             <Button Grid.Row="4"
                                     Grid.Column="0"
-                                    x:Name="AddGlobalLayerTypeButton"
+                                    x:Name="CreateRegionButton"
                                     Classes="primary"
-                                    Content="Add Layer Type" />
+                                    Content="Create Region" />
                         </Grid>
                     </Border>
 
-                    <TextBlock Grid.Row="2"
-                               x:Name="GlobalLayerTypeDeleteStatusText"
-                               Classes="muted"
-                               Text="Select a Layer Type to inspect usage." />
+                    <StackPanel Grid.Row="2"
+                                Spacing="8">
+                        <Button x:Name="EditRegionButton"
+                                Classes="primary"
+                                Content="Edit Selected Region" />
+                        <Button x:Name="DeleteRegionButton"
+                                Classes="destructive"
+                                Content="Delete Selected Region" />
+                    </StackPanel>
 
                     <Border Grid.Row="4"
                             Classes="surfaceAlt"
                             Padding="10">
                         <Grid RowDefinitions="Auto,8,*">
                             <TextBlock Grid.Row="0"
-                                       Text="Camera Usage"
+                                       Text="Selected Region Details"
                                        Classes="sectionTitle" />
-                            <ListBox Grid.Row="2"
-                                     x:Name="GlobalLayerTypeUsageListBox" />
+                            <StackPanel Grid.Row="2"
+                                        Spacing="4">
+                                <TextBlock x:Name="RegionDetailNameText"
+                                           Text="No region selected"
+                                           Classes="muted" />
+                                <TextBlock x:Name="RegionDetailTypeInfoText"
+                                           Text=""
+                                           Classes="muted" />
+                                <TextBlock x:Name="RegionDetailCellCountText"
+                                           Text=""
+                                           Classes="muted" />
+                            </StackPanel>
                         </Grid>
                     </Border>
                 </Grid>

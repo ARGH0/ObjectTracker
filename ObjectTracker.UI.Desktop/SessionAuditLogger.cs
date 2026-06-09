@@ -15,6 +15,9 @@ internal sealed class SessionAuditLogger : IDisposable
     public const string EventRunStop = "run-stop";
     public const string EventCameraSwitch = "camera-switch";
     public const string EventCalibrationChange = "calibration-change";
+    public const string EventRegionCreated = "region-created";
+    public const string EventRegionUpdated = "region-updated";
+    public const string EventRegionDeleted = "region-deleted";
 
     public string? CurrentFilePath { get; private set; }
 

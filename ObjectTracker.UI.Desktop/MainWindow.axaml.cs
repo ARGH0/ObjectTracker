@@ -29,11 +29,11 @@ public partial class MainWindow : AppWindow
     public enum Workspace
     {
         Camera,
-        Layers,
+        Regions,
         Settings
     }
 
-    public readonly record struct WorkspaceVisibility(bool CameraVisible, bool LayersVisible, bool SettingsVisible);
+    public readonly record struct WorkspaceVisibility(bool CameraVisible, bool RegionsVisible, bool SettingsVisible);
 
     public readonly record struct BottomStatusSnapshot(
         string VisionPipeline,
@@ -146,7 +146,7 @@ public partial class MainWindow : AppWindow
         return workspace switch
         {
             Workspace.Camera => new WorkspaceVisibility(true, false, false),
-            Workspace.Layers => new WorkspaceVisibility(false, true, false),
+            Workspace.Regions => new WorkspaceVisibility(false, true, false),
             Workspace.Settings => new WorkspaceVisibility(false, false, true),
             _ => new WorkspaceVisibility(true, false, false)
         };
@@ -278,46 +278,6 @@ public partial class MainWindow : AppWindow
         return $"Clear all {cameraCount} cameras from this Session? This cannot be undone.";
     }
 
-    public static LayerTypeUsageProjection BuildLayerTypeUsageProjection(
-        string layerTypeId,
-        IReadOnlyCollection<CameraZoneLayer> cameraZoneLayers,
-        IReadOnlyCollection<CameraZoneDefinition> cameraZones,
-        IReadOnlyCollection<CameraZoneBinding> cameraZoneBindings,
-        IReadOnlyDictionary<string, string> cameraDisplayNamesBySourceId)
-    {
-        var zoneNameById = cameraZones.ToDictionary(zone => zone.CameraZoneId, zone => zone.Name, StringComparer.OrdinalIgnoreCase);
-        var cameraNameByZoneId = cameraZoneBindings
-            .Where(binding => cameraDisplayNamesBySourceId.ContainsKey(binding.SourceId))
-            .GroupBy(binding => binding.CameraZoneId, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                group => group.Key,
-                group => cameraDisplayNamesBySourceId[group.First().SourceId],
-                StringComparer.OrdinalIgnoreCase);
-
-        var items = cameraZoneLayers
-            .Where(layer => string.Equals(layer.LayerTypeId, layerTypeId, StringComparison.OrdinalIgnoreCase))
-            .Select(layer => new LayerTypeUsageItem(
-                cameraNameByZoneId.TryGetValue(layer.CameraZoneId, out var cameraName) ? cameraName : "Unbound camera source",
-                zoneNameById.TryGetValue(layer.CameraZoneId, out var zoneName) ? zoneName : layer.CameraZoneId,
-                layer.Name,
-                layer.Regions.Count))
-            .OrderBy(item => item.CameraDisplayName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.LayerName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return new LayerTypeUsageProjection(items);
-    }
-
-    public static LayerTypeDeleteState BuildLayerTypeDeleteState(string layerTypeId, LayerTypeUsageProjection usage)
-    {
-        if (usage.Items.Count == 0)
-        {
-            return new LayerTypeDeleteState(true, $"Layer Type {layerTypeId} can be deleted.");
-        }
-
-        var dependencies = string.Join(", ", usage.Items.Select(item => $"{item.CameraDisplayName}: {item.LayerName}"));
-        return new LayerTypeDeleteState(false, $"Layer Type {layerTypeId} is in use and cannot be deleted. Remove Camera Layer Regions first: {dependencies}.");
-    }
 
     public static SettingsDraftState BuildSettingsDraftState(AppSettings savedSettings, AppSettings draftSettings)
     {
@@ -392,19 +352,15 @@ public partial class MainWindow : AppWindow
     private readonly CameraSettingsStore cameraSettingsStore = new();
     private readonly UsbCaptureSettingsStore usbCaptureSettingsStore = new();
     private readonly CameraZoneBindingStore cameraZoneBindingStore = new();
-    private readonly LayerTypeSettingsStore layerTypeSettingsStore = new();
-    private readonly CameraZoneLayerRepository cameraZoneLayerRepository = new();
     private readonly AppSettingsStore appSettingsStore = new();
     private readonly UsbCameraOwnerManager usbCameraOwnerManager = new(new OpenCvUsbCaptureBackend());
     private readonly UsbCaptureSettingsService usbCaptureSettingsService;
-    private readonly CameraZoneLayerEditorService cameraZoneLayerEditorService = new();
-    private readonly EffectiveZoneCompositionService effectiveZoneCompositionService = new();
     private readonly SessionAuditLogger sessionAuditLogger = new();
     private readonly CameraZoneIdentityService cameraZoneIdentityService;
-    private LayerTypeCatalogService layerTypeCatalogService;
+    private ObjectTracker.UI.Desktop.Region.Contracts.IRegionManagerService regionManagerService;
+    private ObjectTracker.UI.Desktop.Region.Contracts.IRegionRegistry regionRegistry;
     private AppSettings appSettings;
     private AppSettings draftAppSettings;
-    private List<CameraZoneLayer> cameraZoneLayers = new();
 
     private CancellationTokenSource? runCts;
     private readonly CameraTileFeedCoordinator cameraTileFeedCoordinator;
@@ -422,7 +378,6 @@ public partial class MainWindow : AppWindow
     private bool applyingCameraInclusionUi;
     private bool applyingCameraDebugViewUi;
     private bool applyingUsbCaptureSettingsUi;
-    private bool gridEditorVisible;
     private bool hasPendingVisionPipelineRestart;
     private bool isCameraPanelOpen = true;
     private bool isCameraPanelPinned = true;
@@ -453,11 +408,10 @@ public partial class MainWindow : AppWindow
 
         var cameraZoneSnapshot = cameraZoneBindingStore.Load();
         cameraZoneIdentityService = new CameraZoneIdentityService(cameraZoneSnapshot.Zones, cameraZoneSnapshot.Bindings);
-        layerTypeCatalogService = layerTypeSettingsStore.Load();
+        InitializeRegionServices();
         appSettings = appSettingsStore.Load();
         draftAppSettings = appSettings;
         PromptSettingsNavigationDecisionAsync = ShowSettingsNavigationGuardDialogAsync;
-        cameraZoneLayers = cameraZoneLayerRepository.Load().ToList();
         ConfirmDestructiveActionAsync = ShowDestructiveConfirmationDialogAsync;
         cameraTileFeedCoordinator = new CameraTileFeedCoordinator(StartCameraTileFeedConsumer);
         InitializeUsbCaptureSettingsUi();
@@ -468,8 +422,6 @@ public partial class MainWindow : AppWindow
         ApplyCameraPanelLayout();
         RefreshSettingsWorkspaceUi();
         RefreshCameraUi();
-        RefreshLayerTypeUi();
-        AppendLog($"Loaded {layerTypeCatalogService.GetOrderedByPrecedence().Count} layer type definitions.");
         AppendLog("Application initialized.");
         UpdateBottomStatusBar();
     }
@@ -497,7 +449,6 @@ public partial class MainWindow : AppWindow
         StartStopButton.Click += StartStopButtonOnClick;
         OpenBakedMaskButton.Click += OpenBakedMaskButtonOnClick;
         PlaylistListBox.SelectionChanged += CameraSelectionChanged;
-        CameraZoneComboBox.SelectionChanged += CameraZoneComboBoxOnSelectionChanged;
         CameraVisibilityCheckBox.IsCheckedChanged += CameraVisibilityCheckBoxOnChanged;
         VisionPipelineInclusionCheckBox.IsCheckedChanged += VisionPipelineInclusionCheckBoxOnChanged;
         CameraDebugViewCheckBox.IsCheckedChanged += CameraDebugViewCheckBoxOnChanged;
@@ -506,23 +457,16 @@ public partial class MainWindow : AppWindow
         UsbTargetFpsComboBox.SelectionChanged += UsbCaptureSettingsControlOnChanged;
         ApplyUsbCaptureSettingsButton.Click += ApplyUsbCaptureSettingsButtonOnClick;
         RevertUsbCaptureSettingsButton.Click += RevertUsbCaptureSettingsButtonOnClick;
-        ToggleGridEditorButton.Click += ToggleGridEditorButtonOnClick;
-        AddLayerButton.Click += AddLayerButtonOnClick;
-        DeleteLayerButton.Click += DeleteLayerButtonOnClick;
-        AddGlobalLayerTypeButton.Click += AddGlobalLayerTypeButtonOnClick;
-        DeleteGlobalLayerTypeButton.Click += DeleteGlobalLayerTypeButtonOnClick;
-        GlobalLayerTypesListBox.SelectionChanged += GlobalLayerTypesListBoxOnSelectionChanged;
-        LayersListBox.SelectionChanged += LayersListBoxOnSelectionChanged;
-        RegionsListBox.SelectionChanged += RegionsListBoxOnSelectionChanged;
-        SaveRegionButton.Click += SaveRegionButtonOnClick;
-        DeleteRegionButton.Click += DeleteRegionButtonOnClick;
-        RefreshCompositionPreviewButton.Click += RefreshCompositionPreviewButtonOnClick;
         BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
         SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
         ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
         OpenCameraWorkspaceMenuItem.Click += CameraWorkspaceButtonOnClick;
-        LayersWorkspaceMenuItem.Click += LayersWorkspaceButtonOnClick;
+        RegionsWorkspaceMenuItem.Click += RegionsWorkspaceButtonOnClick;
         SettingsWorkspaceMenuItem.Click += SettingsWorkspaceButtonOnClick;
+        CreateRegionButton.Click += CreateRegionButtonOnClick;
+        EditRegionButton.Click += EditRegionButtonOnClick;
+        DeleteRegionButton.Click += DeleteRegionButtonOnClick;
+        RegionsListBox.SelectionChanged += RegionsListBoxOnSelectionChanged;
         StartVisionPipelineMenuItem.Click += StartVisionPipelineMenuItemOnClick;
         StopVisionPipelineMenuItem.Click += StopVisionPipelineMenuItemOnClick;
         ToggleCameraPanelButton.Click += ToggleCameraPanelButtonOnClick;
@@ -556,7 +500,7 @@ public partial class MainWindow : AppWindow
 
     private async void LayersWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
     {
-        await TryNavigateWorkspaceAsync(Workspace.Layers);
+        await TryNavigateWorkspaceAsync(Workspace.Regions);
     }
 
     private async void SettingsWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
@@ -620,7 +564,7 @@ public partial class MainWindow : AppWindow
         activeWorkspace = workspace;
         var visibility = BuildWorkspaceVisibility(workspace);
         CameraWorkspacePanel.IsVisible = visibility.CameraVisible;
-        LayersWorkspacePanel.IsVisible = visibility.LayersVisible;
+        RegionsWorkspacePanel.IsVisible = visibility.RegionsVisible;
         SettingsWorkspacePanel.IsVisible = visibility.SettingsVisible;
         RuntimeLogExpander.IsVisible = IsRuntimeLogVisibleForWorkspace(workspace);
     }
@@ -1039,8 +983,6 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsEnabled = camera.Value.IsIncludedInVisionPipeline;
             RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
             RefreshUsbCaptureSettingsUi(camera.Value);
-            UpdateCameraZoneSelectionUi(camera.Value.Id);
-            RefreshLayerEditorUiForSelectedCamera();
         }
 
         if (runTask is not null && index >= 0)
@@ -1549,7 +1491,6 @@ public partial class MainWindow : AppWindow
 
         PlaylistListBox.ItemsSource = snapshot.ConvertAll(camera => camera.DisplayName);
         RefreshCameraWorkspaceTiles(snapshot);
-        RefreshCameraZoneComboItems();
         ApplyCameraDestructiveActionsState(snapshot.Count);
 
         var canNavigate = snapshot.Count > 1;
@@ -1579,8 +1520,6 @@ public partial class MainWindow : AppWindow
             RestartUsbCameraSourceButton.IsVisible = false;
             RestartUsbCameraSourceButton.IsEnabled = false;
             UsbCaptureSettingsPanel.IsVisible = false;
-            CameraZoneComboBox.SelectedIndex = -1;
-            LayersListBox.ItemsSource = null;
             RegionsListBox.ItemsSource = null;
             return;
         }
@@ -1606,8 +1545,6 @@ public partial class MainWindow : AppWindow
         applyingCameraDebugViewUi = false;
         RefreshSelectedUsbCameraSourceStatusUi(selected);
         RefreshUsbCaptureSettingsUi(selected);
-        UpdateCameraZoneSelectionUi(selected.Id);
-        RefreshLayerEditorUiForSelectedCamera();
     }
 
     private void RefreshCameraWorkspaceTiles(IReadOnlyList<CameraProfile> orderedCameras)
@@ -2211,137 +2148,12 @@ public partial class MainWindow : AppWindow
         CameraTileGrid.Columns = Math.Max(1, columns);
     }
 
-    private void ToggleGridEditorButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        gridEditorVisible = !gridEditorVisible;
-        GridEditorPanel.IsVisible = gridEditorVisible;
-        ToggleGridEditorButton.Content = gridEditorVisible
-            ? "Hide Grid Region Editor"
-            : "Open Grid Region Editor";
-    }
-
-    private void RefreshLayerTypeUi()
-    {
-        var orderedDefinitions = layerTypeCatalogService
-            .GetOrderedByPrecedence()
-            .ToList();
-
-        LayerTypeComboBox.ItemsSource = orderedDefinitions
-            .Select(definition => new LayerTypeComboItem(definition.LayerTypeId, definition.DisplayName))
-            .ToList();
-        LayerTypeComboBox.SelectedIndex = 0;
-
-        var selectedLayerTypeId = GlobalLayerTypesListBox.SelectedItem is GlobalLayerTypeListItem selected
-            ? selected.LayerTypeId
-            : null;
-        var globalItems = orderedDefinitions
-            .Select(definition => new GlobalLayerTypeListItem(
-                definition.LayerTypeId,
-                definition.DisplayName,
-                definition.Precedence,
-                definition.MergePolicy,
-                definition.BehaviorClass))
-            .ToList();
-        GlobalLayerTypesListBox.ItemsSource = globalItems;
-        var selectedIndex = string.IsNullOrWhiteSpace(selectedLayerTypeId)
-            ? 0
-            : globalItems.FindIndex(item => string.Equals(item.LayerTypeId, selectedLayerTypeId, StringComparison.OrdinalIgnoreCase));
-        GlobalLayerTypesListBox.SelectedIndex = globalItems.Count == 0 ? -1 : Math.Max(0, selectedIndex);
-        RefreshSelectedGlobalLayerTypeUsage();
-    }
-
-    private void GlobalLayerTypesListBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        RefreshSelectedGlobalLayerTypeUsage();
-    }
-
-    private void RefreshSelectedGlobalLayerTypeUsage()
-    {
-        if (GlobalLayerTypesListBox.SelectedItem is not GlobalLayerTypeListItem selected)
-        {
-            GlobalLayerTypeIdTextBox.Text = string.Empty;
-            GlobalLayerTypeNameTextBox.Text = string.Empty;
-            GlobalLayerTypePrecedenceTextBox.Text = string.Empty;
-            GlobalLayerTypeUsageListBox.ItemsSource = null;
-            DeleteGlobalLayerTypeButton.IsEnabled = false;
-            GlobalLayerTypeDeleteStatusText.Text = "Select a Layer Type to inspect usage.";
-            return;
-        }
-
-        GlobalLayerTypeIdTextBox.Text = selected.LayerTypeId;
-        GlobalLayerTypeNameTextBox.Text = selected.DisplayName;
-        GlobalLayerTypePrecedenceTextBox.Text = selected.Precedence.ToString();
-
-        var usage = BuildLayerTypeUsageProjection(
-            selected.LayerTypeId,
-            cameraZoneLayers,
-            cameraZoneIdentityService.CameraZones,
-            cameraZoneIdentityService.SourceBindings,
-            BuildCameraDisplayNamesBySourceId());
-        GlobalLayerTypeUsageListBox.ItemsSource = usage.Items.Count == 0
-            ? new[] { "No camera usage." }
-            : usage.Items.Select(item => $"{item.CameraDisplayName} / {item.CameraZoneName}: {item.LayerName} ({item.RegionCount} regions)").ToList();
-
-        var deleteState = BuildLayerTypeDeleteState(selected.LayerTypeId, usage);
-        DeleteGlobalLayerTypeButton.IsEnabled = deleteState.CanDelete;
-        GlobalLayerTypeDeleteStatusText.Text = deleteState.Message;
-    }
-
     private Dictionary<string, string> BuildCameraDisplayNamesBySourceId()
     {
         lock (cameraSync)
         {
             return cameras.ToDictionary(camera => camera.Id, camera => camera.DisplayName, StringComparer.OrdinalIgnoreCase);
         }
-    }
-
-    private void RefreshLayerEditorUiForSelectedCamera()
-    {
-        var camera = GetSelectedCamera();
-        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
-        {
-            LayersListBox.ItemsSource = null;
-            RegionsListBox.ItemsSource = null;
-            return;
-        }
-
-        var layers = cameraZoneLayers
-            .Where(layer => string.Equals(layer.CameraZoneId, zone.CameraZoneId, StringComparison.OrdinalIgnoreCase))
-            .Select(layer => new LayerListItem(layer.LayerId, layer.Name, layer.LayerTypeId))
-            .ToList();
-
-        LayersListBox.ItemsSource = layers;
-        if (layers.Count == 0)
-        {
-            LayersListBox.SelectedIndex = -1;
-            RegionsListBox.ItemsSource = null;
-            CompositionPreviewListBox.ItemsSource = null;
-            return;
-        }
-
-        if (LayersListBox.SelectedItem is not LayerListItem selected || !layers.Any(item => item.LayerId == selected.LayerId))
-        {
-            LayersListBox.SelectedIndex = 0;
-        }
-
-        RefreshRegionsForSelectedLayer();
-        RefreshCompositionPreview();
-    }
-
-    private void RefreshRegionsForSelectedLayer()
-    {
-        if (LayersListBox.SelectedItem is not LayerListItem selectedLayer)
-        {
-            RegionsListBox.ItemsSource = null;
-            return;
-        }
-
-        var layer = cameraZoneLayers.FirstOrDefault(item => string.Equals(item.LayerId, selectedLayer.LayerId, StringComparison.OrdinalIgnoreCase));
-        var regions = layer.Regions
-            .Select(region => new RegionListItem(region.RegionId, region.Name, region.Code, CameraZoneLayerEditorService.ToCellsText(region.Cells)))
-            .ToList();
-        RegionsListBox.ItemsSource = regions;
-        RegionsListBox.SelectedIndex = regions.Count > 0 ? 0 : -1;
     }
 
     private void SetRunState(bool isRunning)
@@ -2679,257 +2491,6 @@ public partial class MainWindow : AppWindow
     private void PersistCameraZones()
     {
         cameraZoneBindingStore.Save(cameraZoneIdentityService.CameraZones, cameraZoneIdentityService.SourceBindings);
-    }
-
-    private void RefreshCameraZoneComboItems()
-    {
-        applyingCameraZoneUi = true;
-        try
-        {
-            CameraZoneComboBox.ItemsSource = cameraZoneIdentityService
-                .GetCameraZonesOrderedByName()
-                .Select(zone => new CameraZoneComboItem(zone.CameraZoneId, zone.Name))
-                .ToList();
-        }
-        finally
-        {
-            applyingCameraZoneUi = false;
-        }
-    }
-
-    private void UpdateCameraZoneSelectionUi(string sourceId)
-    {
-        applyingCameraZoneUi = true;
-        try
-        {
-            if (!cameraZoneIdentityService.TryGetCameraZoneForSource(sourceId, out var zone))
-            {
-                CameraZoneComboBox.SelectedIndex = -1;
-                return;
-            }
-
-            if (CameraZoneComboBox.ItemsSource is not IEnumerable<CameraZoneComboItem> items)
-            {
-                CameraZoneComboBox.SelectedIndex = -1;
-                return;
-            }
-
-            var selected = items.FirstOrDefault(item => string.Equals(item.CameraZoneId, zone.CameraZoneId, StringComparison.OrdinalIgnoreCase));
-            CameraZoneComboBox.SelectedItem = selected;
-        }
-        finally
-        {
-            applyingCameraZoneUi = false;
-        }
-    }
-
-    private void CameraZoneComboBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (applyingCameraZoneUi)
-        {
-            return;
-        }
-
-        var camera = GetSelectedCamera();
-        if (camera is null)
-        {
-            return;
-        }
-
-        if (CameraZoneComboBox.SelectedItem is not CameraZoneComboItem selected)
-        {
-            return;
-        }
-
-        cameraZoneIdentityService.AssignSourceToZone(camera.Value.Id, selected.CameraZoneId);
-        PersistCameraZones();
-        RefreshLayerEditorUiForSelectedCamera();
-        SetStatus($"Status: {camera.Value.DisplayName} rebound to Camera Zone {selected.CameraZoneName}.");
-    }
-
-    private void AddLayerButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        var camera = GetSelectedCamera();
-        if (camera is null)
-        {
-            SetStatus("Status: select a camera first.");
-            return;
-        }
-
-        if (!cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
-        {
-            SetStatus("Status: no Camera Zone binding for selected camera.");
-            return;
-        }
-
-        if (LayerTypeComboBox.SelectedItem is not LayerTypeComboItem layerType)
-        {
-            SetStatus("Status: select a layer type first.");
-            return;
-        }
-
-        cameraZoneLayers = cameraZoneLayerEditorService
-            .AddLayer(cameraZoneLayers, zone.CameraZoneId, layerType.LayerTypeId, $"{layerType.DisplayName} Layer")
-            .ToList();
-        cameraZoneLayerRepository.Save(cameraZoneLayers);
-        RefreshLayerEditorUiForSelectedCamera();
-        SetStatus($"Status: added {layerType.DisplayName} layer in {zone.Name}.");
-    }
-
-    private void AddGlobalLayerTypeButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        if (!int.TryParse(GlobalLayerTypePrecedenceTextBox.Text, out var precedence))
-        {
-            SetStatus("Status: enter a numeric Layer Type precedence.");
-            return;
-        }
-
-        var result = layerTypeCatalogService.TryAddLayerType(new LayerTypeDefinition(
-            GlobalLayerTypeIdTextBox.Text ?? string.Empty,
-            GlobalLayerTypeNameTextBox.Text ?? string.Empty,
-            precedence,
-            LayerMergePolicy.MergeForEffectiveMask,
-            LayerTypeBehaviorClass.Informational));
-        if (!result.Added)
-        {
-            GlobalLayerTypeDeleteStatusText.Text = result.Warning;
-            SetStatus($"Status: {result.Warning}");
-            return;
-        }
-
-        layerTypeCatalogService = result.Catalog;
-        layerTypeSettingsStore.Save(layerTypeCatalogService.GetOrderedByPrecedence());
-        RefreshLayerTypeUi();
-        SetStatus($"Status: added Layer Type {GlobalLayerTypeNameTextBox.Text}.");
-    }
-
-    private void DeleteGlobalLayerTypeButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        if (GlobalLayerTypesListBox.SelectedItem is not GlobalLayerTypeListItem selected)
-        {
-            return;
-        }
-
-        var usage = BuildLayerTypeUsageProjection(
-            selected.LayerTypeId,
-            cameraZoneLayers,
-            cameraZoneIdentityService.CameraZones,
-            cameraZoneIdentityService.SourceBindings,
-            BuildCameraDisplayNamesBySourceId());
-        var deleteState = BuildLayerTypeDeleteState(selected.LayerTypeId, usage);
-        if (!deleteState.CanDelete)
-        {
-            SetStatus($"Status: {deleteState.Message}");
-            RefreshSelectedGlobalLayerTypeUsage();
-            return;
-        }
-
-        layerTypeCatalogService = layerTypeCatalogService.RemoveLayerType(selected.LayerTypeId);
-        layerTypeSettingsStore.Save(layerTypeCatalogService.GetOrderedByPrecedence());
-        RefreshLayerTypeUi();
-        SetStatus($"Status: deleted Layer Type {selected.DisplayName}.");
-    }
-
-    private void DeleteLayerButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        if (LayersListBox.SelectedItem is not LayerListItem selectedLayer)
-        {
-            return;
-        }
-
-        cameraZoneLayers = cameraZoneLayerEditorService.RemoveLayer(cameraZoneLayers, selectedLayer.LayerId).ToList();
-        cameraZoneLayerRepository.Save(cameraZoneLayers);
-        RefreshLayerEditorUiForSelectedCamera();
-        SetStatus($"Status: deleted layer {selectedLayer.Name}.");
-    }
-
-    private void LayersListBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        RefreshRegionsForSelectedLayer();
-    }
-
-    private void RegionsListBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (RegionsListBox.SelectedItem is not RegionListItem region)
-        {
-            RegionNameTextBox.Text = string.Empty;
-            RegionCodeTextBox.Text = string.Empty;
-            RegionCellsTextBox.Text = string.Empty;
-            return;
-        }
-
-        RegionNameTextBox.Text = region.Name;
-        RegionCodeTextBox.Text = region.Code?.ToString() ?? string.Empty;
-        RegionCellsTextBox.Text = region.CellsText;
-    }
-
-    private void SaveRegionButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        if (LayersListBox.SelectedItem is not LayerListItem selectedLayer)
-        {
-            SetStatus("Status: select a layer first.");
-            return;
-        }
-
-        var regionId = RegionsListBox.SelectedItem is RegionListItem selectedRegionItem ? selectedRegionItem.RegionId : null;
-        int? code = int.TryParse(RegionCodeTextBox.Text, out var parsedCode) ? parsedCode : null;
-
-        try
-        {
-            cameraZoneLayers = cameraZoneLayerEditorService.UpsertRegion(
-                    cameraZoneLayers,
-                    selectedLayer.LayerId,
-                    regionId,
-                    RegionNameTextBox.Text ?? string.Empty,
-                    code,
-                    RegionCellsTextBox.Text ?? string.Empty,
-                    appSettings)
-                .ToList();
-        }
-        catch (InvalidOperationException ex)
-        {
-            SetStatus($"Status: {ex.Message}");
-            return;
-        }
-
-        cameraZoneLayerRepository.Save(cameraZoneLayers);
-        RefreshLayerEditorUiForSelectedCamera();
-        SetStatus("Status: region saved.");
-    }
-
-    private void DeleteRegionButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        if (LayersListBox.SelectedItem is not LayerListItem selectedLayer
-            || RegionsListBox.SelectedItem is not RegionListItem selectedRegion)
-        {
-            return;
-        }
-
-        cameraZoneLayers = cameraZoneLayerEditorService
-            .RemoveRegion(cameraZoneLayers, selectedLayer.LayerId, selectedRegion.RegionId)
-            .ToList();
-        cameraZoneLayerRepository.Save(cameraZoneLayers);
-        RefreshLayerEditorUiForSelectedCamera();
-        SetStatus("Status: region deleted.");
-    }
-
-    private void RefreshCompositionPreviewButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        RefreshCompositionPreview();
-        SetStatus("Status: composition preview refreshed.");
-    }
-
-    private void RefreshCompositionPreview()
-    {
-        var camera = GetSelectedCamera();
-        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
-        {
-            CompositionPreviewListBox.ItemsSource = null;
-            return;
-        }
-
-        var composed = effectiveZoneCompositionService.Compose(zone.CameraZoneId, cameraZoneLayers, layerTypeCatalogService);
-        CompositionPreviewListBox.ItemsSource = composed.Select(item => item.DisplayText).ToList();
     }
 
     private CameraProfile? GetSelectedCamera()
@@ -3380,16 +2941,6 @@ public partial class MainWindow : AppWindow
         public override string ToString() => DisplayName;
     }
 
-    private readonly record struct GlobalLayerTypeListItem(
-        string LayerTypeId,
-        string DisplayName,
-        int Precedence,
-        LayerMergePolicy MergePolicy,
-        LayerTypeBehaviorClass BehaviorClass)
-    {
-        public override string ToString() => $"{DisplayName} ({LayerTypeId}, {Precedence})";
-    }
-
     private readonly record struct LayerListItem(string LayerId, string Name, string LayerTypeId)
     {
         public override string ToString() => $"{Name} ({LayerTypeId})";
@@ -3425,5 +2976,210 @@ public partial class MainWindow : AppWindow
         public static EmptyAsyncDisposable Instance { get; } = new();
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private void InitializeRegionServices()
+    {
+        var persistence = new ObjectTracker.UI.Desktop.Region.Implementation.RegionPersistence(
+            System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "ObjectTracker",
+                "regions.json"));
+
+        regionRegistry = new ObjectTracker.UI.Desktop.Region.Implementation.RegionRegistry(persistence);
+
+        regionManagerService = new ObjectTracker.UI.Desktop.Region.Implementation.RegionManagerService(
+            regionRegistry,
+            persistence,
+            (owner, regionId) => BuildGridEditorDialogAsync(owner, regionId));
+    }
+
+    private async Task<ObjectTracker.UI.Desktop.Region.Implementation.GridEditorDialog?> BuildGridEditorDialogAsync(Avalonia.Controls.Window owner, Guid? regionId)
+    {
+        var camera = GetSelectedCamera();
+        if (camera is null)
+            return null;
+
+        if (!cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
+            return null;
+
+        var currentCells = regionId.HasValue
+            ? regionRegistry.GetById(regionId.Value)?.Cells ?? new List<ObjectTracker.UI.Desktop.Region.Model.GridCell>().AsReadOnly()
+            : new List<ObjectTracker.UI.Desktop.Region.Model.GridCell>().AsReadOnly();
+
+        var regionName = regionId.HasValue
+            ? regionRegistry.GetById(regionId.Value)?.Name ?? "Edit Region"
+            : "New Region";
+
+        Func<Task<byte[]?>> frameLoader = () => LoadCameraFrameAsync(camera.Value);
+
+        return new ObjectTracker.UI.Desktop.Region.Implementation.GridEditorDialog(
+            appSettings.GridColumns,
+            appSettings.GridRows,
+            currentCells,
+            regionName,
+            frameLoader);
+    }
+
+    private async Task<byte[]?> LoadCameraFrameAsync(CameraProfile camera)
+    {
+        try
+        {
+            if (camera.SourceKind == CameraSourceKind.VideoFiles && !string.IsNullOrWhiteSpace(camera.PrimaryVideoPath))
+            {
+                using var capture = new VideoCapture(camera.PrimaryVideoPath);
+                if (capture.IsOpened())
+                {
+                    using var mat = new Mat();
+                    if (capture.Read(mat) && !mat.Empty())
+                    {
+                        Cv2.ImEncode(".jpg", mat, out var jpegBytes, new[] { (int)ImwriteFlags.JpegQuality, 80 });
+                        return jpegBytes;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Silently fail - no frame is better than crashing
+        }
+
+        return null;
+    }
+
+    private async void RegionsWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        await TryNavigateWorkspaceAsync(Workspace.Regions);
+
+        var camera = GetSelectedCamera();
+        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
+        {
+            RegionsListBox.ItemsSource = new List<string> { "No camera zone selected." };
+            return;
+        }
+
+        var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+        var regions = regionManagerService.GetRegionsForZone(zoneId);
+        RegionsListBox.ItemsSource = regions.Select(r => $"{r.Name} ({r.Type}, {r.Cells.Count} cells)").ToList();
+    }
+
+    private async void CreateRegionButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        var camera = GetSelectedCamera();
+        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
+        {
+            SetStatus("Status: select a camera first.");
+            return;
+        }
+
+        var regionName = RegionNameTextBox.Text?.Trim() ?? "New Region";
+        var selectedTypeItem = RegionTypeComboBox.SelectedItem as ComboBoxItem;
+        var typeValue = int.TryParse(selectedTypeItem?.Tag?.ToString(), out var type) ? type : 0;
+        var regionType = (ObjectTracker.UI.Desktop.Region.Model.RegionType)typeValue;
+
+        var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+
+        await regionManagerService.OpenGridEditorAsync(zoneId, this, null);
+
+        sessionAuditLogger.AppendEvent(
+            SessionAuditLogger.EventRegionCreated,
+            $"Region '{regionName}' created.",
+            ("Zone", zone.CameraZoneId),
+            ("Type", regionType.ToString()));
+
+        SetStatus($"Status: region '{regionName}' created.");
+    }
+
+    private async void EditRegionButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (RegionsListBox.SelectedItem is not string selectedRegionText)
+            return;
+
+        var camera = GetSelectedCamera();
+        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
+            return;
+
+        var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+        var regions = regionManagerService.GetRegionsForZone(zoneId);
+        var regionName = selectedRegionText.Split(' ')[0];
+        var region = regions.FirstOrDefault(r => r.Name == regionName);
+
+        if (region.Id == Guid.Empty)
+            return;
+
+        await regionManagerService.OpenGridEditorAsync(zoneId, this, region.Id);
+
+        sessionAuditLogger.AppendEvent(
+            SessionAuditLogger.EventRegionUpdated,
+            $"Region '{region.Name}' edited.",
+            ("Zone", zone.CameraZoneId));
+
+        SetStatus($"Status: region '{region.Name}' edited.");
+    }
+
+    private async void DeleteRegionButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (RegionsListBox.SelectedItem is not string selectedRegionText)
+            return;
+
+        var camera = GetSelectedCamera();
+        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
+            return;
+
+        var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+        var regions = regionManagerService.GetRegionsForZone(zoneId);
+        var regionName = selectedRegionText.Split(' ')[0];
+        var region = regions.FirstOrDefault(r => r.Name == regionName);
+
+        if (region.Id == Guid.Empty)
+            return;
+
+        var confirmed = await ConfirmDestructiveActionAsync("Delete Region", $"Are you sure you want to delete '{region.Name}'?");
+        if (!confirmed)
+            return;
+
+        var deleted = regionManagerService.DeleteRegion(region.Id);
+        if (deleted)
+        {
+            sessionAuditLogger.AppendEvent(
+                SessionAuditLogger.EventRegionDeleted,
+                $"Region '{region.Name}' deleted.",
+                ("Zone", zone.CameraZoneId));
+
+            SetStatus($"Status: region '{region.Name}' deleted.");
+        }
+    }
+
+    private void RegionsListBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (RegionsListBox.SelectedItem is not string selectedRegionText)
+        {
+            RegionDetailNameText.Text = "No region selected";
+            RegionDetailTypeInfoText.Text = "";
+            RegionDetailCellCountText.Text = "";
+            return;
+        }
+
+        var camera = GetSelectedCamera();
+        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
+            return;
+
+        var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+        var regions = regionManagerService.GetRegionsForZone(zoneId);
+        var regionName = selectedRegionText.Split(' ')[0];
+        var region = regions.FirstOrDefault(r => r.Name == regionName);
+
+        if (region.Id == Guid.Empty)
+        {
+            RegionDetailNameText.Text = "No region selected";
+            RegionDetailTypeInfoText.Text = "";
+            RegionDetailCellCountText.Text = "";
+        }
+        else
+        {
+            RegionDetailNameText.Text = region.Name;
+            RegionDetailTypeInfoText.Text = $"Type: {region.Type}";
+            RegionDetailCellCountText.Text = $"Cells: {region.Cells.Count}";
+        }
     }
 }

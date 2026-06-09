@@ -14,11 +14,10 @@ namespace ObjectTracker.UI.Desktop;
 internal sealed class BackgroundEstimationEngine(
     SessionCalibrationService? sessionCalibration = null,
     RailRoiMaskBuilder? railRoiMaskBuilder = null,
-    MotionMaskRefiner? motionMaskRefiner = null)
+    bool enableMotionMaskRefinement = false)
 {
     private readonly SessionCalibrationService _sessionCalibration = sessionCalibration ?? new();
     private readonly RailRoiMaskBuilder _railRoiMaskBuilder = railRoiMaskBuilder ?? new();
-    private readonly MotionMaskRefiner _motionMaskRefiner = motionMaskRefiner ?? new();
 
     public Action<TrainDetected>? OnTrainDetected { get; set; }
 
@@ -230,8 +229,7 @@ internal sealed class BackgroundEstimationEngine(
             Cv2.Absdiff(medianBackground, resized, diff);
             Cv2.Threshold(diff, mask, activeThreshold, 255, ThresholdTypes.Binary);
             Cv2.BitwiseAnd(mask, railRoiMask, mask);
-            using var refined = _motionMaskRefiner.Refine(mask, BuildRefinerOptions(activeMorphKernelSize));
-            refined.CopyTo(refinedMask);
+            mask.CopyTo(refinedMask);
 
             var movingRects = GetMovingObjectRectangles(refinedMask, activeMinMotionArea);
 
@@ -449,8 +447,7 @@ internal sealed class BackgroundEstimationEngine(
             Cv2.Absdiff(medianBackground, resized, diff);
             Cv2.Threshold(diff, mask, activeThreshold, 255, ThresholdTypes.Binary);
             Cv2.BitwiseAnd(mask, railRoiMask, mask);
-            using var refined = _motionMaskRefiner.Refine(mask, BuildRefinerOptions(activeMorphKernelSize));
-            refined.CopyTo(refinedMask);
+            mask.CopyTo(refinedMask);
 
             var movingRects = GetMovingObjectRectangles(refinedMask, activeMinMotionArea);
 
@@ -895,12 +892,6 @@ internal sealed class BackgroundEstimationEngine(
         return (double)Cv2.CountNonZero(mask) / total;
     }
 
-    private static MotionMaskRefiner.Options BuildRefinerOptions(int morphKernelSize)
-    {
-        var closeKernelSize = Math.Max(1, morphKernelSize);
-        var openKernelSize = closeKernelSize >= 5 ? 3 : 1;
-        return new MotionMaskRefiner.Options(closeKernelSize, openKernelSize);
-    }
 
     private static async Task WaitForPlaybackScheduleAsync(
         int frameIndex,

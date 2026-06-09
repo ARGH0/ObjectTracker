@@ -1,4 +1,5 @@
 using System;
+using ObjectTracker.UI.Desktop.Region.Model;
 using System.Collections.Generic;
 using System.Linq;
 using RegionDefinition = ObjectTracker.UI.Desktop.Region.Model.RegionDefinition;

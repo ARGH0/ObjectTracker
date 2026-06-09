@@ -12,17 +12,17 @@ public sealed class MainWindowWorkspaceShellTests
         var visibility = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Camera);
 
         Assert.True(visibility.CameraVisible);
-        Assert.False(visibility.LayersVisible);
+        Assert.False(visibility.RegionsVisible);
         Assert.False(visibility.SettingsVisible);
     }
 
     [Fact]
     public void BuildWorkspaceVisibility_Layers_ShowsOnlyLayersWorkspace()
     {
-        var visibility = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Layers);
+        var visibility = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Regions);
 
         Assert.False(visibility.CameraVisible);
-        Assert.True(visibility.LayersVisible);
+        Assert.True(visibility.RegionsVisible);
         Assert.False(visibility.SettingsVisible);
     }
 
@@ -32,7 +32,7 @@ public sealed class MainWindowWorkspaceShellTests
         var visibility = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Settings);
 
         Assert.False(visibility.CameraVisible);
-        Assert.False(visibility.LayersVisible);
+        Assert.False(visibility.RegionsVisible);
         Assert.True(visibility.SettingsVisible);
     }
 
@@ -40,7 +40,7 @@ public sealed class MainWindowWorkspaceShellTests
     public void RuntimeLog_IsVisible_OnlyInCameraWorkspace()
     {
         Assert.True(MainWindow.IsRuntimeLogVisibleForWorkspace(MainWindow.Workspace.Camera));
-        Assert.False(MainWindow.IsRuntimeLogVisibleForWorkspace(MainWindow.Workspace.Layers));
+        Assert.False(MainWindow.IsRuntimeLogVisibleForWorkspace(MainWindow.Workspace.Regions));
         Assert.False(MainWindow.IsRuntimeLogVisibleForWorkspace(MainWindow.Workspace.Settings));
     }
 

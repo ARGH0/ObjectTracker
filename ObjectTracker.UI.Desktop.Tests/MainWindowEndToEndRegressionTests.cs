@@ -13,7 +13,7 @@ public sealed class MainWindowEndToEndRegressionTests
     public void WorkspaceAndRuntimeControls_EndToEnd_PreserveNavigationAndRuntimeValidity()
     {
         var cameraWorkspace = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Camera);
-        var layersWorkspace = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Layers);
+        var layersWorkspace = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Regions);
         var settingsWorkspace = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Settings);
         var stoppedMenu = MainWindow.BuildVisionPipelineMenuState(isVisionPipelineRunning: false);
         var runningMenu = MainWindow.BuildVisionPipelineMenuState(isVisionPipelineRunning: true);
@@ -22,7 +22,7 @@ public sealed class MainWindowEndToEndRegressionTests
             hasPendingVisionPipelineRestart: true);
 
         Assert.True(cameraWorkspace.CameraVisible);
-        Assert.True(layersWorkspace.LayersVisible);
+        Assert.True(layersWorkspace.RegionsVisible);
         Assert.True(settingsWorkspace.SettingsVisible);
         Assert.True(stoppedMenu.StartEnabled);
         Assert.False(stoppedMenu.StopEnabled);
@@ -62,44 +62,6 @@ public sealed class MainWindowEndToEndRegressionTests
         Assert.True(stoppedDestructiveState.ClearAllEnabled);
         Assert.True(stoppedDestructiveState.DeleteSelectedRequiresConfirmation);
         Assert.True(stoppedDestructiveState.ClearAllRequiresConfirmation);
-    }
-
-    [Fact]
-    public void LayersAndSettings_EndToEnd_BlockInUseLayerTypeDeleteAndSignalPendingRestart()
-    {
-        var usage = MainWindow.BuildLayerTypeUsageProjection(
-            "NO-VISION",
-            new[]
-            {
-                new CameraZoneLayer(
-                    "layer-bridge",
-                    "zone-bridge",
-                    "NO-VISION",
-                    "Bridge No-Vision",
-                    Array.Empty<GridCell>())
-            },
-            new[] { new CameraZoneDefinition("zone-bridge", "Bridge Camera Zone") },
-            new[] { new CameraZoneBinding("source-bridge", "zone-bridge") },
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["source-bridge"] = "Bridge Camera"
-            });
-        var deleteState = MainWindow.BuildLayerTypeDeleteState("NO-VISION", usage);
-        var saveImpact = MainWindow.BuildSettingsSaveImpact(
-            new AppSettings(GridColumns: 32, GridRows: 18),
-            new AppSettings(GridColumns: 40, GridRows: 18),
-            isVisionPipelineRunning: true);
-        var bottomStatus = MainWindow.BuildBottomStatusSnapshot(
-            isVisionPipelineRunning: true,
-            hasPendingVisionPipelineRestart: saveImpact.HasPendingVisionPipelineRestart);
-
-        Assert.False(deleteState.CanDelete);
-        Assert.Contains("Bridge Camera", deleteState.Message, StringComparison.Ordinal);
-        Assert.Contains("Bridge No-Vision", deleteState.Message, StringComparison.Ordinal);
-        Assert.True(saveImpact.RequiresVisionPipelineRestart);
-        Assert.True(saveImpact.HasPendingVisionPipelineRestart);
-        Assert.Equal("Settings: saved, pending Vision Pipeline restart", saveImpact.SettingsStatusText);
-        Assert.Equal("Pending restart: required", bottomStatus.PendingRestart);
     }
 
     [Fact]

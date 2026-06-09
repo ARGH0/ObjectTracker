@@ -1,4 +1,5 @@
 using System;
+using ObjectTracker.UI.Desktop.Region.Model;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -46,37 +47,26 @@ public partial class GridEditorDialog : Window
 
         InitializeComponent();
         TitleTextBlock.Text = layerName;
-        SaveButton.IsEnabled = false;
+        SaveButton.IsEnabled = vm.SelectedCellCount > 0;
 
         SaveButton.Click += OnSaveClick;
         CancelButton.Click += OnCancelClick;
     }
 
-    protected override async void OnOpened(EventArgs e)
+    protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
-        await LoadFrameAsync();
-    }
-
-    private async Task LoadFrameAsync()
-    {
-        byte[]? jpegBytes = await _frameLoader();
-        if (jpegBytes is not null && jpegBytes.Length > 0)
+        Dispatcher.UIThread.Post(async () =>
         {
-            RenderFrame(jpegBytes);
-        }
-        BuildGridFromContainer();
-    }
-
-    private void RenderFrame(byte[] jpegBytes)
-    {
-        var bitmap = new Bitmap(new MemoryStream(jpegBytes));
-        Dispatcher.UIThread.Post(() =>
-        {
-            CameraFrameImage.Source = bitmap;
-            CameraFrameImage.Stretch = Stretch.Uniform;
+            byte[]? jpegBytes = await _frameLoader();
+            if (jpegBytes is not null && jpegBytes.Length > 0)
+            {
+                var bitmap = new Bitmap(new MemoryStream(jpegBytes));
+                CameraFrameImage.Source = bitmap;
+                CameraFrameImage.Stretch = Stretch.Uniform;
+            }
             BuildGridFromContainer();
-        }, DispatcherPriority.Background);
+        }, Avalonia.Threading.DispatcherPriority.ContextIdle);
     }
 
     private void BuildGridFromContainer()
@@ -86,7 +76,10 @@ public partial class GridEditorDialog : Window
         var canvasHeight = container.Bounds.Height;
 
         if (canvasWidth <= 0 || canvasHeight <= 0)
+        {
+            Dispatcher.UIThread.Post(() => BuildGridFromContainer(), Avalonia.Threading.DispatcherPriority.ContextIdle);
             return;
+        }
 
         var imageWidth = CameraFrameImage.Source is not null ? (int)CameraFrameImage.Source.Size.Width : 640;
         var imageHeight = CameraFrameImage.Source is not null ? (int)CameraFrameImage.Source.Size.Height : 480;
@@ -106,6 +99,7 @@ public partial class GridEditorDialog : Window
         GridCanvas.IsVisible = true;
 
         BuildGridOverlay();
+        UpdateCellVisuals();
     }
 
     private void BuildGridOverlay()
@@ -121,7 +115,7 @@ public partial class GridEditorDialog : Window
                 {
                     Width = _cellWidth,
                     Height = _cellHeight,
-                    Fill = null,
+                    Fill = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255)),
                     Stroke = new SolidColorBrush(Color.FromArgb(80, 200, 200, 200)),
                     StrokeThickness = 0.5,
                     IsHitTestVisible = true,
@@ -169,7 +163,7 @@ public partial class GridEditorDialog : Window
             }
             else
             {
-                rect.Fill = null;
+                rect.Fill = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255));
             }
         }
 

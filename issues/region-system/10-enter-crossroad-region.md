@@ -18,15 +18,15 @@ The transition event is emitted only once per entry (not continuously while trai
 
 ## Acceptance criteria
 
-- [ ] Operator can create ENTER_CROSSROAD_REGION via Grid Editor Dialog
-- [ ] Region persists and loads correctly in Registry
-- [ ] Train moving into ENTER_CROSSROAD_REGION cell emits `TrainEnteredCrossroad` event exactly once
-- [ ] Train remaining in region does NOT re-trigger entry event
-- [ ] Train leaving region and re-entering triggers entry event again
-- [ ] Event payload includes train ID, zone ID, timestamp, previous cell, new cell
-- [ ] ENTER_CROSSROAD_REGION has priority 20 — loses to EXCLUDE_REGION and HIGH_PROBABILITY_RAIL_REGION
-- [ ] Per-train state correctly tracks previous cell position across frames
-- [ ] Unit tests verify transition detection with mocked train position sequences
+- [x] Operator can create ENTER_CROSSROAD_REGION via Grid Editor Dialog (existing from #4)
+- [x] Region persists and loads correctly in Registry (existing from #2, #3)
+- [x] Train moving into ENTER_CROSSROAD_REGION cell emits `TrainEnteredCrossroad` event exactly once
+- [x] Train remaining in region does NOT re-trigger entry event
+- [x] Train leaving region and re-entering triggers entry event again
+- [x] Event payload includes train ID, zone ID, timestamp, previous cell, new cell
+- [x] ENTER_CROSSROAD_REGION has priority 20 — loses to EXCLUDE_REGION and HIGH_PROBABILITY_RAIL_REGION
+- [x] Per-train state correctly tracks previous cell position across frames
+- [x] Unit tests verify transition detection with mocked train position sequences
 - [ ] Integration test: full flow from dialog selection to transition event emission
 
 ## Blocked by

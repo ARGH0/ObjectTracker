@@ -35,6 +35,23 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
             confidence = detection.Confidence + resolved.First().Item1.ConfidenceBoost;
         }
 
+        var transitionEvents = new List<string>();
+
+        GridCell? previousCell = null;
+        bool wasInEnterCrossroadBefore = false;
+        if (_previousCells.TryGetValue(detection.LocalTrainId, out var prev))
+        {
+            previousCell = prev;
+            var prevMatchingRegions = regions.Where(r => r.Cells.Any(c => c.Column == previousCell.Value.Column && c.Row == previousCell.Value.Row)).ToList();
+            wasInEnterCrossroadBefore = prevMatchingRegions.Any(r => r.Type == RegionType.EnterCrossroadRegion);
+        }
+
+        bool isCurrentlyInEnterCrossroad = matchingRegions.Any(r => r.Type == RegionType.EnterCrossroadRegion);
+        if (isCurrentlyInEnterCrossroad && previousCell.HasValue && !wasInEnterCrossroadBefore)
+        {
+            transitionEvents.Add($"TrainEnteredCrossroad: trainId={detection.LocalTrainId}, zoneId={zoneId}, timestamp={DateTime.UtcNow.Ticks}, previousCell=({previousCell.Value.Column},{previousCell.Value.Row}), newCell=({cell.Column},{cell.Row})");
+        }
+
         _previousCells[detection.LocalTrainId] = cell;
 
         return new EnrichedTrainState(
@@ -46,6 +63,6 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
             detection.MotionState,
             activeType == RegionType.ExcludeRegion,
             activeType,
-            new List<string>());
+            transitionEvents);
     }
 }

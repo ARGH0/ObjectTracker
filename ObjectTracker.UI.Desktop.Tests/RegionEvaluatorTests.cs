@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using ObjectTracker.UI.Desktop.Region.Contracts;
 using ObjectTracker.UI.Desktop.Region.Implementation;
 using CameraZoneId = ObjectTracker.UI.Desktop.Region.Model.CameraZoneId;
@@ -348,4 +349,302 @@ public sealed class RegionEvaluatorTests
         Assert.Equal(0.9f, result.Confidence);
         Assert.Equal("moving", result.MotionState);
     }
+
+    [Fact]
+    public void Evaluate_MovingIntoEnterCrossroadRegion_EmitsTrainEnteredCrossroadEvent()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var trainId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+
+        var detectionOutside = new TrainDetection(
+            trainId,
+            "Red",
+            100f,
+            100f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var detectionInside = new TrainDetection(
+            trainId,
+            "Red",
+            50f,
+            50f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
+
+        evaluator.Evaluate(detectionOutside, "zone-1", new[] { enterRegion });
+        var result = evaluator.Evaluate(detectionInside, "zone-1", new[] { enterRegion });
+
+        Assert.Contains(result.TransitionEvents, e => e.Contains("TrainEnteredCrossroad", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Evaluate_RemainingInEnterCrossroadRegion_DoesNotReTriggerEntryEvent()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var trainId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+
+        var detectionInside1 = new TrainDetection(
+            trainId,
+            "Red",
+            50f,
+            50f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var detectionInside2 = new TrainDetection(
+            trainId,
+            "Red",
+            60f,
+            60f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5), (6, 6)]);
+
+        evaluator.Evaluate(detectionInside1, "zone-1", new[] { enterRegion });
+        var result = evaluator.Evaluate(detectionInside2, "zone-1", new[] { enterRegion });
+
+        Assert.DoesNotContain(result.TransitionEvents, e => e.Contains("TrainEnteredCrossroad", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Evaluate_LeavingAndReEnteringEnterCrossroadRegion_EmitsEntryEventAgain()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var trainId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+
+        var detectionInside1 = new TrainDetection(
+            trainId,
+            "Red",
+            50f,
+            50f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var detectionOutside = new TrainDetection(
+            trainId,
+            "Red",
+            100f,
+            100f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var detectionInside2 = new TrainDetection(
+            trainId,
+            "Red",
+            50f,
+            50f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
+
+        evaluator.Evaluate(detectionInside1, "zone-1", new[] { enterRegion });
+        evaluator.Evaluate(detectionOutside, "zone-1", new[] { enterRegion });
+        var result = evaluator.Evaluate(detectionInside2, "zone-1", new[] { enterRegion });
+
+        Assert.Contains(result.TransitionEvents, e => e.Contains("TrainEnteredCrossroad", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Evaluate_EnterCrossroadRegion_TransitionEventPayloadContainsRequiredFields()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var trainId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+
+        var detectionOutside = new TrainDetection(
+            trainId,
+            "Red",
+            100f,
+            100f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var detectionInside = new TrainDetection(
+            trainId,
+            "Red",
+            50f,
+            50f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
+
+        evaluator.Evaluate(detectionOutside, "zone-main", new[] { enterRegion });
+        var result = evaluator.Evaluate(detectionInside, "zone-main", new[] { enterRegion });
+
+        var allEvents = result.TransitionEvents.ToList();
+        Assert.NotEmpty(allEvents);
+        var entryEvent = allEvents.FirstOrDefault(e => e.Contains("TrainEnteredCrossroad", StringComparison.Ordinal));
+        Assert.NotNull(entryEvent);
+        Assert.Contains("TrainEnteredCrossroad", entryEvent, StringComparison.Ordinal);
+        Assert.Contains($"trainId={trainId}", entryEvent, StringComparison.Ordinal);
+        Assert.Contains("zone-main", entryEvent, StringComparison.Ordinal);
+        Assert.Contains("previousCell=(10,10)", entryEvent, StringComparison.Ordinal);
+        Assert.Contains("newCell=(5,5)", entryEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Evaluate_EnterCrossroadWithHigherPriorityRegions_ExcludeWins()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var trainId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+
+        var detectionOutside = new TrainDetection(
+            trainId,
+            "Red",
+            100f,
+            100f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var detectionInside = new TrainDetection(
+            trainId,
+            "Red",
+            50f,
+            50f,
+            50f,
+            30f,
+            64,
+            48,
+            0.9f,
+            "moving",
+            640,
+            480);
+
+        var excludeRegion = CreateRegion(RegionType.ExcludeRegion, cells: [(5, 5)]);
+        var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
+
+        evaluator.Evaluate(detectionOutside, "zone-1", new[] { enterRegion });
+        var result = evaluator.Evaluate(detectionInside, "zone-1", new[] { excludeRegion, enterRegion });
+
+        Assert.True(result.IsExcluded);
+        Assert.Equal(RegionType.ExcludeRegion, result.ActiveRegionType);
+    }
+
+    [Fact]
+    public void Evaluate_EnterCrossroadWithHighProbabilityRegion_HighProbabilityWins()
+    {
+        var mapper = new CoordinateMapper();
+        var resolver = new RegionPriorityResolver();
+        var evaluator = new RegionEvaluator(mapper, resolver);
+
+        var trainId = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
+
+        var detectionOutside = new TrainDetection(
+            trainId,
+            "Red",
+            100f,
+            100f,
+            50f,
+            30f,
+            64,
+            48,
+            0.5f,
+            "moving",
+            640,
+            480);
+
+        var detectionInside = new TrainDetection(
+            trainId,
+            "Red",
+            50f,
+            50f,
+            50f,
+            30f,
+            64,
+            48,
+            0.5f,
+            "moving",
+            640,
+            480);
+
+        var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, 0.2f, cells: [(5, 5)]);
+        var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
+
+        evaluator.Evaluate(detectionOutside, "zone-1", new[] { enterRegion });
+        var result = evaluator.Evaluate(detectionInside, "zone-1", new[] { railRegion, enterRegion });
+
+        Assert.Equal(RegionType.HighProbabilityRailRegion, result.ActiveRegionType);
+        Assert.Equal(0.7f, result.Confidence);
+    }
+
 }

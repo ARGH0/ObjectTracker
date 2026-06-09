@@ -76,7 +76,7 @@ public sealed class MainWindowEndToEndRegressionTests
                     "zone-bridge",
                     "NO-VISION",
                     "Bridge No-Vision",
-                    new[] { new CameraZoneRegion("region-1", "Under Bridge", null, Array.Empty<GridCell>()) })
+                    Array.Empty<GridCell>())
             },
             new[] { new CameraZoneDefinition("zone-bridge", "Bridge Camera Zone") },
             new[] { new CameraZoneBinding("source-bridge", "zone-bridge") },

@@ -18,14 +18,14 @@ This slice validates the entire system works: UI → persistence → registry �
 
 ## Acceptance criteria
 
-- [ ] Operator can create EXCLUDE_REGION via Grid Editor Dialog with selected cells
-- [ ] Region persists to `regions.json` and loads correctly on restart
-- [ ] Region appears in Registry with correct type and zone association
-- [ ] Train detected within EXCLUDE_REGION cells is filtered from Vision Pipeline output
-- [ ] Train detected outside EXCLUDE_REGION cells passes through normally
-- [ ] EXCLUDE_REGION has priority 0 (highest) — blocks all other region behaviors on same cell
-- [ ] Multiple EXCLUDE_REGIONs on same zone: union of all excluded cells filters trains
-- [ ] Unit tests verify filtering logic with mocked regions and train positions
+- [x] Operator can create EXCLUDE_REGION via Grid Editor Dialog with selected cells
+- [x] Region persists to `regions.json` and loads correctly on restart
+- [x] Region appears in Registry with correct type and zone association
+- [x] Train detected within EXCLUDE_REGION cells is filtered from Vision Pipeline output
+- [x] Train detected outside EXCLUDE_REGION cells passes through normally
+- [x] EXCLUDE_REGION has priority 0 (highest) — blocks all other region behaviors on same cell
+- [x] Multiple EXCLUDE_REGIONs on same zone: union of all excluded cells filters trains
+- [x] Unit tests verify filtering logic with mocked regions and train positions
 - [ ] Integration test: full flow from dialog selection to filtered output
 - [ ] Session audit log records EXCLUDE_REGION create/edit/delete actions
 

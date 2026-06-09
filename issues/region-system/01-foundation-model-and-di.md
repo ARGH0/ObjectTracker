@@ -15,12 +15,12 @@ All types use C# records/structs with no setters. Interfaces are in `Region.Cont
 
 ## Acceptance criteria
 
-- [ ] All model types compile and are immutable (no public setters on domain types)
-- [ ] All 8 service interfaces defined with clear method signatures
-- [ ] `AddRegionServices()` registers all 10 services with correct lifetimes
-- [ ] Startup integration test resolves every service from the container without errors
-- [ ] No concrete type is referenced outside its own assembly — all consumers depend only on interfaces
-- [ ] Unit tests verify DI wiring correctness (ServiceCollection → resolve → assert not null)
+- [x] All model types compile and are immutable (no public setters on domain types)
+- [x] All 8 service interfaces defined with clear method signatures
+- [x] `AddRegionServices()` registers all 10 services with correct lifetimes
+- [x] Startup integration test resolves every service from the container without errors
+- [x] No concrete type is referenced outside its own assembly — all consumers depend only on interfaces
+- [x] Unit tests verify DI wiring correctness (ServiceCollection → resolve → assert not null)
 
 ## Blocked by
 

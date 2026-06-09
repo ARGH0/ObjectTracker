@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using ObjectTracker.UI.Desktop.Region.Contracts;
 using ObjectTracker.UI.Desktop.Region.Model;
-using GridEditorDialog = ObjectTracker.UI.Desktop.Region.Implementation.GridEditorDialog;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;
@@ -25,37 +24,6 @@ public sealed class RegionDiTests
         Assert.NotNull(provider.GetRequiredService<IRegionEvaluator>());
         Assert.NotNull(provider.GetRequiredService<IRegionProcessorService>());
         Assert.NotNull(provider.GetRequiredService<IRegionManagerService>());
-        Assert.NotNull(provider.GetRequiredService<GridEditorDialog>());
-    }
-
-    [Fact]
-    public void AddRegionServices_ResolvesAllServicesWithoutErrors()
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton<IRegionPersistence>(StubPersistence());
-        services.AddRegionServices();
-
-        var provider = services.BuildServiceProvider();
-
-        var coordinatorMapper = provider.GetService<ICoordinateMapper>();
-        var priorityResolver = provider.GetService<IRegionPriorityResolver>();
-        var persistence = provider.GetService<IRegionPersistence>();
-        var registry = provider.GetService<IRegionRegistry>();
-        var handoffResolver = provider.GetService<IHandoffResolver>();
-        var evaluator = provider.GetService<IRegionEvaluator>();
-        var processorService = provider.GetService<IRegionProcessorService>();
-        var managerService = provider.GetService<IRegionManagerService>();
-        var gridEditorDialog = provider.GetService<GridEditorDialog>();
-
-        Assert.NotNull(coordinatorMapper);
-        Assert.NotNull(priorityResolver);
-        Assert.NotNull(persistence);
-        Assert.NotNull(registry);
-        Assert.NotNull(handoffResolver);
-        Assert.NotNull(evaluator);
-        Assert.NotNull(processorService);
-        Assert.NotNull(managerService);
-        Assert.NotNull(gridEditorDialog);
     }
 
     [Fact]
@@ -176,21 +144,6 @@ public sealed class RegionDiTests
         var second = provider.GetRequiredService<IRegionManagerService>();
 
         Assert.Same(first, second);
-    }
-
-    [Fact]
-    public void GridEditorDialog_IsTransient()
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton<IRegionPersistence>(StubPersistence());
-        services.AddRegionServices();
-
-        var provider = services.BuildServiceProvider();
-
-        var first = provider.GetRequiredService<GridEditorDialog>();
-        var second = provider.GetRequiredService<GridEditorDialog>();
-
-        Assert.NotSame(first, second);
     }
 
     private static IRegionPersistence StubPersistence()

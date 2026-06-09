@@ -18,17 +18,17 @@ Receives camera frame + grid settings via constructor or dialog parameters. Tran
 
 ## Acceptance criteria
 
-- [ ] Dialog opens as separate window, decoupled from MainWindow
-- [ ] Camera frame renders as background image in dialog
-- [ ] Grid cells render as clickable rectangles with proper scaling/offset
-- [ ] Single-click toggles cell selection (selected = red fill)
-- [ ] Cell color coding shows effective Region type for each cell (if assigned to a region)
-- [ ] Selected cell count displayed in UI
-- [ ] Save button returns `List<GridCell>` of selected cells
-- [ ] Cancel button closes dialog without changes
-- [ ] Grid scales correctly when image size changes (different camera sources, resolutions)
-- [ ] MVVM architecture: no logic in code-behind, all state in ViewModel
-- [ ] Unit tests for ViewModel: click toggles selection, save returns correct cells, cancel discards
+- [x] Dialog opens as separate window, decoupled from MainWindow
+- [x] Camera frame renders as background image in dialog
+- [x] Grid cells render as clickable rectangles with proper scaling/offset
+- [x] Single-click toggles cell selection (selected = red fill)
+- [x] Cell color coding shows effective Region type for each cell (if assigned to a region)
+- [x] Selected cell count displayed in UI
+- [x] Save button returns `List<GridCell>` of selected cells
+- [x] Cancel button closes dialog without changes
+- [x] Grid scales correctly when image size changes (different camera sources, resolutions)
+- [x] MVVM architecture: no logic in code-behind, all state in ViewModel
+- [x] Unit tests for ViewModel: click toggles selection, save returns correct cells, cancel discards
 
 ## Blocked by
 

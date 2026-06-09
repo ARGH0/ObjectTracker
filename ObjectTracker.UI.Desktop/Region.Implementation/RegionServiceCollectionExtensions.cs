@@ -26,7 +26,6 @@ public static class RegionServiceCollectionExtensions
         services.AddSingleton<IRegionEvaluator, RegionEvaluator>();
         services.AddSingleton<IRegionProcessorService, RegionProcessorService>();
         services.AddSingleton<IRegionManagerService, RegionManagerService>();
-        services.AddTransient<GridEditorDialog>();
         return services;
     }
 }

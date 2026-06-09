@@ -1,0 +1,69 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:ObjectTracker.UI.Desktop.Region.Implementation"
+        x:Class="ObjectTracker.UI.Desktop.Region.Implementation.GridEditorDialog"
+        x:DataType="local:GridEditorDialogViewModel"
+        Title="Edit Region"
+        Width="800"
+        Height="600"
+        Background="{StaticResource AppBackgroundBrush}"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="12">
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Spacing="4">
+            <TextBlock x:Name="TitleTextBlock"
+                        Text="Edit Region"
+                        FontSize="18"
+                        FontWeight="Bold"
+                        Foreground="{StaticResource TextBrush}" />
+            <TextBlock x:Name="CellCountTextBlock"
+                       Classes="muted"
+                       Text="0 cells selected" />
+        </StackPanel>
+
+        <!-- Camera Frame + Grid Overlay -->
+        <Border Grid.Row="1"
+                Background="#1A1A1A"
+                BorderBrush="#3C4F5E"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="0">
+            <Grid x:Name="CanvasArea" ClipToBounds="True">
+                <Image x:Name="CameraFrameImage"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+                <Canvas x:Name="GridCanvas"
+                        Background="Transparent" />
+            </Grid>
+        </Border>
+
+        <!-- Footer -->
+        <Grid Grid.Row="2"
+              ColumnDefinitions="*,Auto,Auto"
+              ColumnSpacing="12"
+              Margin="0,12,0,0">
+            <TextBlock Grid.Column="0"
+                       Classes="muted"
+                       VerticalAlignment="Center" />
+            <Button x:Name="CancelButton"
+                    Grid.Column="1"
+                    Classes="ghost"
+                    Content="Cancel"
+                    MinWidth="80"
+                    HorizontalAlignment="Right" />
+            <Button x:Name="SaveButton"
+                    Grid.Column="2"
+                    Classes="primary"
+                    Content="Save"
+                    MinWidth="80"
+                    HorizontalAlignment="Right"
+                    IsEnabled="False" />
+        </Grid>
+
+    </Grid>
+</Window>

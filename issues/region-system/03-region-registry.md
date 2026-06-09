@@ -15,13 +15,13 @@ Regions are stored in a single flat collection but logically grouped by `CameraZ
 
 ## Acceptance criteria
 
-- [ ] `Create(region)` adds region and returns it with assigned UUID
-- [ ] `Update(region)` replaces existing region, preserves ID
-- [ ] `Delete(id)` removes region, returns true if found
-- [ ] `GetByZone(zoneId)` returns only regions for that zone (including CAMERA_OVERLAP_REGION entries that reference the zone)
-- [ ] Immutable snapshot on mutation — concurrent readers never see partially-updated state
-- [ ] UI notification on create/update/delete (observer pattern or event args)
-- [ ] Unit tests verify CRUD correctness, thread-safety under concurrent read/write, and zone-scoped query accuracy
+- [x] `Create(region)` adds region and returns it with assigned UUID
+- [x] `Update(region)` replaces existing region, preserves ID
+- [x] `Delete(id)` removes region, returns true if found
+- [x] `GetByZone(zoneId)` returns only regions for that zone (including CAMERA_OVERLAP_REGION entries that reference the zone)
+- [x] Immutable snapshot on mutation — concurrent readers never see partially-updated state
+- [x] UI notification on create/update/delete (observer pattern or event args)
+- [x] Unit tests verify CRUD correctness, thread-safety under concurrent read/write, and zone-scoped query accuracy
 
 ## Blocked by
 

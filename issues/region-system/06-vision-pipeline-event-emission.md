@@ -20,14 +20,14 @@ Remove all existing layer-related code from the engine while adding this functio
 
 ## Acceptance criteria
 
-- [ ] `TrainDetected` event fires for each detected train per frame
-- [ ] Event payload includes all required fields (zoneId, localId, position, boundingBox, color, confidence, timestamp)
-- [ ] Position is in process-frame coordinates (not original frame coordinates)
-- [ ] Event raised after contour detection and color classification, before track update
-- [ ] All layer-related code removed from BackgroundEstimationEngine
-- [ ] Unit tests verify event fires with correct payload on detected trains
-- [ ] Unit tests verify event does NOT fire on frames with no detections
-- [ ] Integration test: subscribe to event, run engine on test video, assert events received
+- [x] `TrainDetected` event fires for each detected train per frame
+- [x] Event payload includes all required fields (zoneId, localId, position, boundingBox, color, confidence, timestamp)
+- [x] Position is in process-frame coordinates (not original frame coordinates)
+- [x] Event raised after contour detection and color classification, before track update
+- [x] All layer-related code removed from BackgroundEstimationEngine
+- [x] Unit tests verify event fires with correct payload on detected trains
+- [x] Unit tests verify event does NOT fire on frames with no detections
+- [x] Integration test: subscribe to event, run engine on test video, assert events received (skipped in parallel runs due to OpenCvSharp native library contention; passes in isolation)
 
 ## Blocked by
 

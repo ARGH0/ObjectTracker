@@ -20,6 +20,20 @@ internal sealed class BackgroundEstimationEngine(
     private readonly RailRoiMaskBuilder _railRoiMaskBuilder = railRoiMaskBuilder ?? new();
     private readonly MotionMaskRefiner _motionMaskRefiner = motionMaskRefiner ?? new();
 
+    public Action<TrainDetected>? OnTrainDetected { get; set; }
+
+    internal readonly record struct TrainDetected(
+        string CameraZoneId,
+        int LocalTrainId,
+        float PositionX,
+        float PositionY,
+        float BoundingBoxWidth,
+        float BoundingBoxHeight,
+        string TrainColor,
+        float Confidence,
+        long Timestamp,
+        int FrameNumber);
+
     public async Task<VideoProcessResult> ProcessVideoAsync(
         string videoPath,
         int sampleCount,
@@ -142,7 +156,7 @@ internal sealed class BackgroundEstimationEngine(
 
     private async Task<VideoProcessResult> ProcessCaptureFramesAsync(
         VideoCapture capture,
-        string sourceLabel,
+        string cameraZoneId,
         double fps,
         Mat medianBackground,
         Mat railRoiMask,
@@ -228,8 +242,30 @@ internal sealed class BackgroundEstimationEngine(
             colorResized.CopyTo(colorDetections);
             RenderColorDetections(colorDetections, colorResized, refinedMask, hsv, movingRects, activeColorCalibrations, activeMinColorPixels);
 
-            colorResized.CopyTo(motionView);
             var timestampSec = capture.PosMsec / 1000.0;
+            var localTrainId = 0;
+            foreach (var rect in movingRects)
+            {
+                localTrainId++;
+                using var colorRoi = new Mat(colorResized, rect);
+                using var motionRoi = new Mat(refinedMask, rect);
+                Cv2.CvtColor(colorRoi, hsv, ColorConversionCodes.BGR2HSV);
+                var (colorLabel, _) = ClassifyDominantColor(hsv, motionRoi, activeColorCalibrations, activeMinColorPixels);
+
+                OnTrainDetected?.Invoke(new TrainDetected(
+                    cameraZoneId,
+                    localTrainId,
+                    rect.X + (rect.Width / 2f),
+                    rect.Y + (rect.Height / 2f),
+                    rect.Width,
+                    rect.Height,
+                    colorLabel,
+                    1.0f,
+                    (long)(timestampSec * 1000),
+                    frameIndex));
+            }
+
+            colorResized.CopyTo(motionView);
             RenderMotionOverlay(motionView, movingRects, timestampSec, ref previousTracks, ref nextTrackId);
 
             var preview = BuildPreviewFrameSet(refinedMask, movingColor, colorDetections, motionView);
@@ -242,11 +278,11 @@ internal sealed class BackgroundEstimationEngine(
                 if (pacePlayback)
                 {
                     var positionMs = capture.PosMsec;
-                    await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps {fpsText} | t={positionMs / 1000:0.0}s");
+                    await onStatus($"processing {cameraZoneId} | frame {frameIndex} | source fps {fpsText} | t={positionMs / 1000:0.0}s");
                 }
                 else
                 {
-                    await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps {fpsText}");
+                    await onStatus($"processing {cameraZoneId} | frame {frameIndex} | source fps {fpsText}");
                 }
             }
 
@@ -341,7 +377,7 @@ internal sealed class BackgroundEstimationEngine(
     private async Task<VideoProcessResult> ProcessUsbCameraSourceFramesAsync(
         UsbCameraLease lease,
         long previousVersion,
-        string sourceLabel,
+        string cameraZoneId,
         Mat medianBackground,
         Mat railRoiMask,
         int threshold,
@@ -425,8 +461,31 @@ internal sealed class BackgroundEstimationEngine(
             colorResized.CopyTo(colorDetections);
             RenderColorDetections(colorDetections, colorResized, refinedMask, hsv, movingRects, activeColorCalibrations, activeMinColorPixels);
 
+            var timestampSec = snapshot.Value.TimestampUtcMs / 1000.0;
+            var localTrainId = 0;
+            foreach (var rect in movingRects)
+            {
+                localTrainId++;
+                using var colorRoi = new Mat(colorResized, rect);
+                using var motionRoi = new Mat(refinedMask, rect);
+                Cv2.CvtColor(colorRoi, hsv, ColorConversionCodes.BGR2HSV);
+                var (colorLabel, _) = ClassifyDominantColor(hsv, motionRoi, activeColorCalibrations, activeMinColorPixels);
+
+                OnTrainDetected?.Invoke(new TrainDetected(
+                    cameraZoneId,
+                    localTrainId,
+                    rect.X + (rect.Width / 2f),
+                    rect.Y + (rect.Height / 2f),
+                    rect.Width,
+                    rect.Height,
+                    colorLabel,
+                    1.0f,
+                    snapshot.Value.TimestampUtcMs,
+                    frameIndex));
+            }
+
             colorResized.CopyTo(motionView);
-            RenderMotionOverlay(motionView, movingRects, snapshot.Value.TimestampUtcMs / 1000.0, ref previousTracks, ref nextTrackId);
+            RenderMotionOverlay(motionView, movingRects, timestampSec, ref previousTracks, ref nextTrackId);
 
             var preview = BuildPreviewFrameSet(refinedMask, movingColor, colorDetections, motionView);
             await onFrame(preview);
@@ -434,7 +493,7 @@ internal sealed class BackgroundEstimationEngine(
             frameIndex++;
             if (frameIndex % 20 == 0)
             {
-                await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps n/a");
+                await onStatus($"processing {cameraZoneId} | frame {frameIndex} | source fps n/a");
             }
         }
 

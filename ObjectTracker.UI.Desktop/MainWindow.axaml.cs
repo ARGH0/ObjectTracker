@@ -338,6 +338,30 @@ public partial class MainWindow : AppWindow
             PendingRestart: hasPendingVisionPipelineRestart ? "Pending restart: required" : "Pending restart: none");
     }
 
+    public static List<string> BuildRegionListText(
+        ObjectTracker.UI.Desktop.Region.Model.CameraZoneId? zoneId,
+        string fallbackMessage,
+        IEnumerable<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition> regions)
+    {
+        if (zoneId == null)
+            return new List<string> { fallbackMessage };
+
+        var regionList = regions as ObjectTracker.UI.Desktop.Region.Model.RegionDefinition[] ?? regions.ToArray();
+        if (regionList.Length == 0)
+            return new List<string> { fallbackMessage };
+
+        return regionList
+            .Select(r => $"{r.Name}")
+            .ToList();
+    }
+
+    public static List<string> BuildRegionListText(
+        ObjectTracker.UI.Desktop.Region.Model.CameraZoneId? zoneId,
+        string fallbackMessage)
+    {
+        return BuildRegionListText(zoneId, fallbackMessage, Array.Empty<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition>());
+    }
+
     private const int MaxLogEntries = 300;
     private const int PreviewIntervalMs = 33;
     private const int MaxUsbCameraProbeIndex = 5;
@@ -672,6 +696,15 @@ public partial class MainWindow : AppWindow
                 await AddUsbCameraAsync();
                 break;
         }
+
+        if (activeWorkspace == Workspace.Regions)
+        {
+            var camera = GetSelectedCamera();
+            if (camera is not null)
+            {
+                RefreshRegionsList(camera.Value);
+            }
+        }
     }
 
     private async Task AddVideoCamerasAsync()
@@ -983,6 +1016,11 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsEnabled = camera.Value.IsIncludedInVisionPipeline;
             RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
             RefreshUsbCaptureSettingsUi(camera.Value);
+        }
+
+        if (activeWorkspace == Workspace.Regions && camera is not null)
+        {
+            RefreshRegionsList(camera.Value);
         }
 
         if (runTask is not null && index >= 0)
@@ -2239,52 +2277,9 @@ public partial class MainWindow : AppWindow
 
     private async Task<bool> ShowDestructiveConfirmationDialogAsync(string title, string message)
     {
-        var dialog = new Avalonia.Controls.Window
-        {
-            Width = 480,
-            Height = 180,
-            CanResize = false,
-            Title = title,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner
-        };
-
-        var result = false;
-        var cancelButton = new Button { Content = "Cancel", MinWidth = 90 };
-        var confirmButton = new Button { Content = "Confirm", MinWidth = 90, Classes = { "destructive" } };
-        cancelButton.Click += (_, _) => dialog.Close();
-        confirmButton.Click += (_, _) =>
-        {
-            result = true;
-            dialog.Close();
-        };
-
-        var contentGrid = new Grid
-        {
-            RowDefinitions = new RowDefinitions("Auto,12,Auto")
-        };
-        contentGrid.Children.Add(new TextBlock
-        {
-            Text = message,
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap
-        });
-        var buttonRow = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Spacing = 8,
-            Children = { cancelButton, confirmButton }
-        };
-        Grid.SetRow(buttonRow, 2);
-        contentGrid.Children.Add(buttonRow);
-
-        dialog.Content = new Border
-        {
-            Padding = new Thickness(14),
-            Child = contentGrid
-        };
-
-        await dialog.ShowDialog(this);
-        return result;
+        var dialog = new ConfirmationDialog(title, message);
+        var result = await dialog.ShowDialog<ConfirmationDialog.ConfirmationResult>(this);
+        return result.IsConfirmed;
     }
 
     private async Task<SettingsNavigationDecision> ShowSettingsNavigationGuardDialogAsync()
@@ -3060,7 +3055,7 @@ public partial class MainWindow : AppWindow
 
         var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
         var regions = regionManagerService.GetRegionsForZone(zoneId);
-        RegionsListBox.ItemsSource = regions.Select(r => $"{r.Name} ({r.Type}, {r.Cells.Count} cells)").ToList();
+        RegionsListBox.ItemsSource = BuildRegionListText(zoneId, "No regions in this zone.", regions);
     }
 
     private async void CreateRegionButtonOnClick(object? sender, RoutedEventArgs e)
@@ -3079,7 +3074,7 @@ public partial class MainWindow : AppWindow
 
         var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
 
-        await regionManagerService.OpenGridEditorAsync(zoneId, this, null);
+        await regionManagerService.OpenGridEditorAsync(zoneId, this, null, regionName, regionType);
 
         sessionAuditLogger.AppendEvent(
             SessionAuditLogger.EventRegionCreated,
@@ -3088,6 +3083,7 @@ public partial class MainWindow : AppWindow
             ("Type", regionType.ToString()));
 
         SetStatus($"Status: region '{regionName}' created.");
+        RefreshRegionsList(camera.Value);
     }
 
     private async void EditRegionButtonOnClick(object? sender, RoutedEventArgs e)
@@ -3101,13 +3097,13 @@ public partial class MainWindow : AppWindow
 
         var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
         var regions = regionManagerService.GetRegionsForZone(zoneId);
-        var regionName = selectedRegionText.Split(' ')[0];
+        var regionName = selectedRegionText;
         var region = regions.FirstOrDefault(r => r.Name == regionName);
 
         if (region.Id == Guid.Empty)
             return;
 
-        await regionManagerService.OpenGridEditorAsync(zoneId, this, region.Id);
+        await regionManagerService.OpenGridEditorAsync(zoneId, this, region.Id, region.Name, region.Type);
 
         sessionAuditLogger.AppendEvent(
             SessionAuditLogger.EventRegionUpdated,
@@ -3115,6 +3111,7 @@ public partial class MainWindow : AppWindow
             ("Zone", zone.CameraZoneId));
 
         SetStatus($"Status: region '{region.Name}' edited.");
+        RefreshRegionsList(camera.Value);
     }
 
     private async void DeleteRegionButtonOnClick(object? sender, RoutedEventArgs e)
@@ -3128,7 +3125,7 @@ public partial class MainWindow : AppWindow
 
         var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
         var regions = regionManagerService.GetRegionsForZone(zoneId);
-        var regionName = selectedRegionText.Split(' ')[0];
+        var regionName = selectedRegionText;
         var region = regions.FirstOrDefault(r => r.Name == regionName);
 
         if (region.Id == Guid.Empty)
@@ -3138,16 +3135,26 @@ public partial class MainWindow : AppWindow
         if (!confirmed)
             return;
 
-        var deleted = regionManagerService.DeleteRegion(region.Id);
-        if (deleted)
-        {
-            sessionAuditLogger.AppendEvent(
-                SessionAuditLogger.EventRegionDeleted,
-                $"Region '{region.Name}' deleted.",
-                ("Zone", zone.CameraZoneId));
+        await regionManagerService.DeleteRegionAsync(region.Id);
 
-            SetStatus($"Status: region '{region.Name}' deleted.");
-        }
+        sessionAuditLogger.AppendEvent(
+            SessionAuditLogger.EventRegionDeleted,
+            $"Region '{region.Name}' deleted.",
+            ("Zone", zone.CameraZoneId));
+
+        SetStatus($"Status: region '{region.Name}' deleted.");
+        RefreshRegionsList(camera.Value);
+
+    }
+
+    private void RefreshRegionsList(CameraProfile camera)
+    {
+        if (!cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Id, out var zone))
+            return;
+
+        var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+        var regions = regionManagerService.GetRegionsForZone(zoneId);
+        RegionsListBox.ItemsSource = BuildRegionListText(zoneId, "No regions in this zone.", regions);
     }
 
     private void RegionsListBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)

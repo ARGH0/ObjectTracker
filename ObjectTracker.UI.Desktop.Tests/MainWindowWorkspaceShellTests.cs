@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using ObjectTracker.UI.Desktop;
+using ObjectTracker.UI.Desktop.Region.Model;
 using Avalonia.Controls;
 using Xunit;
 
@@ -245,5 +248,68 @@ public sealed class MainWindowWorkspaceShellTests
         Assert.True(impact.RequiresVisionPipelineRestart);
         Assert.True(impact.HasPendingVisionPipelineRestart);
         Assert.Equal("Settings: saved, pending Vision Pipeline restart", impact.SettingsStatusText);
+    }
+
+    [Fact]
+    public void BuildRegionListText_WithNoZone_ReturnsFallbackMessage()
+    {
+        var result = MainWindow.BuildRegionListText(null, "No camera zone selected.");
+
+        Assert.Single(result);
+        Assert.Equal("No camera zone selected.", result[0]);
+    }
+
+    [Fact]
+    public void BuildRegionListText_WithEmptyRegions_ReturnsFallbackMessage()
+    {
+        var result = MainWindow.BuildRegionListText(
+            new CameraZoneId("zone-1"), "No regions", Array.Empty<RegionDefinition>());
+
+        Assert.Single(result);
+        Assert.Equal("No regions", result[0]);
+    }
+
+    [Fact]
+    public void BuildRegionListText_WithRegions_FormatsCorrectly()
+    {
+        var regions = new List<RegionDefinition>
+        {
+            new(
+                Id: Guid.NewGuid(), Name: "North Crossing Entry", Type: RegionType.EnterCrossroadRegion,
+                CameraZoneId: new CameraZoneId("zone-1"),
+                Cells: new List<GridCell> { new(5, 3), new(6, 3) },
+                CreatedAt: DateTime.UtcNow, UpdatedAt: DateTime.UtcNow, OverlappingZoneIds: null),
+            new(
+                Id: Guid.NewGuid(), Name: "Platform Exclusion", Type: RegionType.ExcludeRegion,
+                CameraZoneId: new CameraZoneId("zone-1"),
+                Cells: new List<GridCell> { new(10, 0) },
+                CreatedAt: DateTime.UtcNow, UpdatedAt: DateTime.UtcNow, OverlappingZoneIds: null),
+        };
+
+        var result = MainWindow.BuildRegionListText(
+            new CameraZoneId("zone-1"), "No regions", regions);
+
+        Assert.Equal(2, result.Count);
+        Assert.Contains(result, r => r == "North Crossing Entry");
+        Assert.Contains(result, r => r == "Platform Exclusion");
+    }
+
+    [Fact]
+    public void BuildRegionListText_WithRegions_DoesNotMutateInput()
+    {
+        var regions = new List<RegionDefinition>
+        {
+            new(
+                Id: Guid.NewGuid(), Name: "Test", Type: RegionType.ExcludeRegion,
+                CameraZoneId: new CameraZoneId("zone-1"),
+                Cells: new List<GridCell>(),
+                CreatedAt: DateTime.UtcNow, UpdatedAt: DateTime.UtcNow, OverlappingZoneIds: null),
+        };
+
+        var countBefore = regions.Count;
+        MainWindow.BuildRegionListText(
+            new CameraZoneId("zone-1"), "No regions", regions);
+
+        Assert.Equal(countBefore, regions.Count);
     }
 }

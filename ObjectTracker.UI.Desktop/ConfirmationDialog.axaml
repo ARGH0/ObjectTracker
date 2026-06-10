@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ObjectTracker.UI.Desktop.ConfirmationDialog"
+        Title="Confirmation"
+        Width="480"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource AppBackgroundBrush}">
+
+    <Grid Margin="18" RowDefinitions="Auto,12,Auto">
+        <TextBlock x:Name="MessageTextBlock"
+                   Grid.Row="0"
+                   TextWrapping="Wrap"
+                   FontSize="15"
+                   Foreground="{StaticResource TextBrush}" />
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8">
+            <Button x:Name="CancelButton"
+                    Classes="ghost"
+                    Content="Cancel"
+                    MinWidth="90" />
+            <Button x:Name="ConfirmButton"
+                    Classes="destructive"
+                    Content="Confirm"
+                    MinWidth="90" />
+        </StackPanel>
+    </Grid>
+</Window>

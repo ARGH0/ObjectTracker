@@ -26,7 +26,7 @@ public sealed class RegionManagerService : ObjectTracker.UI.Desktop.Region.Contr
 
     public IReadOnlyCollection<RegionDefinition> GetRegionsForZone(CameraZoneId cameraZoneId) => _registry.GetByZone(cameraZoneId);
 
-    public async Task OpenGridEditorAsync(CameraZoneId cameraZoneId, Window owner, Guid? regionId = null)
+    public async Task OpenGridEditorAsync(CameraZoneId cameraZoneId, Window owner, Guid? regionId = null, string name = "New Region", ObjectTracker.UI.Desktop.Region.Model.RegionType regionType = ObjectTracker.UI.Desktop.Region.Model.RegionType.ExcludeRegion)
     {
         if (_dialogFactory == null)
             return;
@@ -64,8 +64,8 @@ public sealed class RegionManagerService : ObjectTracker.UI.Desktop.Region.Contr
         {
             var newRegion = new RegionDefinition(
                 Id: Guid.Empty,
-                Name: "New Region",
-                Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.ExcludeRegion,
+                Name: name,
+                Type: regionType,
                 CameraZoneId: cameraZoneId,
                 Cells: cells,
                 CreatedAt: DateTime.UtcNow,
@@ -81,13 +81,12 @@ public sealed class RegionManagerService : ObjectTracker.UI.Desktop.Region.Contr
         }
     }
 
-    public bool DeleteRegion(Guid regionId)
+    public async Task DeleteRegionAsync(Guid regionId)
     {
         var deleted = _registry.Delete(regionId);
         if (deleted && _persistence != null)
         {
-            _persistence.SaveAsync(_registry.GetAll()).GetAwaiter().GetResult();
+            await _persistence.SaveAsync(_registry.GetAll());
         }
-        return deleted;
     }
 }

@@ -30,6 +30,9 @@ public partial class GridEditorDialog : Window
     private double _offsetX;
     private double _offsetY;
     private readonly Dictionary<(int Col, int Row), Rectangle> _cellRectangles = new();
+    private bool _isDragging = false;
+    private bool _addMode = true;
+    private GridEditorDialogViewModel vm;
 
     public GridEditorDialog(
         int gridColumns,
@@ -42,7 +45,7 @@ public partial class GridEditorDialog : Window
         _gridRows = gridRows;
         _frameLoader = frameLoader;
 
-        var vm = new GridEditorDialogViewModel(gridColumns, gridRows, currentCells, null!);
+        vm = new GridEditorDialogViewModel(gridColumns, gridRows, currentCells, null!);
         DataContext = vm;
 
         InitializeComponent();
@@ -125,21 +128,52 @@ public partial class GridEditorDialog : Window
                 Canvas.SetTop(rect, _offsetY + row * _cellHeight);
 
                 rect.Tag = (col, row);
-                rect.PointerPressed += CellRectangleOnPointerPressed;
                 GridCanvas.Children.Add(rect);
                 _cellRectangles[(col, row)] = rect;
             }
         }
     }
 
-    private void CellRectangleOnPointerPressed(object? sender, PointerPressedEventArgs e)
+    private void GridCanvasOnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is not Rectangle rect || rect.Tag is not (int col, int row))
+        _isDragging = true;
+        var pos = e.GetPosition(GridCanvas);
+        var cell = GetCellAtPosition(pos);
+        if (cell.HasValue)
+        {
+            var gridCell = new GridCell(cell.Value.Col, cell.Value.Row);
+            _addMode = !vm.SelectedCells.Contains(gridCell);
+            vm.ToggleCell(gridCell);
+            UpdateCellVisuals();
+        }
+    }
+
+    private void GridCanvasOnPointerMoved(object? sender, Avalonia.Input.PointerEventArgs e)
+    {
+        if (!_isDragging)
             return;
 
-        var vm = (GridEditorDialogViewModel)DataContext!;
-        vm.ToggleCell(new GridCell(col, row));
-        UpdateCellVisuals();
+        var pos = e.GetPosition(GridCanvas);
+        var cell = GetCellAtPosition(pos);
+        if (cell.HasValue)
+        {
+            var gridCell = new GridCell(cell.Value.Col, cell.Value.Row);
+            bool isSelected = vm.SelectedCells.Contains(gridCell);
+            if ((_addMode && !isSelected) || (!_addMode && isSelected))
+            {
+                vm.ToggleCell(gridCell);
+                UpdateCellVisuals();
+            }
+        }
+    }
+
+    private (int Col, int Row)? GetCellAtPosition(Avalonia.Point pos)
+    {
+        var col = (int)Math.Floor((pos.X - _offsetX) / _cellWidth);
+        var row = (int)Math.Floor((pos.Y - _offsetY) / _cellHeight);
+        if (col < 0 || col >= _gridColumns || row < 0 || row >= _gridRows)
+            return null;
+        return (col, row);
     }
 
     private void UpdateCellVisuals()

@@ -40,8 +40,10 @@
                        Stretch="Uniform"
                        HorizontalAlignment="Center"
                        VerticalAlignment="Center" />
-                <Canvas x:Name="GridCanvas"
-                        Background="Transparent" />
+                 <Canvas x:Name="GridCanvas"
+                        Background="Transparent"
+                        PointerPressed="GridCanvasOnPointerPressed"
+                        PointerMoved="GridCanvasOnPointerMoved" />
             </Grid>
         </Border>
 

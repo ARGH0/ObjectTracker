@@ -72,6 +72,8 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
             transitionEvents.Add($"TrainExitedCrossroad: trainId={detection.LocalTrainId}, zoneId={zoneId}, timestamp={DateTime.UtcNow.Ticks}, previousCell=({previousCellForExit.Value.Column},{previousCellForExit.Value.Row}), newCell=({cell.Column},{cell.Row})");
         }
 
+        var activeRegionName = resolved.Count != 0 ? resolved.First().Item1.Name : null;
+
         _previousCells[detection.LocalTrainId] = cell;
 
         return new EnrichedTrainState(
@@ -83,6 +85,7 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
             detection.MotionState,
             activeType == RegionType.ExcludeRegion,
             activeType,
-            transitionEvents);
+            transitionEvents,
+            activeRegionName);
     }
 }

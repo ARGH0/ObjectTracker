@@ -27,7 +27,8 @@ public readonly record struct EnrichedTrainState(
     string MotionState,
     bool IsExcluded,
     RegionType? ActiveRegionType,
-    IReadOnlyCollection<string> TransitionEvents);
+    IReadOnlyCollection<string> TransitionEvents,
+    string? ActiveRegionName);
 
 public interface IRegionEvaluator
 {

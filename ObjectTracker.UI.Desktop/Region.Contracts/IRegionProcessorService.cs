@@ -1,9 +1,8 @@
-using System.Collections.Generic;
+using ObjectTracker.UI.Desktop.Region.Contracts;
 
 namespace ObjectTracker.UI.Desktop.Region.Contracts;
 
 public interface IRegionProcessorService
 {
-    void ProcessDetection(TrainDetection detection, string zoneId);
-    IEnumerable<EnrichedTrainState> GetLastProcessedStates();
+    EnrichedTrainState? ProcessDetection(TrainDetection detection, string zoneId);
 }

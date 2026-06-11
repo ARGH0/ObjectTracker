@@ -418,6 +418,7 @@ public partial class MainWindow : AppWindow
     }
 
     private const int MaxLogEntries = 300;
+    private const int MaxPlcLogEntries = 25;
     private const int PreviewIntervalMs = 33;
 
     private readonly Lock cameraSync = new();
@@ -425,6 +426,7 @@ public partial class MainWindow : AppWindow
     private readonly List<CameraProfile> cameras = new();
     private readonly Dictionary<string, RuntimeProcessingSettings> cameraSettings = new(StringComparer.OrdinalIgnoreCase);
     private readonly ObservableCollection<string> logEntries = new();
+    private readonly ObservableCollection<string> plcLogEntries = new();
 
     private readonly BackgroundEstimationEngine engine = new();
     private readonly CameraSettingsStore cameraSettingsStore = new();
@@ -458,6 +460,7 @@ public partial class MainWindow : AppWindow
     private Workspace activeWorkspace = Workspace.Camera;
     internal Func<string, string, Task<bool>> ConfirmDestructiveActionAsync { get; set; }
     internal Func<Task<SettingsNavigationDecision>> PromptSettingsNavigationDecisionAsync { get; set; }
+    private bool _isPlcConnected;
 
     private sealed record DebugTileImageSet(Image Background, Image Moving, Image Color, Image Motion);
 
@@ -524,6 +527,20 @@ public partial class MainWindow : AppWindow
         PlcConnectButton.IsEnabled = plcClient is not null;
         PlcReadButton.IsEnabled = false;
         PlcWriteButton.IsEnabled = false;
+    }
+
+    private void AppendPlcLog(string message)
+    {
+        _ = Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            plcLogEntries.Add(message);
+            while (plcLogEntries.Count > MaxPlcLogEntries)
+            {
+                plcLogEntries.RemoveAt(0);
+            }
+
+            PlcOperationLogText.Text = string.Join(Environment.NewLine, plcLogEntries);
+        });
     }
 
     protected override async void OnClosing(WindowClosingEventArgs e)
@@ -796,6 +813,7 @@ public partial class MainWindow : AppWindow
 
             if (isAuthenticated)
             {
+                _isPlcConnected = true;
                 PlcConnectionStatusText.Text = "Connected";
                 PlcReadButton.IsEnabled = true;
                 PlcWriteButton.IsEnabled = true;
@@ -803,22 +821,26 @@ public partial class MainWindow : AppWindow
             }
             else
             {
+                _isPlcConnected = false;
                 PlcConnectionStatusText.Text = "Connection failed";
                 AppendLog("PLC: connection failed.");
             }
         }
         catch (PlcException ex)
         {
+            _isPlcConnected = false;
             PlcConnectionStatusText.Text = $"PLC error: {ex.Message}";
             AppendLog($"PLC connect error ({ex.Code}): {ex.Message}");
         }
         catch (OperationCanceledException)
         {
+            _isPlcConnected = false;
             PlcConnectionStatusText.Text = "Connection timed out";
             AppendLog("PLC connect: request timed out (10s).");
         }
         catch (Exception ex)
         {
+            _isPlcConnected = false;
             PlcConnectionStatusText.Text = $"Error: {ex.Message}";
             AppendLog($"PLC connect error: {ex.Message}");
         }
@@ -965,6 +987,7 @@ public partial class MainWindow : AppWindow
 
     private void PlcClearLogButtonOnClick(object? sender, RoutedEventArgs e)
     {
+        plcLogEntries.Clear();
         PlcOperationLogText.Text = "No operations yet.";
     }
 
@@ -1489,6 +1512,63 @@ public partial class MainWindow : AppWindow
 
     private async Task ProcessCameraAsync(CameraProfile camera, bool loopCameraVideos, BackgroundEstimationEngine engine, CancellationToken cancellationToken)
     {
+        if (!cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Id, out var zone))
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: no zone for camera {camera.DisplayName}"));
+            return;
+        }
+
+        var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+        var regionProcessor = CreateRegionProcessorForZone(zoneId);
+
+        engine.OnTrainDetected += detection =>
+        {
+            if (detection.TrainColor == "Unknown")
+            {
+                AppendPlcLog($"Detection skipped: train color unknown");
+                return;
+            }
+
+            var trainDetection = new ObjectTracker.UI.Desktop.Region.Contracts.TrainDetection(
+                LocalTrainId: new System.Guid(detection.LocalTrainId.ToString().PadLeft(32, '0')),
+                TrainColor: detection.TrainColor,
+                PixelX: detection.PositionX,
+                PixelY: detection.PositionY,
+                ProcessWidth: detection.BoundingBoxWidth,
+                ProcessHeight: detection.BoundingBoxHeight,
+                GridCols: appSettings.GridColumns,
+                GridRows: appSettings.GridRows,
+                Confidence: detection.Confidence,
+                MotionState: "moving",
+                ImageWidth: (int)detection.BoundingBoxWidth + 640,
+                ImageHeight: (int)detection.BoundingBoxHeight + 480);
+
+            var enriched = regionProcessor.ProcessDetection(trainDetection, zoneId.Value);
+            if (!enriched.HasValue || !enriched.Value.TransitionEvents.Any() || string.IsNullOrEmpty(enriched.Value.ActiveRegionName))
+            {
+                AppendPlcLog($"No transition for train {detection.TrainColor} in zone {zoneId.Value}");
+                return;
+            }
+
+            var regions = regionRegistry.GetByZone(zoneId);
+            var matchingRegion = regions.FirstOrDefault(r => r.Name == enriched.Value.ActiveRegionName);
+            if (matchingRegion.Id == Guid.Empty)
+            {
+                AppendPlcLog($"Region not found: {enriched.Value.ActiveRegionName}");
+                return;
+            }
+
+            var type = (ObjectTracker.UI.Desktop.Region.Model.RegionType)matchingRegion.Type;
+            if (type != ObjectTracker.UI.Desktop.Region.Model.RegionType.EnterCrossroadRegion &&
+                type != ObjectTracker.UI.Desktop.Region.Model.RegionType.ExitCrossroadRegion)
+            {
+                AppendPlcLog($"Not an enter/exit region: {matchingRegion.Name} (type={type})");
+                return;
+            }
+
+            WritePlcTransition(matchingRegion.Name, detection.TrainColor);
+        };
+
         for (var videoIndex = 0; !cancellationToken.IsCancellationRequested; videoIndex++)
         {
             var settings = GetSettingsForCamera(camera.Id);
@@ -2772,6 +2852,50 @@ public partial class MainWindow : AppWindow
             regionRegistry,
             persistence,
             (owner, regionId) => BuildGridEditorDialogAsync(owner, regionId));
+    }
+
+    private ObjectTracker.UI.Desktop.Region.Contracts.IRegionProcessorService CreateRegionProcessorForZone(
+        ObjectTracker.UI.Desktop.Region.Model.CameraZoneId zoneId)
+    {
+        var evaluator = new ObjectTracker.UI.Desktop.Region.Implementation.RegionEvaluator(
+            new ObjectTracker.UI.Desktop.Region.Implementation.CoordinateMapper(),
+            new ObjectTracker.UI.Desktop.Region.Implementation.RegionPriorityResolver());
+
+        var handoffResolver = new ObjectTracker.UI.Desktop.Region.Implementation.HandoffResolver();
+
+        return new ObjectTracker.UI.Desktop.Region.Implementation.RegionProcessorService(
+            evaluator,
+            handoffResolver,
+            regionRegistry);
+    }
+
+    private void WritePlcTransition(string plcAddress, string trainColor)
+    {
+        if (plcClient is null || string.IsNullOrWhiteSpace(plcAddress))
+            return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var variable = new Plc.Model.PlcVariable(plcAddress, Plc.Model.PlcVariableType.Int32);
+                var value = PlcValue.Int32(int.Parse(trainColor.GetHashCode(System.StringComparison.Ordinal).ToString(CultureInfo.InvariantCulture)));
+
+                if (!_isPlcConnected)
+                {
+                    AppendPlcLog($"PLC write skipped ({plcAddress}): not connected (train color: {trainColor})");
+                    return;
+                }
+
+                AppendPlcLog($"PLC write: {plcAddress} = {trainColor} (transition)");
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await plcClient.WriteAsync(new[] { (variable, value) }, cts.Token);
+            }
+            catch (Exception ex)
+            {
+                AppendPlcLog($"PLC write error ({plcAddress}): {ex.Message}");
+            }
+        });
     }
 
     private async Task<ObjectTracker.UI.Desktop.Region.Implementation.GridEditorDialog?> BuildGridEditorDialogAsync(Avalonia.Controls.Window owner, Guid? regionId)

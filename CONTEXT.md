@@ -82,6 +82,14 @@ _Avoid_: Per-camera layer definition
 The camera-specific region drawings and assignments that use global Layer Types within one Camera Zone.
 _Avoid_: Global region map
 
+**Enter Region**:
+A Camera Layer Region whose Layer Type marks where a Train enters a monitored route segment or Conflict Zone. Its name is the operator-defined automation identifier for that region.
+_Avoid_: PLC trigger, entry blob, anonymous entry area
+
+**Exit Region**:
+A Camera Layer Region whose Layer Type marks where a Train leaves a monitored route segment or Conflict Zone. Its name is the operator-defined automation identifier for that region.
+_Avoid_: PLC trigger, exit blob, anonymous exit area
+
 **Processing Unit**:
 The runtime boundary that processes one or more camera zones and owns Local Train IDs within that boundary.
 _Avoid_: Node, host

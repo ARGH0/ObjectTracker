@@ -204,6 +204,9 @@ internal sealed class BackgroundEstimationEngine(
 
             var movingRects = GetMovingObjectRectangles(refinedMask, activeMinMotionArea);
 
+            var frameColors = ClassifyColorsPerRect(
+                colorResized, refinedMask, hsv, movingRects, activeColorCalibrations, activeMinColorPixels);
+
             movingColor.SetTo(Scalar.Black);
             colorResized.CopyTo(movingColor, refinedMask);
             DrawMovingObjectBoxes(movingColor, movingRects);
@@ -216,6 +219,25 @@ internal sealed class BackgroundEstimationEngine(
 
             var preview = BuildPreviewFrameSet(refinedMask, movingColor, colorDetections, motionView);
             await onFrame(preview);
+
+            if (OnTrainDetected is not null && movingRects.Count > 0)
+            {
+                foreach (var (rect, colorLabel) in movingRects.Zip(frameColors))
+                {
+                    var center = new Point2f(rect.X + rect.Width / 2f, rect.Y + rect.Height / 2f);
+                    OnTrainDetected(new TrainDetected(
+                        CameraZoneId: source.SourceLabel,
+                        LocalTrainId: GetNextTrackId(previousTracks, ref nextTrackId, center),
+                        PositionX: center.X,
+                        PositionY: center.Y,
+                        BoundingBoxWidth: rect.Width,
+                        BoundingBoxHeight: rect.Height,
+                        TrainColor: colorLabel,
+                        Confidence: 1.0f,
+                        Timestamp: snapshot.Value.TimestampUtcMs,
+                        FrameNumber: frameIndex));
+                }
+            }
 
             frameIndex++;
             if (frameIndex % 20 == 0)
@@ -634,6 +656,45 @@ internal sealed class BackgroundEstimationEngine(
         var closeKernelSize = Math.Max(1, morphKernelSize);
         var openKernelSize = closeKernelSize >= 5 ? 3 : 1;
         return new MotionMaskRefiner.Options(closeKernelSize, openKernelSize);
+    }
+
+    private static List<string> ClassifyColorsPerRect(
+        Mat colorResized,
+        Mat motionMask,
+        Mat hsv,
+        IReadOnlyList<Rect> movingRects,
+        IReadOnlyList<ColorCalibrationProfile> colorCalibrations,
+        int minColorPixels)
+    {
+        var labels = new List<string>(movingRects.Count);
+
+        foreach (var rect in movingRects)
+        {
+            using var colorRoi = new Mat(colorResized, rect);
+            using var motionRoi = new Mat(motionMask, rect);
+            Cv2.CvtColor(colorRoi, hsv, ColorConversionCodes.BGR2HSV);
+
+            var (label, _) = ClassifyDominantColor(hsv, motionRoi, colorCalibrations, minColorPixels);
+            labels.Add(label);
+        }
+
+        return labels;
+    }
+
+    private static int GetNextTrackId(
+        Dictionary<int, MotionTrackState> previousTracks,
+        ref int nextTrackId,
+        Point2f center)
+    {
+        var availablePreviousIds = new HashSet<int>(previousTracks.Keys);
+        var matchedId = FindBestTrackMatch(center, previousTracks, availablePreviousIds, maxDistancePixels: 80f);
+
+        if (matchedId is null)
+        {
+            return nextTrackId++;
+        }
+
+        return matchedId.Value;
     }
 
     private static PreviewFrameSet BuildPreviewFrameSet(Mat backgroundMask, Mat movingColor, Mat colorDetections, Mat motionView)

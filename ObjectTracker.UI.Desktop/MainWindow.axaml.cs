@@ -397,7 +397,6 @@ public partial class MainWindow : AppWindow
     private int selectedCameraIndex = -1;
     private int requestedCameraIndex = -1;
     private string selectedCalibrationColor = "red";
-    private bool applyingCameraZoneUi;
     private bool applyingCameraVisibilityUi;
     private bool applyingCameraInclusionUi;
     private bool applyingCameraDebugViewUi;
@@ -1310,11 +1309,11 @@ public partial class MainWindow : AppWindow
 
             var key = new UsbCameraKey(usbCamera.CameraIndex, usbCamera.Api.ToString().ToUpperInvariant());
             var startupSettings = ToUsbCaptureSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id));
-            var result = await engine.ProcessUsbCameraSourceAsync(
-                usbCameraOwnerManager,
-                key,
-                startupSettings,
-                camera.DisplayName,
+            usbCameraOwnerManager.AddConsumer(key, startupSettings, cancellationToken);
+            await using var source = new UsbVideoSource(usbCameraOwnerManager, key);
+
+            var result = await engine.ProcessAsync(
+                source,
                 settings.SampleCount,
                 settings.Threshold,
                 options,
@@ -1360,8 +1359,9 @@ public partial class MainWindow : AppWindow
             var videoPath = camera.VideoPaths[videoIndex];
             await Dispatcher.UIThread.InvokeAsync(() => CurrentVideoText.Text = BuildCurrentSourceText(camera, Path.GetFileName(videoPath)));
 
-            var result = await engine.ProcessVideoAsync(
-                videoPath,
+            await using var source = new VideoFileSource(videoPath, camera.DisplayName);
+            var result = await engine.ProcessAsync(
+                source,
                 settings.SampleCount,
                 settings.Threshold,
                 options,
@@ -1654,19 +1654,14 @@ public partial class MainWindow : AppWindow
             {
                 var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
                 var startupSettings = UsbCaptureSettingsProjection.BuildRawTileStartupSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id));
-                await using var lease = await usbCameraOwnerManager.AcquireAsync(key, startupSettings, cancellationToken);
-                var previousVersion = 0L;
+                usbCameraOwnerManager.AddConsumer(key, startupSettings, cancellationToken);
+                await using var source = new UsbVideoSource(usbCameraOwnerManager, key);
+
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    var snapshot = await lease.WaitForNextFrameAsync(previousVersion, TimeSpan.FromMilliseconds(250), cancellationToken);
-                    if (snapshot is null)
-                    {
-                        snapshot = lease.LatestFrame;
-                    }
-
+                    var snapshot = source.ReadLatestFrame();
                     if (snapshot is not null)
                     {
-                        previousVersion = snapshot.Value.FrameVersion;
                         RenderUsbSnapshotToTile(target, snapshot.Value);
                     }
 
@@ -1681,29 +1676,17 @@ public partial class MainWindow : AppWindow
                 return;
             }
 
-            using var videoCapture = new VideoCapture(camera.PrimaryVideoPath);
-            if (!videoCapture.IsOpened())
-            {
-                return;
-            }
+            await using var videoSource = new VideoFileSource(camera.PrimaryVideoPath, camera.DisplayName);
 
-            var sourceFps = videoCapture.Get(VideoCaptureProperties.Fps);
-            var frameIntervalMs = sourceFps > 0.1
-                ? Math.Max(1, (int)Math.Round(1000d / sourceFps))
-                : PreviewIntervalMs;
-
-            using var videoFrame = new Mat();
             while (!cancellationToken.IsCancellationRequested)
             {
-                if (!videoCapture.Read(videoFrame) || videoFrame.Empty())
+                var snapshot = videoSource.ReadLatestFrame();
+                if (snapshot is not null)
                 {
-                    videoCapture.Set(VideoCaptureProperties.PosFrames, 0);
-                    await DelayIgnoringCancellationAsync(10, cancellationToken);
-                    continue;
+                    RenderUsbSnapshotToTile(target, snapshot.Value);
                 }
 
-                RenderRawFrameToTile(target, videoFrame);
-                await DelayIgnoringCancellationAsync(frameIntervalMs, cancellationToken);
+                await DelayIgnoringCancellationAsync(PreviewIntervalMs, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -1722,43 +1705,11 @@ public partial class MainWindow : AppWindow
         await Task.Delay(milliseconds);
     }
 
-    private void RenderRawFrameToTile(Image target, Mat frame)
-    {
-        var bitmap = ConvertMatToBitmap(frame);
-        Dispatcher.UIThread.Post(() => UpdatePreviewBitmap(target, bitmap), DispatcherPriority.Background);
-    }
-
     private void RenderUsbSnapshotToTile(Image target, UsbFrameSnapshot snapshot)
     {
         using var stream = new MemoryStream(snapshot.EncodedJpeg);
         var bitmap = new Bitmap(stream);
         Dispatcher.UIThread.Post(() => UpdatePreviewBitmap(target, bitmap), DispatcherPriority.Background);
-    }
-
-    private static Bitmap ConvertMatToBitmap(Mat frame)
-    {
-        using var rgb = new Mat();
-        Cv2.CvtColor(frame, rgb, ColorConversionCodes.BGR2RGB);
-
-        var pixelSize = new PixelSize(rgb.Width, rgb.Height);
-        var dpi = new Vector(96, 96);
-        var bitmap = new WriteableBitmap(pixelSize, dpi, PixelFormats.Rgb24, AlphaFormat.Opaque);
-
-        using var locked = bitmap.Lock();
-        var bytesPerRow = rgb.Width * 3;
-        var sourceStride = (int)rgb.Step();
-        var destinationStride = locked.RowBytes;
-        var rowBuffer = new byte[bytesPerRow];
-
-        for (var row = 0; row < rgb.Height; row++)
-        {
-            var sourceRow = rgb.Data + (row * sourceStride);
-            var destinationRow = locked.Address + (row * destinationStride);
-            Marshal.Copy(sourceRow, rowBuffer, 0, bytesPerRow);
-            Marshal.Copy(rowBuffer, 0, destinationRow, bytesPerRow);
-        }
-
-        return bitmap;
     }
 
     private static void UpdatePreviewBitmap(Image target, Bitmap bitmap)
@@ -2184,14 +2135,6 @@ public partial class MainWindow : AppWindow
     {
         CameraTileGrid.Rows = Math.Max(1, rows);
         CameraTileGrid.Columns = Math.Max(1, columns);
-    }
-
-    private Dictionary<string, string> BuildCameraDisplayNamesBySourceId()
-    {
-        lock (cameraSync)
-        {
-            return cameras.ToDictionary(camera => camera.Id, camera => camera.DisplayName, StringComparer.OrdinalIgnoreCase);
-        }
     }
 
     private void SetRunState(bool isRunning)

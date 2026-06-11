@@ -34,8 +34,8 @@ internal sealed class BackgroundEstimationEngine(
         long Timestamp,
         int FrameNumber);
 
-    public async Task<VideoProcessResult> ProcessVideoAsync(
-        string videoPath,
+    public async Task<VideoProcessResult> ProcessAsync(
+        IVideoSource source,
         int sampleCount,
         int threshold,
         ProcessingOptions options,
@@ -46,103 +46,29 @@ internal sealed class BackgroundEstimationEngine(
         Func<bool>? shouldStopEarly,
         CancellationToken cancellationToken)
     {
-        if (!File.Exists(videoPath))
+        var first = source.ReadLatestFrame();
+        if (first is null)
         {
-            return VideoProcessResult.Fail($"Video file not found: {videoPath}");
+            return VideoProcessResult.Fail($"{source.SourceLabel} did not return frames.");
         }
 
-        using var capture = new VideoCapture(videoPath);
-        if (!capture.IsOpened())
-        {
-            return VideoProcessResult.Fail($"Unable to open video: {Path.GetFileName(videoPath)}");
-        }
-
-        var fps = capture.Fps;
-        var frameCount = (int)Math.Max(0, capture.Get(VideoCaptureProperties.FrameCount));
-        var frameWidth = capture.FrameWidth;
-        var frameHeight = capture.FrameHeight;
-        if (frameWidth <= 0 || frameHeight <= 0)
-        {
-            return VideoProcessResult.Fail("Video has invalid dimensions.");
-        }
-
-        var processSize = BuildProcessSize(frameWidth, frameHeight, options.ProcessMaxWidth);
-        var bakedPath = await EnsureBakedBackgroundAsync(videoPath, sampleCount, options, bakeImagePath, cancellationToken, onStatus);
-
-        using var medianBackground = Cv2.ImRead(bakedPath, ImreadModes.Grayscale);
-        if (medianBackground.Empty())
-        {
-            return VideoProcessResult.Fail("Unable to load baked background.");
-        }
-
-        if (medianBackground.Size() != processSize)
-        {
-            return VideoProcessResult.Fail("Baked background dimensions do not match video processing dimensions.");
-        }
-
-        await onStatus($"using baked background: {Path.GetFileName(bakedPath)}");
-
-        capture.PosFrames = 0;
-        using var railRoiMask = _railRoiMaskBuilder.BuildFromBackground(medianBackground);
-        return await ProcessCaptureFramesAsync(
-            capture,
-            Path.GetFileName(videoPath),
-            fps,
-            medianBackground,
-            railRoiMask,
-            threshold,
-            options,
-            onFrame,
-            onStatus,
-            getLiveTuning,
-            shouldStopEarly,
-            cancellationToken,
-            pacePlayback: true);
-    }
-
-    public async Task<VideoProcessResult> ProcessUsbCameraSourceAsync(
-        UsbCameraOwnerManager ownerManager,
-        UsbCameraKey key,
-        UsbCaptureSettings startupSettings,
-        string sourceLabel,
-        int sampleCount,
-        int threshold,
-        ProcessingOptions options,
-        string? bakeImagePath,
-        Func<PreviewFrameSet, Task> onFrame,
-        Func<string, Task> onStatus,
-        Func<LiveTuning>? getLiveTuning,
-        Func<bool>? shouldStopEarly,
-        CancellationToken cancellationToken)
-    {
-        await using var lease = await ownerManager.AcquireAsync(key, startupSettings, cancellationToken);
-        var previousVersion = 0L;
-        var firstSnapshot = await lease.WaitForNextFrameAsync(previousVersion, TimeSpan.FromSeconds(1), cancellationToken);
-        if (firstSnapshot is null)
-        {
-            return VideoProcessResult.Fail($"USB camera {key.CameraIndex} did not return frames.");
-        }
-
-        previousVersion = firstSnapshot.Value.FrameVersion;
-        var processSize = BuildProcessSize(firstSnapshot.Value.Width, firstSnapshot.Value.Height, options.ProcessMaxWidth);
-        var background = await CreateMedianBackgroundForUsbCameraSourceAsync(
-            lease,
-            firstSnapshot.Value,
-            sourceLabel,
+        var firstSnapshot = first.Value;
+        var processSize = BuildProcessSize(firstSnapshot.Width, firstSnapshot.Height, options.ProcessMaxWidth);
+        var background = await CreateMedianBackgroundFromSourceAsync(
+            source,
+            firstSnapshot,
             sampleCount,
             processSize,
             bakeImagePath,
             onStatus,
             cancellationToken);
-        previousVersion = background.LastFrameVersion;
 
         using var medianBackground = background.MedianBackground;
         using var railRoiMask = _railRoiMaskBuilder.BuildFromBackground(medianBackground);
 
-        return await ProcessUsbCameraSourceFramesAsync(
-            lease,
-            previousVersion,
-            sourceLabel,
+        return await ProcessFramesFromSourceAsync(
+            source,
+            processSize,
             medianBackground,
             railRoiMask,
             threshold,
@@ -154,161 +80,9 @@ internal sealed class BackgroundEstimationEngine(
             cancellationToken);
     }
 
-    private async Task<VideoProcessResult> ProcessCaptureFramesAsync(
-        VideoCapture capture,
-        string sourceLabel,
-        double fps,
-        Mat medianBackground,
-        Mat railRoiMask,
-        int threshold,
-        ProcessingOptions options,
-        Func<PreviewFrameSet, Task> onFrame,
-        Func<string, Task> onStatus,
-        Func<LiveTuning>? getLiveTuning,
-        Func<bool>? shouldStopEarly,
-        CancellationToken cancellationToken,
-        bool pacePlayback)
-    {
-        var frameIndex = 0;
-        var pacingFps = GetPacingFps(fps);
-        var playbackClock = Stopwatch.StartNew();
-        var processSize = medianBackground.Size();
-        var roiCoverage = ComputeMaskCoverage(railRoiMask);
-
-        await onStatus($"rail ROI active: {roiCoverage * 100:0.0}% of frame");
-
-        if (pacePlayback)
-        {
-            await onStatus($"playback pacing: {pacingFps:0.0} fps");
-        }
-
-        using var frame = new Mat();
-        using var gray = new Mat();
-        using var colorResized = new Mat();
-        using var resized = new Mat();
-        using var diff = new Mat();
-        using var mask = new Mat();
-        using var refinedMask = new Mat();
-        var activeMorphKernelSize = options.MorphKernelSize;
-        using var movingColor = new Mat();
-        using var colorDetections = new Mat();
-        using var motionView = new Mat();
-        using var hsv = new Mat();
-        var activeColorCalibrations = options.ColorCalibrations;
-
-        var previousTracks = new Dictionary<int, MotionTrackState>();
-        var nextTrackId = 1;
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            if (shouldStopEarly?.Invoke() == true)
-            {
-                return VideoProcessResult.Stopped();
-            }
-
-            if (!capture.Read(frame) || frame.Empty())
-            {
-                break;
-            }
-
-            var activeThreshold = threshold;
-            var activeMinMotionArea = options.MinMotionArea;
-            var activeMinColorPixels = options.MinColorPixels;
-
-            if (getLiveTuning is not null)
-            {
-                var live = getLiveTuning();
-                activeThreshold = live.Threshold;
-                activeMinMotionArea = live.MinMotionArea;
-                activeMinColorPixels = live.MinColorPixels;
-                activeColorCalibrations = live.ColorCalibrations;
-                activeMorphKernelSize = live.MorphKernelSize;
-            }
-
-            Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
-            Cv2.Resize(frame, colorResized, processSize, interpolation: InterpolationFlags.Area);
-            Cv2.Resize(gray, resized, processSize, interpolation: InterpolationFlags.Area);
-            Cv2.Absdiff(medianBackground, resized, diff);
-            Cv2.Threshold(diff, mask, activeThreshold, 255, ThresholdTypes.Binary);
-            Cv2.BitwiseAnd(mask, railRoiMask, mask);
-            using var refined = _motionMaskRefiner.Refine(mask, BuildRefinerOptions(activeMorphKernelSize));
-            refined.CopyTo(refinedMask);
-
-            var movingRects = GetMovingObjectRectangles(refinedMask, activeMinMotionArea);
-
-            movingColor.SetTo(Scalar.Black);
-            colorResized.CopyTo(movingColor, refinedMask);
-            DrawMovingObjectBoxes(movingColor, movingRects);
-
-            colorResized.CopyTo(colorDetections);
-            RenderColorDetections(colorDetections, colorResized, refinedMask, hsv, movingRects, activeColorCalibrations, activeMinColorPixels);
-
-            colorResized.CopyTo(motionView);
-            var timestampSec = capture.PosMsec / 1000.0;
-            RenderMotionOverlay(motionView, movingRects, timestampSec, ref previousTracks, ref nextTrackId);
-
-            var preview = BuildPreviewFrameSet(refinedMask, movingColor, colorDetections, motionView);
-            await onFrame(preview);
-
-            frameIndex++;
-            if (frameIndex % 20 == 0)
-            {
-                var fpsText = fps > 0 ? $"{fps:0.0}" : "n/a";
-                if (pacePlayback)
-                {
-                    var positionMs = capture.PosMsec;
-                    await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps {fpsText} | t={positionMs / 1000:0.0}s");
-                }
-                else
-                {
-                    await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps {fpsText}");
-                }
-            }
-
-            if (pacePlayback)
-            {
-                await WaitForPlaybackScheduleAsync(
-                    frameIndex,
-                    pacingFps,
-                    playbackClock,
-                    shouldStopEarly,
-                    cancellationToken);
-            }
-        }
-
-        return VideoProcessResult.Ok();
-    }
-
-    public Task PreBakeBackgroundAsync(string videoPath, int sampleCount, CancellationToken cancellationToken)
-    {
-        return _sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, ProcessingOptions.Default.ProcessMaxWidth, cancellationToken);
-    }
-
-    public async Task<string> EnsureBakedBackgroundAsync(
-        string videoPath,
-        int sampleCount,
-        ProcessingOptions options,
-        string? bakeImagePath,
-        CancellationToken cancellationToken,
-        Func<string, Task>? onStatus = null)
-    {
-        return await _sessionCalibration.EnsureBakedBackgroundAsync(
-            videoPath,
-            sampleCount,
-            options.ProcessMaxWidth,
-            bakeImagePath,
-            cancellationToken,
-            onStatus);
-    }
-
-    public Task PreBakeBackgroundAsync(string videoPath, int sampleCount, ProcessingOptions options, CancellationToken cancellationToken)
-    {
-        return _sessionCalibration.PreBakeBackgroundAsync(videoPath, sampleCount, options.ProcessMaxWidth, cancellationToken);
-    }
-
-    private static async Task<UsbBackgroundSample> CreateMedianBackgroundForUsbCameraSourceAsync(
-        UsbCameraLease lease,
+    private static async Task<UnifiedBackgroundSample> CreateMedianBackgroundFromSourceAsync(
+        IVideoSource source,
         UsbFrameSnapshot firstSnapshot,
-        string sourceLabel,
         int sampleCount,
         Size processSize,
         string? bakeImagePath,
@@ -317,30 +91,29 @@ internal sealed class BackgroundEstimationEngine(
     {
         if (!string.IsNullOrWhiteSpace(bakeImagePath))
         {
-            await onStatus($"using bake image {Path.GetFileName(bakeImagePath)} for {sourceLabel}");
-            return new UsbBackgroundSample(LoadBackgroundImageMat(bakeImagePath, processSize), firstSnapshot.FrameVersion);
+            await onStatus($"using bake image {Path.GetFileName(bakeImagePath)} for {source.SourceLabel}");
+            return new UnifiedBackgroundSample(LoadBackgroundImageMat(bakeImagePath, processSize), firstSnapshot.FrameVersion);
         }
 
         var samplingCount = Math.Max(5, sampleCount);
         var progressStep = Math.Max(1, samplingCount / 5);
         var sampledFrames = new List<Mat>(samplingCount);
-        var previousVersion = firstSnapshot.FrameVersion;
 
-        await onStatus($"estimating background for {sourceLabel}...");
-        AddSnapshotSample(firstSnapshot, processSize, sampledFrames);
-        await ReportUsbSamplingProgressAsync(sourceLabel, sampledFrames.Count, samplingCount, progressStep, onStatus);
+        await onStatus($"estimating background for {source.SourceLabel}...");
+        AddFrameSample(firstSnapshot, processSize, sampledFrames);
+        await ReportSamplingProgressAsync(source.SourceLabel, sampledFrames.Count, samplingCount, progressStep, onStatus);
 
         while (sampledFrames.Count < samplingCount && !cancellationToken.IsCancellationRequested)
         {
-            var snapshot = await lease.WaitForNextFrameAsync(previousVersion, TimeSpan.FromSeconds(1), cancellationToken);
+            var snapshot = source.ReadLatestFrame();
             if (snapshot is null)
             {
+                await Task.Delay(50, cancellationToken);
                 continue;
             }
 
-            previousVersion = snapshot.Value.FrameVersion;
-            AddSnapshotSample(snapshot.Value, processSize, sampledFrames);
-            await ReportUsbSamplingProgressAsync(sourceLabel, sampledFrames.Count, samplingCount, progressStep, onStatus);
+            AddFrameSample(snapshot.Value, processSize, sampledFrames);
+            await ReportSamplingProgressAsync(source.SourceLabel, sampledFrames.Count, samplingCount, progressStep, onStatus);
         }
 
         if (sampledFrames.Count == 0)
@@ -348,14 +121,13 @@ internal sealed class BackgroundEstimationEngine(
             throw new InvalidOperationException("No live frames available to estimate background.");
         }
 
-        await onStatus($"live capture ready: {sourceLabel}");
-        return new UsbBackgroundSample(BuildMedianBackground(sampledFrames, processSize), previousVersion);
+        await onStatus($"live capture ready: {source.SourceLabel}");
+        return new UnifiedBackgroundSample(BuildMedianBackground(sampledFrames, processSize), firstSnapshot.FrameVersion);
     }
 
-    private async Task<VideoProcessResult> ProcessUsbCameraSourceFramesAsync(
-        UsbCameraLease lease,
-        long previousVersion,
-        string sourceLabel,
+    private async Task<VideoProcessResult> ProcessFramesFromSourceAsync(
+        IVideoSource source,
+        Size processSize,
         Mat medianBackground,
         Mat railRoiMask,
         int threshold,
@@ -367,7 +139,6 @@ internal sealed class BackgroundEstimationEngine(
         CancellationToken cancellationToken)
     {
         var frameIndex = 0;
-        var processSize = medianBackground.Size();
         var roiCoverage = ComputeMaskCoverage(railRoiMask);
 
         await onStatus($"rail ROI active: {roiCoverage * 100:0.0}% of frame");
@@ -387,6 +158,7 @@ internal sealed class BackgroundEstimationEngine(
 
         var previousTracks = new Dictionary<int, MotionTrackState>();
         var nextTrackId = 1;
+
         while (!cancellationToken.IsCancellationRequested)
         {
             if (shouldStopEarly?.Invoke() == true)
@@ -394,14 +166,14 @@ internal sealed class BackgroundEstimationEngine(
                 return VideoProcessResult.Stopped();
             }
 
-            var snapshot = await lease.WaitForNextFrameAsync(previousVersion, TimeSpan.FromSeconds(1), cancellationToken);
+            var snapshot = source.ReadLatestFrame();
             if (snapshot is null)
             {
+                await Task.Delay(16, cancellationToken);
                 continue;
             }
 
-            previousVersion = snapshot.Value.FrameVersion;
-            using var frame = DecodeUsbSnapshot(snapshot.Value);
+            using var frame = DecodeSnapshot(snapshot.Value);
             if (frame.Empty())
             {
                 continue;
@@ -448,14 +220,31 @@ internal sealed class BackgroundEstimationEngine(
             frameIndex++;
             if (frameIndex % 20 == 0)
             {
-                await onStatus($"processing {sourceLabel} | frame {frameIndex} | source fps n/a");
+                await onStatus($"processing {source.SourceLabel} | frame {frameIndex}");
             }
         }
 
         return VideoProcessResult.Ok();
     }
 
-    private static async Task ReportUsbSamplingProgressAsync(string sourceLabel, int completed, int total, int progressStep, Func<string, Task> onStatus)
+    public async Task<string> EnsureBakedBackgroundAsync(
+        string videoPath,
+        int sampleCount,
+        ProcessingOptions options,
+        string? bakeImagePath,
+        CancellationToken cancellationToken,
+        Func<string, Task>? onStatus = null)
+    {
+        return await _sessionCalibration.EnsureBakedBackgroundAsync(
+            videoPath,
+            sampleCount,
+            options.ProcessMaxWidth,
+            bakeImagePath,
+            cancellationToken,
+            onStatus);
+    }
+
+    private static async Task ReportSamplingProgressAsync(string sourceLabel, int completed, int total, int progressStep, Func<string, Task> onStatus)
     {
         if (completed % progressStep == 0 || completed == total)
         {
@@ -463,9 +252,9 @@ internal sealed class BackgroundEstimationEngine(
         }
     }
 
-    private static void AddSnapshotSample(UsbFrameSnapshot snapshot, Size processSize, List<Mat> sampledFrames)
+    private static void AddFrameSample(UsbFrameSnapshot snapshot, Size processSize, List<Mat> sampledFrames)
     {
-        using var frame = DecodeUsbSnapshot(snapshot);
+        using var frame = DecodeSnapshot(snapshot);
         using var gray = new Mat();
         Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
         var resized = new Mat();
@@ -473,7 +262,7 @@ internal sealed class BackgroundEstimationEngine(
         sampledFrames.Add(resized);
     }
 
-    private static Mat DecodeUsbSnapshot(UsbFrameSnapshot snapshot)
+    private static Mat DecodeSnapshot(UsbFrameSnapshot snapshot)
     {
         return Cv2.ImDecode(snapshot.EncodedJpeg, ImreadModes.Color);
     }
@@ -808,7 +597,7 @@ internal sealed class BackgroundEstimationEngine(
     [StructLayout(LayoutKind.Auto)]
     private readonly record struct MotionTrackState(Point2f Center, Rect Rect, double TimestampSec);
 
-    private readonly record struct UsbBackgroundSample(Mat MedianBackground, long LastFrameVersion);
+    private readonly record struct UnifiedBackgroundSample(Mat MedianBackground, long LastFrameVersion);
 
     internal readonly struct PreviewFrameSet
     {
@@ -829,16 +618,6 @@ internal sealed class BackgroundEstimationEngine(
         public byte[] MotionJpeg { get; }
     }
 
-    private static double GetPacingFps(double sourceFps)
-    {
-        if (double.IsNaN(sourceFps) || double.IsInfinity(sourceFps) || sourceFps <= 0)
-        {
-            return 30.0;
-        }
-
-        return Math.Clamp(sourceFps, 1.0, 240.0);
-    }
-
     private static double ComputeMaskCoverage(Mat mask)
     {
         var total = mask.Rows * mask.Cols;
@@ -855,41 +634,6 @@ internal sealed class BackgroundEstimationEngine(
         var closeKernelSize = Math.Max(1, morphKernelSize);
         var openKernelSize = closeKernelSize >= 5 ? 3 : 1;
         return new MotionMaskRefiner.Options(closeKernelSize, openKernelSize);
-    }
-
-    private static async Task WaitForPlaybackScheduleAsync(
-        int frameIndex,
-        double pacingFps,
-        Stopwatch playbackClock,
-        Func<bool>? shouldStopEarly,
-        CancellationToken cancellationToken)
-    {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
-
-        var targetTicks = (long)Math.Round(frameIndex * TimeSpan.TicksPerSecond / pacingFps);
-        var targetTime = new TimeSpan(targetTicks);
-        while (true)
-        {
-            if (cancellationToken.IsCancellationRequested || (shouldStopEarly?.Invoke() == true))
-            {
-                return;
-            }
-
-            var remaining = targetTime - playbackClock.Elapsed;
-            if (remaining <= TimeSpan.Zero)
-            {
-                return;
-            }
-
-            var slice = remaining > TimeSpan.FromMilliseconds(20)
-                ? TimeSpan.FromMilliseconds(20)
-                : remaining;
-
-            await Task.Delay(slice);
-        }
     }
 
     private static PreviewFrameSet BuildPreviewFrameSet(Mat backgroundMask, Mat movingColor, Mat colorDetections, Mat motionView)

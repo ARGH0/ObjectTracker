@@ -99,6 +99,59 @@ public sealed class UsbCameraOwnerManager : IAsyncDisposable
         return new UsbCameraLease(owner);
     }
 
+    public void AddConsumer(UsbCameraKey key, UsbCaptureSettings settings, CancellationToken cancellationToken)
+    {
+        UsbCameraOwner owner;
+        var shouldStart = false;
+
+        lock (sync)
+        {
+            if (!owners.TryGetValue(key, out owner!))
+            {
+                owner = new UsbCameraOwner(key, settings, backend, startupLock);
+                owners[key] = owner;
+                shouldStart = true;
+            }
+
+            owner.AddLease();
+        }
+
+        if (shouldStart)
+        {
+            owner.StartAsync(cancellationToken).Wait(cancellationToken);
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(2);
+            while (owner.LatestFrame is null && DateTimeOffset.UtcNow < deadline)
+            {
+                Thread.Sleep(10);
+            }
+        }
+    }
+
+    public async ValueTask ReleaseAsync(UsbCameraKey key)
+    {
+        lock (sync)
+        {
+            if (!owners.TryGetValue(key, out var owner)) return;
+            owner.ReleaseLease();
+        }
+    }
+
+    public UsbFrameSnapshot? GetLatestFrame(UsbCameraKey key)
+    {
+        lock (sync)
+        {
+            return owners.TryGetValue(key, out var owner) ? owner.LatestFrame : null;
+        }
+    }
+
+    public double? GetActualFps(UsbCameraKey key)
+    {
+        lock (sync)
+        {
+            return owners.TryGetValue(key, out var owner) ? owner.ActualFps : null;
+        }
+    }
+
     public async Task StopAllAsync(CancellationToken cancellationToken)
     {
         List<UsbCameraOwner> snapshot;
@@ -218,6 +271,8 @@ internal sealed class UsbCameraOwner
         }
     }
 
+    public double? ActualFps => actualFps;
+
     public UsbCameraRuntimeStatus GetStatus(long nowUtcMs)
     {
         lock (sync)
@@ -241,6 +296,8 @@ internal sealed class UsbCameraOwner
     }
 
     public void AddLease() => leaseCount++;
+
+    public int LeaseCount => leaseCount;
 
     public void ReleaseLease() => leaseCount--;
 

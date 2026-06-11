@@ -32,7 +32,12 @@
                               x:Name="ClearCamerasMenuItem" />
                 </MenuItem>
                 <MenuItem Header="Regions"
-                          x:Name="RegionsWorkspaceMenuItem" />
+                          x:Name="RegionsWorkspaceMenuItem">
+                    <MenuItem Header="Export Regions"
+                              x:Name="ExportRegionMenuButton" />
+                    <MenuItem Header="Import Regions"
+                              x:Name="ImportRegionMenuButton" />
+                </MenuItem>
                 <MenuItem Header="Settings"
                           x:Name="SettingsWorkspaceMenuItem" />
                 <MenuItem Header="PLC"

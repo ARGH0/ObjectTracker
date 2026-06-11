@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CameraZoneId = ObjectTracker.UI.Desktop.Region.Model.CameraZoneId;
 using ObjectTracker.UI.Desktop.Region.Contracts;
 using ObjectTracker.UI.Desktop.Region.Model;
 
@@ -18,4 +19,8 @@ public sealed class FakeRegionPersistence : IRegionPersistence
         _regions.AddRange(regions);
         return ValueTask.CompletedTask;
     }
+
+    public ValueTask ExportAsync(CameraZoneId cameraZoneId, string filePath) => ValueTask.CompletedTask;
+
+    public ValueTask ImportAsync(string filePath, CameraZoneId targetCameraZoneId) => ValueTask.CompletedTask;
 }

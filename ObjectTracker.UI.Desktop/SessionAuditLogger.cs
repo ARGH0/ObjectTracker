@@ -18,6 +18,8 @@ internal sealed class SessionAuditLogger : IDisposable
     public const string EventRegionCreated = "region-created";
     public const string EventRegionUpdated = "region-updated";
     public const string EventRegionDeleted = "region-deleted";
+    public const string EventRegionExported = "region-exported";
+    public const string EventRegionImported = "region-imported";
 
     public string? CurrentFilePath { get; private set; }
 

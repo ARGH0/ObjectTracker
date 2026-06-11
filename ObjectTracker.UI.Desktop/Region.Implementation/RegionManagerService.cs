@@ -89,4 +89,20 @@ public sealed class RegionManagerService : ObjectTracker.UI.Desktop.Region.Contr
             await _persistence.SaveAsync(_registry.GetAll());
         }
     }
+
+    public async Task ExportZoneRegionsAsync(CameraZoneId cameraZoneId, string filePath)
+    {
+        if (_persistence == null)
+            return;
+
+        await _persistence.ExportAsync(cameraZoneId, filePath);
+    }
+
+    public async Task ImportZoneRegionsAsync(CameraZoneId cameraZoneId, string filePath)
+    {
+        if (_persistence == null)
+            return;
+
+        await _persistence.ImportAsync(filePath, cameraZoneId);
+    }
 }

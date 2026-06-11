@@ -157,5 +157,7 @@ public sealed class RegionDiTests
 
         public ValueTask<IEnumerable<RegionDefinition>> LoadAsync() => ValueTask.FromResult<IEnumerable<RegionDefinition>>(_regions);
         public ValueTask SaveAsync(IEnumerable<RegionDefinition> regions) { _regions.Clear(); _regions.AddRange(regions); return ValueTask.CompletedTask; }
+        public ValueTask ExportAsync(ObjectTracker.UI.Desktop.Region.Model.CameraZoneId cameraZoneId, string filePath) => ValueTask.CompletedTask;
+        public ValueTask ImportAsync(string filePath, ObjectTracker.UI.Desktop.Region.Model.CameraZoneId targetCameraZoneId) => ValueTask.CompletedTask;
     }
 }

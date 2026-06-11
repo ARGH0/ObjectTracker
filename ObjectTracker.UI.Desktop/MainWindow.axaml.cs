@@ -578,6 +578,8 @@ public partial class MainWindow : AppWindow
         CreateRegionButton.Click += CreateRegionButtonOnClick;
         EditRegionButton.Click += EditRegionButtonOnClick;
         DeleteRegionButton.Click += DeleteRegionButtonOnClick;
+        ExportRegionMenuButton.Click += ExportRegionButtonOnClick;
+        ImportRegionMenuButton.Click += ImportRegionButtonOnClick;
         RegionsListBox.SelectionChanged += RegionsListBoxOnSelectionChanged;
         StartVisionPipelineMenuItem.Click += StartVisionPipelineMenuItemOnClick;
         StopVisionPipelineMenuItem.Click += StopVisionPipelineMenuItemOnClick;
@@ -3097,5 +3099,111 @@ public partial class MainWindow : AppWindow
             RegionDetailTypeInfoText.Text = $"Type: {region.Type}";
             RegionDetailCellCountText.Text = $"Cells: {region.Cells.Count}";
         }
+    }
+
+    private async void ExportRegionButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (StorageProvider is null)
+        {
+            SetStatus("Status: file picker is not available in this runtime.");
+            return;
+        }
+
+        var camera = GetSelectedCamera();
+        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
+        {
+            SetStatus("Status: select a camera first.");
+            return;
+        }
+
+        var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+        var regions = regionManagerService.GetRegionsForZone(zoneId);
+        if (regions.Count == 0)
+        {
+            SetStatus("Status: no regions to export in this zone.");
+            return;
+        }
+
+        var safeName = string.IsNullOrWhiteSpace(zone.Name) ? "camerazone" : zone.Name.ToUpperInvariant().Replace(' ', '-');
+        var saveOptions = new FilePickerSaveOptions
+        {
+            Title = "Export Region Definitions",
+            DefaultExtension = "json",
+            SuggestedFileName = $"{safeName}-regions.json",
+            ShowOverwritePrompt = true
+        };
+
+        var file = await StorageProvider.SaveFilePickerAsync(saveOptions);
+        if (file == null)
+        {
+            return;
+        }
+
+        var path = file.TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            SetStatus("Status: could not resolve export file path.");
+            return;
+        }
+
+        await regionManagerService.ExportZoneRegionsAsync(zoneId, path);
+
+        sessionAuditLogger.AppendEvent(
+            SessionAuditLogger.EventRegionExported,
+            $"Regions exported to '{System.IO.Path.GetFileName(path)}'.",
+            ("Zone", zone.CameraZoneId));
+
+        SetStatus($"Status: {regions.Count} region(s) exported.");
+    }
+
+    private async void ImportRegionButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (StorageProvider is null)
+        {
+            SetStatus("Status: file picker is not available in this runtime.");
+            return;
+        }
+
+        var camera = GetSelectedCamera();
+        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
+        {
+            SetStatus("Status: select a camera first.");
+            return;
+        }
+
+        var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import Region Definitions",
+            AllowMultiple = false,
+            FileTypeFilter = new List<FilePickerFileType>
+            {
+                new ("JSON files") { Patterns = new[] { "*.json" } },
+                new ("All files") { Patterns = new[] { "*.*", "*"} }
+            }
+        });
+
+        if (files == null || files.Count == 0)
+        {
+            return;
+        }
+
+        var path = files[0].TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            SetStatus("Status: could not resolve import file path.");
+            return;
+        }
+
+        await regionManagerService.ImportZoneRegionsAsync(zoneId, path);
+
+        sessionAuditLogger.AppendEvent(
+            SessionAuditLogger.EventRegionImported,
+            $"Regions imported from '{System.IO.Path.GetFileName(path)}'.",
+            ("Zone", zone.CameraZoneId));
+
+        SetStatus("Status: regions imported successfully.");
+        RefreshRegionsList(camera.Value);
     }
 }

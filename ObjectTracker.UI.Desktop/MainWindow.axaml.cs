@@ -15,8 +15,12 @@ using Avalonia.Platform;
 using Avalonia.Layout;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using CommunityToolkit.Mvvm.Input;
 using FluentAvalonia.UI.Windowing;
+using Microsoft.Extensions.DependencyInjection;
 using ObjectTracker.Core.Domain;
+using ObjectTracker.UI.Desktop.Plc.Implementation;
+using ObjectTracker.UI.Desktop.Plc.Model;
 using OpenCvSharp;
 using VideoCapture = OpenCvSharp.VideoCapture;
 using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
@@ -30,10 +34,11 @@ public partial class MainWindow : AppWindow
     {
         Camera,
         Regions,
-        Settings
+        Settings,
+        Plc
     }
 
-    public readonly record struct WorkspaceVisibility(bool CameraVisible, bool RegionsVisible, bool SettingsVisible);
+    public readonly record struct WorkspaceVisibility(bool CameraVisible, bool RegionsVisible, bool SettingsVisible, bool PlcVisible);
 
     public readonly record struct BottomStatusSnapshot(
         string VisionPipeline,
@@ -122,7 +127,10 @@ public partial class MainWindow : AppWindow
     public enum SettingsField
     {
         GridColumns,
-        GridRows
+        GridRows,
+        PlcBaseUrl,
+        PlcUser,
+        PlcPassword
     }
 
     public readonly record struct CameraGridProjection(
@@ -166,16 +174,17 @@ public partial class MainWindow : AppWindow
     {
         return workspace switch
         {
-            Workspace.Camera => new WorkspaceVisibility(true, false, false),
-            Workspace.Regions => new WorkspaceVisibility(false, true, false),
-            Workspace.Settings => new WorkspaceVisibility(false, false, true),
-            _ => new WorkspaceVisibility(true, false, false)
+            Workspace.Camera => new WorkspaceVisibility(true, false, false, false),
+            Workspace.Regions => new WorkspaceVisibility(false, true, false, false),
+            Workspace.Settings => new WorkspaceVisibility(false, false, true, false),
+            Workspace.Plc => new WorkspaceVisibility(false, false, false, true),
+            _ => new WorkspaceVisibility(true, false, false, false)
         };
     }
 
     public static bool IsRuntimeLogVisibleForWorkspace(Workspace workspace)
     {
-        return workspace == Workspace.Camera;
+        return workspace == Workspace.Camera || workspace == Workspace.Plc;
     }
 
     public static VisionPipelineMenuState BuildVisionPipelineMenuState(bool isVisionPipelineRunning)
@@ -333,6 +342,9 @@ public partial class MainWindow : AppWindow
         {
             SettingsField.GridColumns => "requires Vision Pipeline restart",
             SettingsField.GridRows => "requires Vision Pipeline restart",
+            SettingsField.PlcBaseUrl => "applies immediately",
+            SettingsField.PlcUser => "applies immediately",
+            SettingsField.PlcPassword => "applies immediately",
             _ => "applies immediately"
         };
     }
@@ -346,6 +358,13 @@ public partial class MainWindow : AppWindow
             requiresRestart,
             pendingRestart,
             pendingRestart ? "Settings: saved, pending Vision Pipeline restart" : "Settings: saved");
+    }
+
+    public static bool HasPlcChanges(AppSettings a, AppSettings b)
+    {
+        return a.Plc.BaseUrl != b.Plc.BaseUrl
+            || a.Plc.User != b.Plc.User
+            || a.Plc.Password != b.Plc.Password;
     }
 
     public static BottomStatusSnapshot BuildBottomStatusSnapshot(bool isVisionPipelineRunning, bool hasPendingVisionPipelineRestart)
@@ -401,6 +420,8 @@ public partial class MainWindow : AppWindow
     private readonly CameraZoneIdentityService cameraZoneIdentityService;
     private ObjectTracker.UI.Desktop.Region.Contracts.IRegionManagerService regionManagerService;
     private ObjectTracker.UI.Desktop.Region.Contracts.IRegionRegistry regionRegistry;
+    private ObjectTracker.UI.Desktop.Plc.Contracts.IPlcClient? plcClient;
+    private ObjectTracker.UI.Desktop.Plc.Contracts.IPlcSessionManager? plcSessionManager;
     private AppSettings appSettings;
     private AppSettings draftAppSettings;
 
@@ -456,15 +477,44 @@ public partial class MainWindow : AppWindow
         ConfirmDestructiveActionAsync = ShowDestructiveConfirmationDialogAsync;
         cameraTileFeedCoordinator = new CameraTileFeedCoordinator(StartCameraTileFeedConsumer);
         InitializeUsbCaptureSettingsUi();
+        InitializePlcServices();
 
         HookEvents();
         SetActiveWorkspace(Workspace.Camera);
+        InitializePlcWorkspaceUi();
         SetRunState(isRunning: false);
         ApplyCameraPanelLayout();
         RefreshSettingsWorkspaceUi();
         RefreshCameraUi();
         AppendLog("Application initialized.");
         UpdateBottomStatusBar();
+    }
+
+    private void InitializePlcServices()
+    {
+        try
+        {
+            var plcConfig = appSettings.Plc.ToClientConfig();
+            var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+            services.AddPlcServices(plcConfig);
+            var sp = services.BuildServiceProvider();
+            plcClient = sp.GetRequiredService<ObjectTracker.UI.Desktop.Plc.Contracts.IPlcClient>();
+            plcSessionManager = sp.GetRequiredService<ObjectTracker.UI.Desktop.Plc.Contracts.IPlcSessionManager>();
+            AppendLog("PLC services initialized.");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"PLC services init failed: {ex.Message}");
+        }
+    }
+
+    private void InitializePlcWorkspaceUi()
+    {
+        PlcOperationLogText.Text = "No operations yet.";
+        PlcConnectionStatusText.Text = "Not connected";
+        PlcConnectButton.IsEnabled = plcClient is not null;
+        PlcReadButton.IsEnabled = false;
+        PlcWriteButton.IsEnabled = false;
     }
 
     protected override async void OnClosing(WindowClosingEventArgs e)
@@ -504,6 +554,7 @@ public partial class MainWindow : AppWindow
         OpenCameraWorkspaceMenuItem.Click += CameraWorkspaceButtonOnClick;
         RegionsWorkspaceMenuItem.Click += RegionsWorkspaceButtonOnClick;
         SettingsWorkspaceMenuItem.Click += SettingsWorkspaceButtonOnClick;
+        PlcWorkspaceMenuItem.Click += PlcWorkspaceButtonOnClick;
         CreateRegionButton.Click += CreateRegionButtonOnClick;
         EditRegionButton.Click += EditRegionButtonOnClick;
         DeleteRegionButton.Click += DeleteRegionButtonOnClick;
@@ -516,6 +567,14 @@ public partial class MainWindow : AppWindow
         DiscardSettingsButton.Click += DiscardSettingsButtonOnClick;
         SettingsGridColumnsTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
         SettingsGridRowsTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
+        SettingsPlcBaseUrlTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
+        SettingsPlcUserTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
+        SettingsPlcPasswordTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
+
+        PlcConnectButton.Click += PlcConnectButtonOnClick;
+        PlcReadButton.Click += PlcReadButtonOnClick;
+        PlcWriteButton.Click += PlcWriteButtonOnClick;
+        PlcClearLogButton.Click += PlcClearLogButtonOnClick;
 
         SampleCountTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         ThresholdTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
@@ -547,6 +606,11 @@ public partial class MainWindow : AppWindow
     private async void SettingsWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
     {
         await TryNavigateWorkspaceAsync(Workspace.Settings);
+    }
+
+    private async void PlcWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        await TryNavigateWorkspaceAsync(Workspace.Plc);
     }
 
     private async void StartVisionPipelineMenuItemOnClick(object? sender, RoutedEventArgs e)
@@ -607,6 +671,7 @@ public partial class MainWindow : AppWindow
         CameraWorkspacePanel.IsVisible = visibility.CameraVisible;
         RegionsWorkspacePanel.IsVisible = visibility.RegionsVisible;
         SettingsWorkspacePanel.IsVisible = visibility.SettingsVisible;
+        PlcWorkspacePanel.IsVisible = visibility.PlcVisible;
         RuntimeLogExpander.IsVisible = IsRuntimeLogVisibleForWorkspace(workspace);
     }
 
@@ -673,15 +738,25 @@ public partial class MainWindow : AppWindow
     {
         var columns = ParseInt(SettingsGridColumnsTextBox.Text, appSettings.GridColumns, AppSettings.MinGridColumns, AppSettings.MaxGridColumns);
         var rows = ParseInt(SettingsGridRowsTextBox.Text, appSettings.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows);
-        draftAppSettings = new AppSettings(columns, rows);
+        var plc = new PlcSettings(
+            BaseUrl: SettingsPlcBaseUrlTextBox.Text ?? appSettings.Plc.BaseUrl,
+            User: SettingsPlcUserTextBox.Text ?? appSettings.Plc.User,
+            Password: SettingsPlcPasswordTextBox.Text ?? appSettings.Plc.Password);
+        draftAppSettings = new AppSettings(columns, rows, plc);
     }
 
     private void RefreshSettingsWorkspaceUi()
     {
         SettingsGridColumnsPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.GridColumns);
         SettingsGridRowsPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.GridRows);
+        SettingsPlcBaseUrlPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.PlcBaseUrl);
+        SettingsPlcUserPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.PlcUser);
+        SettingsPlcPasswordPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.PlcPassword);
         SettingsGridColumnsTextBox.Text = draftAppSettings.GridColumns.ToString();
         SettingsGridRowsTextBox.Text = draftAppSettings.GridRows.ToString();
+        SettingsPlcBaseUrlTextBox.Text = draftAppSettings.Plc.BaseUrl;
+        SettingsPlcUserTextBox.Text = draftAppSettings.Plc.User;
+        SettingsPlcPasswordTextBox.Text = draftAppSettings.Plc.Password;
         RefreshSettingsDraftStatusUi();
     }
 
@@ -694,6 +769,168 @@ public partial class MainWindow : AppWindow
             : "Pending restart: none";
         SaveSettingsButton.IsEnabled = state.HasUnsavedChanges;
         DiscardSettingsButton.IsEnabled = state.HasUnsavedChanges;
+    }
+
+    private async void PlcConnectButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (plcClient is null || plcSessionManager is null)
+        {
+            AppendLog("PLC client not initialized.");
+            return;
+        }
+
+        PlcConnectButton.IsEnabled = false;
+        PlcReadButton.IsEnabled = false;
+        PlcWriteButton.IsEnabled = false;
+        PlcConnectionStatusText.Text = "Connecting...";
+
+        try
+        {
+            await plcSessionManager.EnsureAuthenticatedAsync();
+            var isAuthenticated = await plcSessionManager.IsAuthenticatedAsync();
+
+            if (isAuthenticated)
+            {
+                PlcConnectionStatusText.Text = "Connected";
+                PlcReadButton.IsEnabled = true;
+                PlcWriteButton.IsEnabled = true;
+                AppendLog("PLC: connected.");
+            }
+            else
+            {
+                PlcConnectionStatusText.Text = "Connection failed";
+                AppendLog("PLC: connection failed.");
+            }
+        }
+        catch (PlcException ex)
+        {
+            PlcConnectionStatusText.Text = $"PLC error: {ex.Message}";
+            AppendLog($"PLC connect error ({ex.Code}): {ex.Message}");
+        }
+        catch (OperationCanceledException)
+        {
+            PlcConnectionStatusText.Text = "Connection timed out";
+            AppendLog("PLC connect: request timed out (10s).");
+        }
+        catch (Exception ex)
+        {
+            PlcConnectionStatusText.Text = $"Error: {ex.Message}";
+            AppendLog($"PLC connect error: {ex.Message}");
+        }
+        finally
+        {
+            PlcConnectButton.IsEnabled = true;
+        }
+    }
+
+    private async void PlcReadButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (plcClient is null)
+            return;
+
+        var variableName = PlcReadVariableTextBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(variableName))
+        {
+            AppendLog("PLC read: variable name is empty.");
+            return;
+        }
+
+        var typeIndex = PlcReadTypeComboBox.SelectedIndex;
+        var plcType = typeIndex switch
+        {
+            0 => Plc.Model.PlcVariableType.Int16,
+            1 => Plc.Model.PlcVariableType.Int32,
+            2 => Plc.Model.PlcVariableType.Real,
+            3 => Plc.Model.PlcVariableType.Bool,
+            _ => Plc.Model.PlcVariableType.Int32
+        };
+
+        var variable = new Plc.Model.PlcVariable(variableName, plcType);
+
+        try
+        {
+            AppendLog($"PLC read: {variable.Address} [{plcType}]...");
+            var result = await plcClient.ReadAsync(variable);
+            AppendLog($"PLC read: {variable.Address} = {result.Value.Raw} ({result.Value.Type})");
+            PlcOperationLogText.Text = $"Last read: {variable.Address} = {result.Value.Raw}";
+        }
+        catch (PlcException ex)
+        {
+            AppendLog($"PLC read error ({ex.Code}): {ex.Message}");
+            PlcOperationLogText.Text = $"Error: {ex.Message}";
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog("PLC read: request timed out (10s).");
+            PlcOperationLogText.Text = "Error: timed out";
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"PLC read error: {ex.Message}");
+            PlcOperationLogText.Text = $"Error: {ex.Message}";
+        }
+    }
+
+    private async void PlcWriteButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (plcClient is null)
+            return;
+
+        var variableName = PlcWriteVariableTextBox.Text?.Trim();
+        var valueText = PlcWriteValueTextBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(variableName) || string.IsNullOrWhiteSpace(valueText))
+        {
+            AppendLog("PLC write: variable name or value is empty.");
+            return;
+        }
+
+        var typeIndex = PlcWriteTypeComboBox.SelectedIndex;
+        var plcType = typeIndex switch
+        {
+            0 => Plc.Model.PlcVariableType.Int16,
+            1 => Plc.Model.PlcVariableType.Int32,
+            2 => Plc.Model.PlcVariableType.Real,
+            3 => Plc.Model.PlcVariableType.Bool,
+            _ => Plc.Model.PlcVariableType.Int32
+        };
+
+        var variable = new Plc.Model.PlcVariable(variableName, plcType);
+        PlcValue value = plcType switch
+        {
+            Plc.Model.PlcVariableType.Int16 => PlcValue.Int16(short.Parse(valueText)),
+            Plc.Model.PlcVariableType.Int32 => PlcValue.Int32(int.Parse(valueText)),
+            Plc.Model.PlcVariableType.Real => PlcValue.Real(float.Parse(valueText)),
+            Plc.Model.PlcVariableType.Bool => PlcValue.Bool(bool.Parse(valueText)),
+            _ => throw new InvalidOperationException($"Unsupported type: {plcType}")
+        };
+
+        try
+        {
+            AppendLog($"PLC write: {variable.Address} = {value.Raw} ({plcType})...");
+            await plcClient.WriteAsync(variable);
+            AppendLog($"PLC write: {variable.Address} = {value.Raw} (success)");
+            PlcOperationLogText.Text = $"Last write: {variable.Address} = {value.Raw}";
+        }
+        catch (PlcException ex)
+        {
+            AppendLog($"PLC write error ({ex.Code}): {ex.Message}");
+            PlcOperationLogText.Text = $"Error: {ex.Message}";
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog("PLC write: request timed out (10s).");
+            PlcOperationLogText.Text = "Error: timed out";
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"PLC write error: {ex.Message}");
+            PlcOperationLogText.Text = $"Error: {ex.Message}";
+        }
+    }
+
+    private void PlcClearLogButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        PlcOperationLogText.Text = "No operations yet.";
     }
 
     private async void AddCamerasButtonOnClick(object? sender, RoutedEventArgs e)
@@ -2954,7 +3191,7 @@ public partial class MainWindow : AppWindow
             appSettings.GridRows,
             currentCells,
             regionName,
-            frameLoader);
+            () => LoadCameraFrameAsync(camera.Value));
     }
 
     private async Task<byte[]?> LoadCameraFrameAsync(CameraProfile camera)

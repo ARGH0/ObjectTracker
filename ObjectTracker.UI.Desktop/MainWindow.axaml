@@ -35,6 +35,8 @@
                           x:Name="RegionsWorkspaceMenuItem" />
                 <MenuItem Header="Settings"
                           x:Name="SettingsWorkspaceMenuItem" />
+                <MenuItem Header="PLC"
+                          x:Name="PlcWorkspaceMenuItem" />
                 <MenuItem Header="Vision Pipeline"
                           x:Name="VisionPipelineMenuItem">
                     <MenuItem Header="Start"
@@ -59,494 +61,494 @@
                     <Border x:Name="CameraPanelBorder"
                             Classes="surface"
                             Padding="10">
-                <Grid RowDefinitions="Auto,8,*">
-                    <Grid Grid.Row="0" ColumnDefinitions="*,8,Auto,8,Auto">
-                        <TextBlock x:Name="CameraPanelTitleText"
-                                   Grid.Column="0"
-                                   Text="Camera Sources"
-                                   Classes="sectionTitle" />
-                        <Button x:Name="ToggleCameraPanelButton"
-                                Grid.Column="2"
-                                Classes="ghost"
-                                Content="Hide" />
-                        <Button x:Name="PinCameraPanelButton"
-                                Grid.Column="4"
-                                Classes="ghost"
-                                Content="📌" />
-                    </Grid>
-
-                    <ScrollViewer Grid.Row="2"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                    <Grid x:Name="CameraPanelFullContent"
-                          RowDefinitions="Auto,8,*">
-                    <ListBox Grid.Row="0"
-                              x:Name="PlaylistListBox"
-                              SelectionMode="Single"
-                              MinHeight="150"
-                              MaxHeight="220">
-                        <ListBox.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem x:Name="DeleteSelectedCameraMenuItem"
-                                          Header="Delete Camera" />
-                            </ContextMenu>
-                        </ListBox.ContextMenu>
-                    </ListBox>
-
-                    <Grid Grid.Row="2"
-                          RowDefinitions="Auto,8,Auto,8,Auto,8,*">
-                        <Grid Grid.Row="0"
-                              ColumnDefinitions="*,6,*">
-                            <Button x:Name="AddVideosButton"
-                                    Grid.Column="0"
-                                    Classes="primary"
-                                    Content="Add Camera" />
-                            <Button x:Name="RemoveSelectedButton"
-                                    Grid.Column="2"
-                                    Classes="destructive"
-                                    Content="Remove" />
-                        </Grid>
-
-                        <Grid Grid.Row="2"
-                              ColumnDefinitions="*,6,*">
-                            <Button x:Name="MoveCameraUpButton"
-                                    Grid.Column="0"
-                                    Classes="ghost"
-                                    Content="Move Up" />
-                            <Button x:Name="MoveCameraDownButton"
-                                    Grid.Column="2"
-                                    Classes="ghost"
-                                    Content="Move Down" />
-                        </Grid>
-
-                        <Border Grid.Row="4"
-                                Classes="surfaceAlt"
-                                Padding="10">
-                            <StackPanel Spacing="6">
-                                <TextBlock Text="Camera Zone"
+                        <Grid RowDefinitions="Auto,8,*">
+                            <Grid Grid.Row="0" ColumnDefinitions="*,8,Auto,8,Auto">
+                                <TextBlock x:Name="CameraPanelTitleText"
+                                           Grid.Column="0"
+                                           Text="Camera Sources"
                                            Classes="sectionTitle" />
-                                <TextBlock Text="Bind selected source to a stable Camera Zone"
-                                           Classes="muted"
-                                           TextWrapping="Wrap" />
-                                <CheckBox x:Name="CameraVisibilityCheckBox"
-                                          Content="Camera Visibility"
-                                          IsChecked="True" />
-                                <CheckBox x:Name="VisionPipelineInclusionCheckBox"
-                                          Content="Vision Pipeline Inclusion"
-                                          IsChecked="True" />
-                                 <CheckBox x:Name="CameraDebugViewCheckBox"
-                                           Content="Debug View"
-                                           IsChecked="False" />
-                                <TextBlock x:Name="UsbCameraSourceStatusText"
-                                           Classes="muted"
-                                           Text="USB Camera Source: -"
-                                           TextWrapping="Wrap" />
-                                <Button x:Name="RestartUsbCameraSourceButton"
+                                <Button x:Name="ToggleCameraPanelButton"
+                                        Grid.Column="2"
                                         Classes="ghost"
-                                        Content="Restart Camera Source" />
-                                <StackPanel x:Name="UsbCaptureSettingsPanel"
-                                            Spacing="6"
-                                            IsVisible="False">
-                                    <TextBlock Text="USB Capture Settings"
-                                               Classes="sectionTitle" />
-                                    <ComboBox x:Name="UsbResolutionComboBox" />
-                                    <ComboBox x:Name="UsbTargetFpsComboBox" />
-                                    <TextBlock x:Name="UsbCaptureModeStatusText"
-                                               Classes="muted"
-                                               TextWrapping="Wrap" />
-                                    <Grid ColumnDefinitions="*,8,*">
-                                        <Button x:Name="ApplyUsbCaptureSettingsButton"
-                                                Grid.Column="0"
-                                                Classes="primary"
-                                                Content="Apply" />
-                                        <Button x:Name="RevertUsbCaptureSettingsButton"
-                                                Grid.Column="2"
-                                                Classes="ghost"
-                                                Content="Revert" />
-                                    </Grid>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
+                                        Content="Hide" />
+                                <Button x:Name="PinCameraPanelButton"
+                                        Grid.Column="4"
+                                        Classes="ghost"
+                                        Content="📌" />
+                            </Grid>
 
-                        <Border Grid.Row="6"
-                                Classes="surfaceAlt"
-                                Padding="10">
-                            <Grid RowDefinitions="Auto,6,*,8,Auto">
-                                <StackPanel Grid.Row="0"
-                                            Spacing="2">
-                                    <TextBlock Text="Processing"
-                                               Classes="sectionTitle" />
-                                    <TextBlock Text="Compact runtime tuning for selected camera"
-                                               Classes="muted"
-                                               TextWrapping="Wrap" />
-                                    <DockPanel LastChildFill="False"
-                                               Margin="0,2,0,0">
-                                        <Border Background="#26323B"
-                                                BorderBrush="#3C4F5E"
-                                                BorderThickness="1"
-                                                Padding="4,1"
-                                                Margin="0,0,6,0">
-                                            <TextBlock Text="i"
-                                                       Foreground="#CFE0EC"
-                                                       FontSize="11"
-                                                       FontWeight="Bold" />
-                                        </Border>
-                                        <TextBlock Text="Hover labels for parameter help"
-                                                   Classes="muted"
-                                                   FontSize="11"
-                                                   VerticalAlignment="Center" />
-                                    </DockPanel>
-                                </StackPanel>
+                            <ScrollViewer Grid.Row="2"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <Grid x:Name="CameraPanelFullContent"
+                                      RowDefinitions="Auto,8,*">
+                                    <ListBox Grid.Row="0"
+                                             x:Name="PlaylistListBox"
+                                             SelectionMode="Single"
+                                             MinHeight="150"
+                                             MaxHeight="220">
+                                        <ListBox.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem x:Name="DeleteSelectedCameraMenuItem"
+                                                          Header="Delete Camera" />
+                                            </ContextMenu>
+                                        </ListBox.ContextMenu>
+                                    </ListBox>
 
-                                <ScrollViewer Grid.Row="2"
-                                              VerticalScrollBarVisibility="Auto">
-                                    <StackPanel Spacing="8">
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <CheckBox x:Name="LoopPlaylistCheckBox"
-                                                      Content="Loop camera videos"
-                                                      IsChecked="True" />
-                                            <Border Background="#26323B"
-                                                    BorderBrush="#3C4F5E"
-                                                    BorderThickness="1"
-                                                    Padding="4,1"
-                                                    ToolTip.Tip="When enabled, the selected video source restarts automatically after reaching the end."
-                                                    VerticalAlignment="Center">
-                                                <TextBlock Text="i"
-                                                           Foreground="#CFE0EC"
-                                                           FontSize="11"
-                                                           FontWeight="Bold" />
-                                            </Border>
-                                        </StackPanel>
-
-                                        <Grid ColumnDefinitions="*,8,*"
-                                              RowDefinitions="Auto,8,Auto,8,Auto,8,Auto">
-                                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="Samples"
-                                                               Classes="eyebrow" />
-                                                    <Border Background="#26323B"
-                                                            BorderBrush="#3C4F5E"
-                                                            BorderThickness="1"
-                                                            Padding="4,1"
-                                                            ToolTip.Tip="Number of frames used to estimate the static background model. Higher values improve stability but increase startup time."
-                                                            VerticalAlignment="Center">
-                                                        <TextBlock Text="i"
-                                                                   Foreground="#CFE0EC"
-                                                                   FontSize="11"
-                                                                   FontWeight="Bold" />
-                                                    </Border>
-                                                </StackPanel>
-                                                <TextBox x:Name="SampleCountTextBox"
-                                                         Text="20"
-                                                         Watermark="20" />
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Row="0" Grid.Column="2" Spacing="4">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="Bake Source"
-                                                               Classes="eyebrow" />
-                                                    <Border Background="#26323B"
-                                                            BorderBrush="#3C4F5E"
-                                                            BorderThickness="1"
-                                                            Padding="4,1"
-                                                            ToolTip.Tip="Choose whether the background model is baked from sampled source frames or from a single image file."
-                                                            VerticalAlignment="Center">
-                                                        <TextBlock Text="i"
-                                                                   Foreground="#CFE0EC"
-                                                                   FontSize="11"
-                                                                   FontWeight="Bold" />
-                                                    </Border>
-                                                </StackPanel>
-                                                <ComboBox x:Name="BakeSourceComboBox"
-                                                          ToolTip.Tip="Source used to create the baked background mask for subtraction."
-                                                          SelectedIndex="0">
-                                                    <ComboBoxItem Content="Samples from source" />
-                                                    <ComboBoxItem Content="Image file" />
-                                                </ComboBox>
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Spacing="4">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="Bake Image"
-                                                               Classes="eyebrow" />
-                                                    <Border Background="#26323B"
-                                                            BorderBrush="#3C4F5E"
-                                                            BorderThickness="1"
-                                                            Padding="4,1"
-                                                            ToolTip.Tip="Path to an image used as the background reference when Bake Source is set to Image file."
-                                                            VerticalAlignment="Center">
-                                                        <TextBlock Text="i"
-                                                                   Foreground="#CFE0EC"
-                                                                   FontSize="11"
-                                                                   FontWeight="Bold" />
-                                                    </Border>
-                                                </StackPanel>
-                                                <TextBox x:Name="BakeImagePathTextBox"
-                                                         IsReadOnly="True"
-                                                         Watermark="No image selected" />
-                                                <Grid ColumnDefinitions="*,8,*">
-                                                    <Button x:Name="SelectBakeImageButton"
-                                                            Grid.Column="0"
-                                                            Classes="ghost"
-                                                            ToolTip.Tip="Pick an image file to use as the baked background reference."
-                                                            Content="Select Image" />
-                                                    <Button x:Name="ClearBakeImageButton"
-                                                            Grid.Column="2"
-                                                            Classes="ghost"
-                                                            ToolTip.Tip="Remove the currently selected baked image path."
-                                                            Content="Clear Image" />
-                                                </Grid>
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Row="4" Grid.Column="0" Spacing="4">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="Threshold"
-                                                               Classes="eyebrow" />
-                                                    <Border Background="#26323B"
-                                                            BorderBrush="#3C4F5E"
-                                                            BorderThickness="1"
-                                                            Padding="4,1"
-                                                            ToolTip.Tip="Pixel-difference threshold for foreground detection. Lower values detect subtle motion; higher values ignore small changes/noise."
-                                                            VerticalAlignment="Center">
-                                                        <TextBlock Text="i"
-                                                                   Foreground="#CFE0EC"
-                                                                   FontSize="11"
-                                                                   FontWeight="Bold" />
-                                                    </Border>
-                                                </StackPanel>
-                                                <TextBox x:Name="ThresholdTextBox"
-                                                         Text="100"
-                                                         Watermark="100" />
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="Motion Area"
-                                                               Classes="eyebrow" />
-                                                    <Border Background="#26323B"
-                                                            BorderBrush="#3C4F5E"
-                                                            BorderThickness="1"
-                                                            Padding="4,1"
-                                                            ToolTip.Tip="Minimum contour/pixel area treated as valid motion. Increase to suppress tiny flicker and noise blobs."
-                                                            VerticalAlignment="Center">
-                                                        <TextBlock Text="i"
-                                                                   Foreground="#CFE0EC"
-                                                                   FontSize="11"
-                                                                   FontWeight="Bold" />
-                                                    </Border>
-                                                </StackPanel>
-                                                <TextBox x:Name="MotionAreaTextBox"
-                                                         Text="220"
-                                                         Watermark="220" />
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Row="6" Grid.Column="0" Spacing="4">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="Color Pixels"
-                                                               Classes="eyebrow" />
-                                                    <Border Background="#26323B"
-                                                            BorderBrush="#3C4F5E"
-                                                            BorderThickness="1"
-                                                            Padding="4,1"
-                                                            ToolTip.Tip="Minimum number of matched color pixels required before color-based detection is considered active."
-                                                            VerticalAlignment="Center">
-                                                        <TextBlock Text="i"
-                                                                   Foreground="#CFE0EC"
-                                                                   FontSize="11"
-                                                                   FontWeight="Bold" />
-                                                    </Border>
-                                                </StackPanel>
-                                                <TextBox x:Name="ColorMinPixelsTextBox"
-                                                         Text="40"
-                                                         Watermark="40" />
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Row="6" Grid.Column="2" Spacing="4">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="Morph Kernel"
-                                                               Classes="eyebrow" />
-                                                    <Border Background="#26323B"
-                                                            BorderBrush="#3C4F5E"
-                                                            BorderThickness="1"
-                                                            Padding="4,1"
-                                                            ToolTip.Tip="Kernel size for morphology (erode/dilate) cleanup. Larger kernels remove more speckle but can merge nearby regions."
-                                                            VerticalAlignment="Center">
-                                                        <TextBlock Text="i"
-                                                                   Foreground="#CFE0EC"
-                                                                   FontSize="11"
-                                                                   FontWeight="Bold" />
-                                                    </Border>
-                                                </StackPanel>
-                                                <TextBox x:Name="MorphKernelSizeTextBox"
-                                                         Text="3"
-                                                         Watermark="3" />
-                                            </StackPanel>
+                                    <Grid Grid.Row="2"
+                                          RowDefinitions="Auto,8,Auto,8,Auto,8,*">
+                                        <Grid Grid.Row="0"
+                                              ColumnDefinitions="*,6,*">
+                                            <Button x:Name="AddVideosButton"
+                                                    Grid.Column="0"
+                                                    Classes="primary"
+                                                    Content="Add Camera" />
+                                            <Button x:Name="RemoveSelectedButton"
+                                                    Grid.Column="2"
+                                                    Classes="destructive"
+                                                    Content="Remove" />
                                         </Grid>
 
-                                        <StackPanel Spacing="4">
-                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <TextBlock Text="Process Width"
-                                                           Classes="eyebrow" />
-                                                <Border Background="#26323B"
-                                                        BorderBrush="#3C4F5E"
-                                                        BorderThickness="1"
-                                                        Padding="4,1"
-                                                        ToolTip.Tip="Target frame width used for processing. Lower widths run faster; higher widths preserve detail at higher CPU cost."
-                                                        VerticalAlignment="Center">
-                                                    <TextBlock Text="i"
-                                                               Foreground="#CFE0EC"
-                                                               FontSize="11"
-                                                               FontWeight="Bold" />
-                                                </Border>
-                                            </StackPanel>
-                                            <TextBox x:Name="ProcessWidthTextBox"
-                                                     Text="640"
-                                                     Watermark="640" />
-                                        </StackPanel>
+                                        <Grid Grid.Row="2"
+                                              ColumnDefinitions="*,6,*">
+                                            <Button x:Name="MoveCameraUpButton"
+                                                    Grid.Column="0"
+                                                    Classes="ghost"
+                                                    Content="Move Up" />
+                                            <Button x:Name="MoveCameraDownButton"
+                                                    Grid.Column="2"
+                                                    Classes="ghost"
+                                                    Content="Move Down" />
+                                        </Grid>
 
-                                        <Border Classes="surfaceAlt"
-                                                Padding="8">
-                                            <StackPanel Spacing="8">
-                                                <TextBlock Text="Color Calibration"
+                                        <Border Grid.Row="4"
+                                                Classes="surfaceAlt"
+                                                Padding="10">
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="Camera Zone"
                                                            Classes="sectionTitle" />
-
-                                                <Grid ColumnDefinitions="*,8,*"
-                                                      RowDefinitions="Auto,8,Auto,8,Auto,8,Auto">
-                                                    <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Spacing="4">
-                                                        <TextBlock Text="Color"
-                                                                   Classes="eyebrow" />
-                                                        <ComboBox x:Name="CalibrationColorComboBox"
-                                                                  SelectedIndex="0">
-                                                            <ComboBoxItem Content="red" />
-                                                            <ComboBoxItem Content="green" />
-                                                            <ComboBoxItem Content="blue" />
-                                                            <ComboBoxItem Content="yellow" />
-                                                            <ComboBoxItem Content="white" />
-                                                            <ComboBoxItem Content="black" />
-                                                        </ComboBox>
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
-                                                        <TextBlock Text="Hue Min"
-                                                                   Classes="eyebrow" />
-                                                        <TextBox x:Name="HueLowerTextBox"
-                                                                 Text="0"
-                                                                 Watermark="0" />
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="2" Grid.Column="2" Spacing="4">
-                                                        <TextBlock Text="Hue Max"
-                                                                   Classes="eyebrow" />
-                                                        <TextBox x:Name="HueUpperTextBox"
-                                                                 Text="180"
-                                                                 Watermark="180" />
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="4" Grid.Column="0" Spacing="4">
-                                                        <TextBlock Text="Sat Min"
-                                                                   Classes="eyebrow" />
-                                                        <TextBox x:Name="SaturationLowerTextBox"
-                                                                 Text="0"
-                                                                 Watermark="0" />
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4">
-                                                        <TextBlock Text="Sat Max"
-                                                                   Classes="eyebrow" />
-                                                        <TextBox x:Name="SaturationUpperTextBox"
-                                                                 Text="255"
-                                                                 Watermark="255" />
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="6" Grid.Column="0" Spacing="4">
-                                                        <TextBlock Text="Val Min"
-                                                                   Classes="eyebrow" />
-                                                        <TextBox x:Name="ValueLowerTextBox"
-                                                                 Text="0"
-                                                                 Watermark="0" />
-                                                    </StackPanel>
-
-                                                    <StackPanel Grid.Row="6" Grid.Column="2" Spacing="4">
-                                                        <TextBlock Text="Val Max"
-                                                                   Classes="eyebrow" />
-                                                        <TextBox x:Name="ValueUpperTextBox"
-                                                                 Text="255"
-                                                                 Watermark="255" />
-                                                    </StackPanel>
-                                                </Grid>
+                                                <TextBlock Text="Bind selected source to a stable Camera Zone"
+                                                           Classes="muted"
+                                                           TextWrapping="Wrap" />
+                                                <CheckBox x:Name="CameraVisibilityCheckBox"
+                                                          Content="Camera Visibility"
+                                                          IsChecked="True" />
+                                                <CheckBox x:Name="VisionPipelineInclusionCheckBox"
+                                                          Content="Vision Pipeline Inclusion"
+                                                          IsChecked="True" />
+                                                <CheckBox x:Name="CameraDebugViewCheckBox"
+                                                          Content="Debug View"
+                                                          IsChecked="False" />
+                                                <TextBlock x:Name="UsbCameraSourceStatusText"
+                                                           Classes="muted"
+                                                           Text="USB Camera Source: -"
+                                                           TextWrapping="Wrap" />
+                                                <Button x:Name="RestartUsbCameraSourceButton"
+                                                        Classes="ghost"
+                                                        Content="Restart Camera Source" />
+                                                <StackPanel x:Name="UsbCaptureSettingsPanel"
+                                                            Spacing="6"
+                                                            IsVisible="False">
+                                                    <TextBlock Text="USB Capture Settings"
+                                                               Classes="sectionTitle" />
+                                                    <ComboBox x:Name="UsbResolutionComboBox" />
+                                                    <ComboBox x:Name="UsbTargetFpsComboBox" />
+                                                    <TextBlock x:Name="UsbCaptureModeStatusText"
+                                                               Classes="muted"
+                                                               TextWrapping="Wrap" />
+                                                    <Grid ColumnDefinitions="*,8,*">
+                                                        <Button x:Name="ApplyUsbCaptureSettingsButton"
+                                                                Grid.Column="0"
+                                                                Classes="primary"
+                                                                Content="Apply" />
+                                                        <Button x:Name="RevertUsbCaptureSettingsButton"
+                                                                Grid.Column="2"
+                                                                Classes="ghost"
+                                                                Content="Revert" />
+                                                    </Grid>
+                                                </StackPanel>
                                             </StackPanel>
                                         </Border>
-                                    </StackPanel>
-                                </ScrollViewer>
 
-                                <Grid Grid.Row="4"
-                                      ColumnDefinitions="*,8,*">
-                                    <Button x:Name="StartStopButton"
-                                            Grid.Column="0"
-                                            Classes="primary"
-                                            Content="Start"
-                                            FontWeight="Bold" />
-                                    <Button x:Name="OpenBakedMaskButton"
-                                            Grid.Column="2"
-                                            Classes="ghost"
-                                            Content="Open Baked Mask" />
+                                        <Border Grid.Row="6"
+                                                Classes="surfaceAlt"
+                                                Padding="10">
+                                            <Grid RowDefinitions="Auto,6,*,8,Auto">
+                                                <StackPanel Grid.Row="0"
+                                                            Spacing="2">
+                                                    <TextBlock Text="Processing"
+                                                               Classes="sectionTitle" />
+                                                    <TextBlock Text="Compact runtime tuning for selected camera"
+                                                               Classes="muted"
+                                                               TextWrapping="Wrap" />
+                                                    <DockPanel LastChildFill="False"
+                                                               Margin="0,2,0,0">
+                                                        <Border Background="#26323B"
+                                                                BorderBrush="#3C4F5E"
+                                                                BorderThickness="1"
+                                                                Padding="4,1"
+                                                                Margin="0,0,6,0">
+                                                            <TextBlock Text="i"
+                                                                       Foreground="#CFE0EC"
+                                                                       FontSize="11"
+                                                                       FontWeight="Bold" />
+                                                        </Border>
+                                                        <TextBlock Text="Hover labels for parameter help"
+                                                                   Classes="muted"
+                                                                   FontSize="11"
+                                                                   VerticalAlignment="Center" />
+                                                    </DockPanel>
+                                                </StackPanel>
+
+                                                <ScrollViewer Grid.Row="2"
+                                                              VerticalScrollBarVisibility="Auto">
+                                                    <StackPanel Spacing="8">
+                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                            <CheckBox x:Name="LoopPlaylistCheckBox"
+                                                                      Content="Loop camera videos"
+                                                                      IsChecked="True" />
+                                                            <Border Background="#26323B"
+                                                                    BorderBrush="#3C4F5E"
+                                                                    BorderThickness="1"
+                                                                    Padding="4,1"
+                                                                    ToolTip.Tip="When enabled, the selected video source restarts automatically after reaching the end."
+                                                                    VerticalAlignment="Center">
+                                                                <TextBlock Text="i"
+                                                                           Foreground="#CFE0EC"
+                                                                           FontSize="11"
+                                                                           FontWeight="Bold" />
+                                                            </Border>
+                                                        </StackPanel>
+
+                                                        <Grid ColumnDefinitions="*,8,*"
+                                                              RowDefinitions="Auto,8,Auto,8,Auto,8,Auto">
+                                                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+                                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                    <TextBlock Text="Samples"
+                                                                               Classes="eyebrow" />
+                                                                    <Border Background="#26323B"
+                                                                            BorderBrush="#3C4F5E"
+                                                                            BorderThickness="1"
+                                                                            Padding="4,1"
+                                                                            ToolTip.Tip="Number of frames used to estimate the static background model. Higher values improve stability but increase startup time."
+                                                                            VerticalAlignment="Center">
+                                                                        <TextBlock Text="i"
+                                                                                   Foreground="#CFE0EC"
+                                                                                   FontSize="11"
+                                                                                   FontWeight="Bold" />
+                                                                    </Border>
+                                                                </StackPanel>
+                                                                <TextBox x:Name="SampleCountTextBox"
+                                                                         Text="20"
+                                                                         Watermark="20" />
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Row="0" Grid.Column="2" Spacing="4">
+                                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                    <TextBlock Text="Bake Source"
+                                                                               Classes="eyebrow" />
+                                                                    <Border Background="#26323B"
+                                                                            BorderBrush="#3C4F5E"
+                                                                            BorderThickness="1"
+                                                                            Padding="4,1"
+                                                                            ToolTip.Tip="Choose whether the background model is baked from sampled source frames or from a single image file."
+                                                                            VerticalAlignment="Center">
+                                                                        <TextBlock Text="i"
+                                                                                   Foreground="#CFE0EC"
+                                                                                   FontSize="11"
+                                                                                   FontWeight="Bold" />
+                                                                    </Border>
+                                                                </StackPanel>
+                                                                <ComboBox x:Name="BakeSourceComboBox"
+                                                                          ToolTip.Tip="Source used to create the baked background mask for subtraction."
+                                                                          SelectedIndex="0">
+                                                                    <ComboBoxItem Content="Samples from source" />
+                                                                    <ComboBoxItem Content="Image file" />
+                                                                </ComboBox>
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Spacing="4">
+                                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                    <TextBlock Text="Bake Image"
+                                                                               Classes="eyebrow" />
+                                                                    <Border Background="#26323B"
+                                                                            BorderBrush="#3C4F5E"
+                                                                            BorderThickness="1"
+                                                                            Padding="4,1"
+                                                                            ToolTip.Tip="Path to an image used as the background reference when Bake Source is set to Image file."
+                                                                            VerticalAlignment="Center">
+                                                                        <TextBlock Text="i"
+                                                                                   Foreground="#CFE0EC"
+                                                                                   FontSize="11"
+                                                                                   FontWeight="Bold" />
+                                                                    </Border>
+                                                                </StackPanel>
+                                                                <TextBox x:Name="BakeImagePathTextBox"
+                                                                         IsReadOnly="True"
+                                                                         Watermark="No image selected" />
+                                                                <Grid ColumnDefinitions="*,8,*">
+                                                                    <Button x:Name="SelectBakeImageButton"
+                                                                            Grid.Column="0"
+                                                                            Classes="ghost"
+                                                                            ToolTip.Tip="Pick an image file to use as the baked background reference."
+                                                                            Content="Select Image" />
+                                                                    <Button x:Name="ClearBakeImageButton"
+                                                                            Grid.Column="2"
+                                                                            Classes="ghost"
+                                                                            ToolTip.Tip="Remove the currently selected baked image path."
+                                                                            Content="Clear Image" />
+                                                                </Grid>
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Row="4" Grid.Column="0" Spacing="4">
+                                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                    <TextBlock Text="Threshold"
+                                                                               Classes="eyebrow" />
+                                                                    <Border Background="#26323B"
+                                                                            BorderBrush="#3C4F5E"
+                                                                            BorderThickness="1"
+                                                                            Padding="4,1"
+                                                                            ToolTip.Tip="Pixel-difference threshold for foreground detection. Lower values detect subtle motion; higher values ignore small changes/noise."
+                                                                            VerticalAlignment="Center">
+                                                                        <TextBlock Text="i"
+                                                                                   Foreground="#CFE0EC"
+                                                                                   FontSize="11"
+                                                                                   FontWeight="Bold" />
+                                                                    </Border>
+                                                                </StackPanel>
+                                                                <TextBox x:Name="ThresholdTextBox"
+                                                                         Text="100"
+                                                                         Watermark="100" />
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4">
+                                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                    <TextBlock Text="Motion Area"
+                                                                               Classes="eyebrow" />
+                                                                    <Border Background="#26323B"
+                                                                            BorderBrush="#3C4F5E"
+                                                                            BorderThickness="1"
+                                                                            Padding="4,1"
+                                                                            ToolTip.Tip="Minimum contour/pixel area treated as valid motion. Increase to suppress tiny flicker and noise blobs."
+                                                                            VerticalAlignment="Center">
+                                                                        <TextBlock Text="i"
+                                                                                   Foreground="#CFE0EC"
+                                                                                   FontSize="11"
+                                                                                   FontWeight="Bold" />
+                                                                    </Border>
+                                                                </StackPanel>
+                                                                <TextBox x:Name="MotionAreaTextBox"
+                                                                         Text="220"
+                                                                         Watermark="220" />
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Row="6" Grid.Column="0" Spacing="4">
+                                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                    <TextBlock Text="Color Pixels"
+                                                                               Classes="eyebrow" />
+                                                                    <Border Background="#26323B"
+                                                                            BorderBrush="#3C4F5E"
+                                                                            BorderThickness="1"
+                                                                            Padding="4,1"
+                                                                            ToolTip.Tip="Minimum number of matched color pixels required before color-based detection is considered active."
+                                                                            VerticalAlignment="Center">
+                                                                        <TextBlock Text="i"
+                                                                                   Foreground="#CFE0EC"
+                                                                                   FontSize="11"
+                                                                                   FontWeight="Bold" />
+                                                                    </Border>
+                                                                </StackPanel>
+                                                                <TextBox x:Name="ColorMinPixelsTextBox"
+                                                                         Text="40"
+                                                                         Watermark="40" />
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Row="6" Grid.Column="2" Spacing="4">
+                                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                    <TextBlock Text="Morph Kernel"
+                                                                               Classes="eyebrow" />
+                                                                    <Border Background="#26323B"
+                                                                            BorderBrush="#3C4F5E"
+                                                                            BorderThickness="1"
+                                                                            Padding="4,1"
+                                                                            ToolTip.Tip="Kernel size for morphology (erode/dilate) cleanup. Larger kernels remove more speckle but can merge nearby regions."
+                                                                            VerticalAlignment="Center">
+                                                                        <TextBlock Text="i"
+                                                                                   Foreground="#CFE0EC"
+                                                                                   FontSize="11"
+                                                                                   FontWeight="Bold" />
+                                                                    </Border>
+                                                                </StackPanel>
+                                                                <TextBox x:Name="MorphKernelSizeTextBox"
+                                                                         Text="3"
+                                                                         Watermark="3" />
+                                                            </StackPanel>
+                                                        </Grid>
+
+                                                        <StackPanel Spacing="4">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <TextBlock Text="Process Width"
+                                                                           Classes="eyebrow" />
+                                                                <Border Background="#26323B"
+                                                                        BorderBrush="#3C4F5E"
+                                                                        BorderThickness="1"
+                                                                        Padding="4,1"
+                                                                        ToolTip.Tip="Target frame width used for processing. Lower widths run faster; higher widths preserve detail at higher CPU cost."
+                                                                        VerticalAlignment="Center">
+                                                                    <TextBlock Text="i"
+                                                                               Foreground="#CFE0EC"
+                                                                               FontSize="11"
+                                                                               FontWeight="Bold" />
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <TextBox x:Name="ProcessWidthTextBox"
+                                                                     Text="640"
+                                                                     Watermark="640" />
+                                                        </StackPanel>
+
+                                                        <Border Classes="surfaceAlt"
+                                                                Padding="8">
+                                                            <StackPanel Spacing="8">
+                                                                <TextBlock Text="Color Calibration"
+                                                                           Classes="sectionTitle" />
+
+                                                                <Grid ColumnDefinitions="*,8,*"
+                                                                      RowDefinitions="Auto,8,Auto,8,Auto,8,Auto">
+                                                                    <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Spacing="4">
+                                                                        <TextBlock Text="Color"
+                                                                                   Classes="eyebrow" />
+                                                                        <ComboBox x:Name="CalibrationColorComboBox"
+                                                                                  SelectedIndex="0">
+                                                                            <ComboBoxItem Content="red" />
+                                                                            <ComboBoxItem Content="green" />
+                                                                            <ComboBoxItem Content="blue" />
+                                                                            <ComboBoxItem Content="yellow" />
+                                                                            <ComboBoxItem Content="white" />
+                                                                            <ComboBoxItem Content="black" />
+                                                                        </ComboBox>
+                                                                    </StackPanel>
+
+                                                                    <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
+                                                                        <TextBlock Text="Hue Min"
+                                                                                   Classes="eyebrow" />
+                                                                        <TextBox x:Name="HueLowerTextBox"
+                                                                                 Text="0"
+                                                                                 Watermark="0" />
+                                                                    </StackPanel>
+
+                                                                    <StackPanel Grid.Row="2" Grid.Column="2" Spacing="4">
+                                                                        <TextBlock Text="Hue Max"
+                                                                                   Classes="eyebrow" />
+                                                                        <TextBox x:Name="HueUpperTextBox"
+                                                                                 Text="180"
+                                                                                 Watermark="180" />
+                                                                    </StackPanel>
+
+                                                                    <StackPanel Grid.Row="4" Grid.Column="0" Spacing="4">
+                                                                        <TextBlock Text="Sat Min"
+                                                                                   Classes="eyebrow" />
+                                                                        <TextBox x:Name="SaturationLowerTextBox"
+                                                                                 Text="0"
+                                                                                 Watermark="0" />
+                                                                    </StackPanel>
+
+                                                                    <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4">
+                                                                        <TextBlock Text="Sat Max"
+                                                                                   Classes="eyebrow" />
+                                                                        <TextBox x:Name="SaturationUpperTextBox"
+                                                                                 Text="255"
+                                                                                 Watermark="255" />
+                                                                    </StackPanel>
+
+                                                                    <StackPanel Grid.Row="6" Grid.Column="0" Spacing="4">
+                                                                        <TextBlock Text="Val Min"
+                                                                                   Classes="eyebrow" />
+                                                                        <TextBox x:Name="ValueLowerTextBox"
+                                                                                 Text="0"
+                                                                                 Watermark="0" />
+                                                                    </StackPanel>
+
+                                                                    <StackPanel Grid.Row="6" Grid.Column="2" Spacing="4">
+                                                                        <TextBlock Text="Val Max"
+                                                                                   Classes="eyebrow" />
+                                                                        <TextBox x:Name="ValueUpperTextBox"
+                                                                                 Text="255"
+                                                                                 Watermark="255" />
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </ScrollViewer>
+
+                                                <Grid Grid.Row="4"
+                                                      ColumnDefinitions="*,8,*">
+                                                    <Button x:Name="StartStopButton"
+                                                            Grid.Column="0"
+                                                            Classes="primary"
+                                                            Content="Start"
+                                                            FontWeight="Bold" />
+                                                    <Button x:Name="OpenBakedMaskButton"
+                                                            Grid.Column="2"
+                                                            Classes="ghost"
+                                                            Content="Open Baked Mask" />
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
                                 </Grid>
-                            </Grid>
-                        </Border>
-                    </Grid>
-                    </Grid>
-                    </ScrollViewer>
-                </Grid>
+                            </ScrollViewer>
+                        </Grid>
                     </Border>
                 </SplitView.Pane>
 
                 <Border Classes="surface"
                         Padding="10">
-                <Grid RowDefinitions="Auto,8,Auto,8,*">
-                    <Border Grid.Row="0"
-                            Classes="surfaceAlt"
-                            Padding="8">
-                        <Grid ColumnDefinitions="*,8,*,Auto">
-                            <TextBlock x:Name="CurrentVideoText"
-                                       Grid.Column="0"
-                                       Text="Current camera/source: -"
-                                       VerticalAlignment="Center"
-                                       Foreground="#E8F0F5"
-                                       FontWeight="SemiBold"
-                                       TextWrapping="Wrap" />
+                    <Grid RowDefinitions="Auto,8,Auto,8,*">
+                        <Border Grid.Row="0"
+                                Classes="surfaceAlt"
+                                Padding="8">
+                            <Grid ColumnDefinitions="*,8,*,Auto">
+                                <TextBlock x:Name="CurrentVideoText"
+                                           Grid.Column="0"
+                                           Text="Current camera/source: -"
+                                           VerticalAlignment="Center"
+                                           Foreground="#E8F0F5"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap" />
 
-                            <TextBlock x:Name="StatusText"
-                                       Grid.Column="2"
-                                       Text="Status: ready"
-                                       Classes="muted"
-                                       VerticalAlignment="Center"
-                                       TextWrapping="Wrap" />
+                                <TextBlock x:Name="StatusText"
+                                           Grid.Column="2"
+                                           Text="Status: ready"
+                                           Classes="muted"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap" />
 
-                            <Grid Grid.Column="3"
-                                  ColumnDefinitions="Auto,6,Auto,6,Auto">
-                                <Button Grid.Column="0"
-                                        x:Name="PreviousVideoButton"
-                                        Classes="ghost"
-                                        Content="Previous" />
-                                <Button Grid.Column="2"
-                                        x:Name="NextVideoButton"
-                                        Classes="ghost"
-                                        Content="Next" />
+                                <Grid Grid.Column="3"
+                                      ColumnDefinitions="Auto,6,Auto,6,Auto">
+                                    <Button Grid.Column="0"
+                                            x:Name="PreviousVideoButton"
+                                            Classes="ghost"
+                                            Content="Previous" />
+                                    <Button Grid.Column="2"
+                                            x:Name="NextVideoButton"
+                                            Classes="ghost"
+                                            Content="Next" />
+                                </Grid>
                             </Grid>
-                        </Grid>
-                    </Border>
+                        </Border>
 
-                    <UniformGrid x:Name="CameraTileGrid"
-                                 Grid.Row="4"
-                                 Rows="2"
-                                 Columns="2" />
-                </Grid>
+                        <UniformGrid x:Name="CameraTileGrid"
+                                     Grid.Row="4"
+                                     Rows="2"
+                                     Columns="2" />
+                    </Grid>
                 </Border>
             </SplitView>
 
             <Expander x:Name="RuntimeLogExpander"
-                       Grid.Row="1"
-                       IsExpanded="False"
+                      Grid.Row="1"
+                      IsExpanded="False"
                       Header="Runtime Log"
                       Margin="0,8,0,0"
                       FontWeight="SemiBold">
@@ -662,7 +664,7 @@
                 Classes="surface"
                 IsVisible="False"
                 Padding="16">
-            <Grid RowDefinitions="Auto,12,Auto,12,Auto,12,*"
+            <Grid RowDefinitions="Auto,12,Auto,12,Auto,12,Auto,12,*"
                   ColumnDefinitions="360,16,*">
                 <StackPanel Grid.Row="0"
                             Grid.Column="0"
@@ -700,7 +702,41 @@
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="2"
+                <Border Grid.Row="4"
+                        Grid.Column="0"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="PLC Connection"
+                                   Classes="sectionTitle" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Base URL"
+                                       Classes="eyebrow" />
+                            <TextBlock x:Name="SettingsPlcBaseUrlPolicyText"
+                                       Classes="muted" />
+                        </StackPanel>
+                        <TextBox x:Name="SettingsPlcBaseUrlTextBox"
+                                 Watermark="https://192.168.0.190" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="User"
+                                       Classes="eyebrow" />
+                            <TextBlock x:Name="SettingsPlcUserPolicyText"
+                                       Classes="muted" />
+                        </StackPanel>
+                        <TextBox x:Name="SettingsPlcUserTextBox"
+                                 Watermark="admin" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Password"
+                                       Classes="eyebrow" />
+                            <TextBlock x:Name="SettingsPlcPasswordPolicyText"
+                                       Classes="muted" />
+                        </StackPanel>
+                        <TextBox x:Name="SettingsPlcPasswordTextBox"
+                                 Watermark="Sander001!" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="6"
                         Grid.Column="2"
                         Classes="surfaceAlt"
                         Padding="10">
@@ -721,7 +757,7 @@
                     </StackPanel>
                 </Border>
 
-                <Grid Grid.Row="4"
+                <Grid Grid.Row="8"
                       Grid.Column="0"
                       ColumnDefinitions="*,8,*">
                     <Button Grid.Column="0"
@@ -732,6 +768,110 @@
                             x:Name="DiscardSettingsButton"
                             Classes="ghost"
                             Content="Discard Changes" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <Border x:Name="PlcWorkspacePanel"
+                Grid.Row="1"
+                Classes="surface"
+                IsVisible="False"
+                Padding="16">
+            <Grid RowDefinitions="Auto,12,Auto,12,Auto,12,Auto,12,*"
+                  ColumnDefinitions="360,16,*">
+                <StackPanel Grid.Row="0"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="3"
+                            Spacing="4">
+                    <TextBlock Text="PLC Workspace"
+                               Classes="sectionTitle" />
+                    <TextBlock Text="Test PLC connection and read/write variables."
+                               Classes="muted" />
+                </StackPanel>
+
+                <Border Grid.Row="2"
+                        Grid.Column="0"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Connection"
+                                   Classes="sectionTitle" />
+                        <Button x:Name="PlcConnectButton"
+                                Content="Test Connection"
+                                Classes="primary" />
+                        <TextBlock x:Name="PlcConnectionStatusText"
+                                   Text="Not connected"
+                                   Classes="muted" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="4"
+                        Grid.Column="0"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Read Variable"
+                                   Classes="sectionTitle" />
+                        <TextBox x:Name="PlcReadVariableTextBox"
+                                 Watermark='"Data".random_nr' />
+                        <ComboBox x:Name="PlcReadTypeComboBox"
+                                  SelectedIndex="0">
+                            <ComboBoxItem Content="Int16" />
+                            <ComboBoxItem Content="Int32" />
+                            <ComboBoxItem Content="Real" />
+                            <ComboBoxItem Content="Bool" />
+                        </ComboBox>
+                        <Button x:Name="PlcReadButton"
+                                Content="Read"
+                                IsEnabled="False" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="6"
+                        Grid.Column="0"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Write Variable"
+                                   Classes="sectionTitle" />
+                        <TextBox x:Name="PlcWriteVariableTextBox"
+                                 Watermark='"Data".random_nr' />
+                        <TextBox x:Name="PlcWriteValueTextBox"
+                                 Watermark="42" />
+                        <ComboBox x:Name="PlcWriteTypeComboBox"
+                                  SelectedIndex="0">
+                            <ComboBoxItem Content="Int16" />
+                            <ComboBoxItem Content="Int32" />
+                            <ComboBoxItem Content="Real" />
+                            <ComboBoxItem Content="Bool" />
+                        </ComboBox>
+                        <Button x:Name="PlcWriteButton"
+                                Content="Write"
+                                IsEnabled="False" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="2"
+                        Grid.Column="2"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Operation Log"
+                                   Classes="sectionTitle" />
+                        <TextBlock x:Name="PlcOperationLogText"
+                                   Text="No operations yet."
+                                   Classes="muted"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Grid Grid.Row="8"
+                      Grid.Column="0"
+                      ColumnDefinitions="*,8,*">
+                    <Button Grid.Column="0"
+                            x:Name="PlcClearLogButton"
+                            Content="Clear Log"
+                            Classes="ghost" />
                 </Grid>
             </Grid>
         </Border>

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using ObjectTracker.UI.Desktop.Plc.Model;
 
 namespace ObjectTracker.UI.Desktop;
 
@@ -42,7 +43,8 @@ public sealed class AppSettingsStore
 
         return new AppSettings(
             GridColumns: Math.Clamp(dto.GridColumns, AppSettings.MinGridColumns, AppSettings.MaxGridColumns),
-            GridRows: Math.Clamp(dto.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows));
+            GridRows: Math.Clamp(dto.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows),
+            Plc: ReadPlcSettings(dto.Plc));
     }
 
     public void Save(AppSettings settings)
@@ -50,7 +52,8 @@ public sealed class AppSettingsStore
         var dto = new AppSettingsDto
         {
             GridColumns = Math.Clamp(settings.GridColumns, AppSettings.MinGridColumns, AppSettings.MaxGridColumns),
-            GridRows = Math.Clamp(settings.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows)
+            GridRows = Math.Clamp(settings.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows),
+            Plc = WritePlcSettings(settings.Plc)
         };
 
         var directory = Path.GetDirectoryName(filePath);
@@ -63,15 +66,45 @@ public sealed class AppSettingsStore
         File.WriteAllText(filePath, json);
     }
 
+    private static PlcSettings ReadPlcSettings(PlcSettingsDto? dto)
+    {
+        if (dto is null) return PlcSettings.Default;
+        return new PlcSettings(
+            BaseUrl: dto.BaseUrl ?? PlcSettings.DefaultBaseUrl,
+            User: dto.User ?? PlcSettings.DefaultUser,
+            Password: dto.Password ?? PlcSettings.DefaultPassword);
+    }
+
+    private static PlcSettingsDto WritePlcSettings(PlcSettings settings)
+    {
+        return new PlcSettingsDto
+        {
+            BaseUrl = settings.BaseUrl,
+            User = settings.User,
+            Password = settings.Password
+        };
+    }
+
     private sealed class AppSettingsDto
     {
         public int GridColumns { get; set; } = AppSettings.DefaultColumns;
 
         public int GridRows { get; set; } = AppSettings.DefaultRows;
+
+        public PlcSettingsDto? Plc { get; set; }
+    }
+
+    private sealed class PlcSettingsDto
+    {
+        public string? BaseUrl { get; set; }
+
+        public string? User { get; set; }
+
+        public string? Password { get; set; }
     }
 }
 
-public readonly record struct AppSettings(int GridColumns, int GridRows)
+public readonly record struct AppSettings(int GridColumns, int GridRows, PlcSettings Plc)
 {
     public const int DefaultColumns = 32;
     public const int DefaultRows = 18;
@@ -80,5 +113,16 @@ public readonly record struct AppSettings(int GridColumns, int GridRows)
     public const int MinGridRows = 2;
     public const int MaxGridRows = 200;
 
-    public static AppSettings Default => new(DefaultColumns, DefaultRows);
+    public static AppSettings Default => new(DefaultColumns, DefaultRows, PlcSettings.Default);
+}
+
+public readonly record struct PlcSettings(string BaseUrl, string User, string Password)
+{
+    public const string DefaultBaseUrl = "https://192.168.0.190";
+    public const string DefaultUser = "admin";
+    public const string DefaultPassword = "Sander001!";
+
+    public static PlcSettings Default => new(DefaultBaseUrl, DefaultUser, DefaultPassword);
+
+    public PlcClientConfig ToClientConfig() => new(BaseUrl, User, Password);
 }

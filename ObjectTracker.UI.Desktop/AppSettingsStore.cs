@@ -68,7 +68,8 @@ public sealed class AppSettingsStore
 
     private static PlcSettings ReadPlcSettings(PlcSettingsDto? dto)
     {
-        if (dto is null) return PlcSettings.Default;
+        if (dto is null)
+            return PlcSettings.Default;
         return new PlcSettings(
             BaseUrl: dto.BaseUrl ?? PlcSettings.DefaultBaseUrl,
             User: dto.User ?? PlcSettings.DefaultUser,

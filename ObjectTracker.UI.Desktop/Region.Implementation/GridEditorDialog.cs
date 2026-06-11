@@ -1,5 +1,4 @@
 using System;
-using ObjectTracker.UI.Desktop.Region.Model;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -12,6 +11,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using ObjectTracker.UI.Desktop.Region.Model;
 
 namespace ObjectTracker.UI.Desktop.Region.Implementation;
 
@@ -32,7 +32,7 @@ public partial class GridEditorDialog : Window
     private readonly Dictionary<(int Col, int Row), Rectangle> _cellRectangles = new();
     private bool _isDragging = false;
     private bool _addMode = true;
-    private GridEditorDialogViewModel vm;
+    private readonly GridEditorDialogViewModel vm;
 
     public GridEditorDialog(
         int gridColumns,

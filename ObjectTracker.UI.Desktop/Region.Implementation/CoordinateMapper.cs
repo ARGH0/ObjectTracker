@@ -14,8 +14,8 @@ public sealed class CoordinateMapper : ObjectTracker.UI.Desktop.Region.Contracts
 
     public GridCell MapPixelToCell(float pixelX, float pixelY, int gridCols, int gridRows, int imageWidth, int imageHeight)
     {
-        var col = (int)Math.Floor(pixelX * gridCols / (float)imageWidth);
-        var row = (int)Math.Floor(pixelY * gridRows / (float)imageHeight);
+        var col = (int)Math.Floor(pixelX * gridCols / imageWidth);
+        var row = (int)Math.Floor(pixelY * gridRows / imageHeight);
         return new GridCell(col, row);
     }
 }

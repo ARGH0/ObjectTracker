@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
-using GridCell = ObjectTracker.UI.Desktop.Region.Model.GridCell;
 using ObjectTracker.UI.Desktop.Region.Implementation;
 using Xunit;
+using GridCell = ObjectTracker.UI.Desktop.Region.Model.GridCell;
 
 namespace ObjectTracker.UI.Desktop.Tests;
 

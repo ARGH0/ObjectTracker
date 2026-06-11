@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using ObjectTracker.UI.Desktop.Region.Contracts;
 using ObjectTracker.UI.Desktop.Region.Implementation;
+using Xunit;
 using CameraZoneId = ObjectTracker.UI.Desktop.Region.Model.CameraZoneId;
 using GridCell = ObjectTracker.UI.Desktop.Region.Model.GridCell;
 using RegionDefinition = ObjectTracker.UI.Desktop.Region.Model.RegionDefinition;
 using RegionType = ObjectTracker.UI.Desktop.Region.Model.RegionType;
-using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;
 

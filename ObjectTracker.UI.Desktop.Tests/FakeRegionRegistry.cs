@@ -32,7 +32,8 @@ public sealed class FakeRegionRegistry : ObjectTracker.UI.Desktop.Region.Contrac
 
     public RegionDefinition Create(RegionDefinition region)
     {
-        if (region.Id == Guid.Empty) region = region with { Id = Guid.NewGuid() };
+        if (region.Id == Guid.Empty)
+            region = region with { Id = Guid.NewGuid() };
         _regions[region.Id] = region;
         RegionCreated?.Invoke(region);
         return region;
@@ -50,7 +51,8 @@ public sealed class FakeRegionRegistry : ObjectTracker.UI.Desktop.Region.Contrac
     public bool Delete(Guid regionId)
     {
         var removed = _regions.Remove(regionId);
-        if (removed) RegionDeleted?.Invoke(regionId);
+        if (removed)
+            RegionDeleted?.Invoke(regionId);
         return removed;
     }
 }

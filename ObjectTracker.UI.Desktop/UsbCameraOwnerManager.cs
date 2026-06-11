@@ -131,7 +131,8 @@ public sealed class UsbCameraOwnerManager : IAsyncDisposable
     {
         lock (sync)
         {
-            if (!owners.TryGetValue(key, out var owner)) return;
+            if (!owners.TryGetValue(key, out var owner))
+                return;
             owner.ReleaseLease();
         }
     }

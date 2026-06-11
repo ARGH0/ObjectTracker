@@ -1,11 +1,11 @@
 using System;
-using ObjectTracker.UI.Desktop.Region.Model;
 using System.Collections.Generic;
 using System.Linq;
+using ObjectTracker.UI.Desktop.Region.Model;
+using EnrichedTrainState = ObjectTracker.UI.Desktop.Region.Contracts.EnrichedTrainState;
 using RegionDefinition = ObjectTracker.UI.Desktop.Region.Model.RegionDefinition;
 using RegionType = ObjectTracker.UI.Desktop.Region.Model.RegionType;
 using TrainDetection = ObjectTracker.UI.Desktop.Region.Contracts.TrainDetection;
-using EnrichedTrainState = ObjectTracker.UI.Desktop.Region.Contracts.EnrichedTrainState;
 
 namespace ObjectTracker.UI.Desktop.Region.Implementation;
 
@@ -27,8 +27,8 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
         var imageHeight = detection.ImageHeight > 0 ? detection.ImageHeight : 480;
         var cell = _mapper.MapPixelToCell(detection.PixelX, detection.PixelY, detection.GridCols, detection.GridRows, imageWidth, imageHeight);
         var matchingRegions = regions.Where(r => r.Cells.Any(c => c.Column == cell.Column && c.Row == cell.Row)).ToList();
-        var resolved = matchingRegions.Any() ? _priorityResolver.ResolveAll(matchingRegions).ToList() : new List<(RegionDefinition, RegionType)>();
-        var activeType = resolved.Any() ? (RegionType?)resolved.First().Item2 : null;
+        var resolved = matchingRegions.Count != 0 ? _priorityResolver.ResolveAll(matchingRegions).ToList() : new List<(RegionDefinition, RegionType)>();
+        var activeType = resolved.Count != 0 ? (RegionType?)resolved.First().Item2 : null;
 
         float confidence = detection.Confidence;
         if (activeType == RegionType.HighProbabilityRailRegion && resolved.Count > 0)

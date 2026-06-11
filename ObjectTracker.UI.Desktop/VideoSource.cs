@@ -19,7 +19,7 @@ internal sealed class VideoFileSource : IVideoSource
     private readonly string _label;
     private bool _disposed;
     private long _frameVersion;
-    private double _fps;
+    private readonly double _fps;
     private DateTime _lastReadTime;
 
     public VideoFileSource(string path, string label)
@@ -31,7 +31,8 @@ internal sealed class VideoFileSource : IVideoSource
 
     public UsbFrameSnapshot? ReadLatestFrame()
     {
-        if (_disposed) return null;
+        if (_disposed)
+            return null;
 
         using var frame = new Mat();
         if (!_capture.Read(frame) || frame.Empty())
@@ -83,7 +84,8 @@ internal sealed class UsbVideoSource(UsbCameraOwnerManager manager, UsbCameraKey
 
     public UsbFrameSnapshot? ReadLatestFrame()
     {
-        if (_disposed) return null;
+        if (_disposed)
+            return null;
         return _manager.GetLatestFrame(_key);
     }
 

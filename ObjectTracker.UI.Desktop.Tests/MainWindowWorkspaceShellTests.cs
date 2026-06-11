@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
+using Avalonia.Controls;
 using ObjectTracker.UI.Desktop;
 using ObjectTracker.UI.Desktop.Region.Model;
-using Avalonia.Controls;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;

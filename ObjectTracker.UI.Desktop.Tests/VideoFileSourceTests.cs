@@ -77,6 +77,8 @@ public sealed class VideoFileSourceTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_tempDir, true); } catch { }
+        try
+        { Directory.Delete(_tempDir, true); }
+        catch { }
     }
 }

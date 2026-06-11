@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
-using RegionDefinition = ObjectTracker.UI.Desktop.Region.Model.RegionDefinition;
-using RegionType = ObjectTracker.UI.Desktop.Region.Model.RegionType;
-using RegionGridCell = ObjectTracker.UI.Desktop.Region.Model.GridCell;
-using CameraZoneId = ObjectTracker.UI.Desktop.Region.Model.CameraZoneId;
 using ObjectTracker.UI.Desktop.Region.Contracts;
 using ObjectTracker.UI.Desktop.Region.Implementation;
 using Xunit;
+using CameraZoneId = ObjectTracker.UI.Desktop.Region.Model.CameraZoneId;
+using RegionDefinition = ObjectTracker.UI.Desktop.Region.Model.RegionDefinition;
+using RegionGridCell = ObjectTracker.UI.Desktop.Region.Model.GridCell;
+using RegionType = ObjectTracker.UI.Desktop.Region.Model.RegionType;
 
 namespace ObjectTracker.UI.Desktop.Tests;
 

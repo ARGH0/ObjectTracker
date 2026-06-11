@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using TrainDetection = ObjectTracker.UI.Desktop.Region.Contracts.TrainDetection;
 using EnrichedTrainState = ObjectTracker.UI.Desktop.Region.Contracts.EnrichedTrainState;
+using TrainDetection = ObjectTracker.UI.Desktop.Region.Contracts.TrainDetection;
 
 namespace ObjectTracker.UI.Desktop.Region.Implementation;
 

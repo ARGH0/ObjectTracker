@@ -578,7 +578,7 @@ public sealed class RegionRegistryTests
             for (int i = 0; i < 20; i++)
             {
                 var all = registry.GetAll().ToList();
-                if (all.Any())
+                if (all.Count != 0)
                 {
                     registry.Delete(all[0].Id);
                 }

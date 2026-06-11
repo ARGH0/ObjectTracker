@@ -4,8 +4,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using ObjectTracker.UI.Desktop.Region.Contracts;
 using ObjectTracker.UI.Desktop.Region.Implementation;
-using GridCell = ObjectTracker.UI.Desktop.Region.Model.GridCell;
 using Xunit;
+using GridCell = ObjectTracker.UI.Desktop.Region.Model.GridCell;
 
 namespace ObjectTracker.UI.Desktop.Tests;
 

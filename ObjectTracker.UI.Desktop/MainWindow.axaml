@@ -19,7 +19,7 @@
         <!-- Compact title bar / branding strip -->
         <Border Grid.Row="0"
                 Background="Transparent"
-                wnd:AppWindow.AllowInteractionInTitleBar="False">
+                wnd:AppWindow.AllowInteractionInTitleBar="True">
             <Menu DockPanel.Dock="Right"
                   Margin="0,0,12,0"
                   VerticalAlignment="Center"

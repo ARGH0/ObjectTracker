@@ -67,39 +67,6 @@ public sealed class BackgroundEstimationEngineUnifiedSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task ProcessAsync_WithUsbVideoSource_ProcessesFramesIdentically()
-    {
-        var backend = new FakeUsbCaptureBackend(framesPerSession: 10);
-        await using var manager = new UsbCameraOwnerManager(backend);
-        var key = new UsbCameraKey(0, "ANY");
-
-        manager.AddConsumer(key, UsbCaptureSettings.Default, CancellationToken.None);
-        await using var source = new UsbVideoSource(manager, key);
-
-        var engine = new BackgroundEstimationEngine();
-        var processedFrames = 0;
-
-        var result = await engine.ProcessAsync(
-            source,
-            sampleCount: 3,
-            threshold: 25,
-            BackgroundEstimationEngine.ProcessingOptions.Default,
-            bakeImagePath: null,
-            onFrame: _ =>
-            {
-                processedFrames++;
-                return Task.CompletedTask;
-            },
-            onStatus: _ => Task.CompletedTask,
-            getLiveTuning: null,
-            shouldStopEarly: () => processedFrames >= 2,
-            CancellationToken.None);
-
-        Assert.True(result.Success);
-        Assert.True(processedFrames >= 2);
-    }
-
-    [Fact]
     public async Task ProcessAsync_WithNoFrames_ReturnsFailure()
     {
         var engine = new BackgroundEstimationEngine();
@@ -147,54 +114,9 @@ public sealed class BackgroundEstimationEngineUnifiedSourceTests : IDisposable
         catch { }
     }
 
-    private sealed class FakeUsbCaptureBackend(int framesPerSession = 1) : IUsbCaptureBackend
-    {
-        public ValueTask<IUsbCaptureSession> OpenAsync(UsbCameraKey key, UsbCaptureSettings settings, CancellationToken cancellationToken)
-        {
-            return ValueTask.FromResult<IUsbCaptureSession>(new FakeSession(key, framesPerSession));
-        }
-    }
-
-    private sealed class FakeSession(UsbCameraKey key, int framesPerSession) : IUsbCaptureSession
-    {
-        private int _returned;
-        private readonly UsbCapturedFrame? _firstFrame = CreateFirstFrame();
-
-        private static UsbCapturedFrame? CreateFirstFrame()
-        {
-            using var frame = new Mat(2, 2, MatType.CV_8UC3, Scalar.All(50));
-            Cv2.ImEncode(".jpg", frame, out var jpeg);
-            return new UsbCapturedFrame("usb:0:ANY", 1, 2, 2, jpeg);
-        }
-
-        public ValueTask<UsbCapturedFrame?> ReadFrameAsync(CancellationToken cancellationToken)
-        {
-            if (_returned >= framesPerSession)
-            {
-                UsbCapturedFrame? result = null;
-                return new ValueTask<UsbCapturedFrame?>(result);
-            }
-
-            _returned++;
-            if (_firstFrame is not null && _returned == 1)
-            {
-                return new ValueTask<UsbCapturedFrame?>(_firstFrame);
-            }
-
-            using var frame = new Mat(2, 2, MatType.CV_8UC3, Scalar.All(_returned * 50));
-            Cv2.ImEncode(".jpg", frame, out var jpeg);
-            return new ValueTask<UsbCapturedFrame?>(new UsbCapturedFrame(
-                UsbCameraSourceId.Format(key),
-                _returned * 100,
-                2, 2, jpeg));
-        }
-
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-    }
-
     private sealed class EmptyVideoSource(string label) : IVideoSource
     {
-        public UsbFrameSnapshot? ReadLatestFrame() => null;
+        public VideoFrameSnapshot? ReadLatestFrame() => null;
         public string SourceLabel => label;
         public int? Fps => null;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

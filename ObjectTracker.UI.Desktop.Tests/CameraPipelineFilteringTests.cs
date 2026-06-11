@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using ObjectTracker.UI.Desktop;
-using OpenCvSharp;
 using Xunit;
 
 namespace ObjectTracker.UI.Desktop.Tests;
@@ -51,4 +50,5 @@ public sealed class CameraPipelineFilteringTests
         Assert.Equal(2, included.Count);
         Assert.Equal(new[] { "cam-1", "cam-2" }, included.Select(c => c.Id).OrderBy(id => id));
     }
+
 }

@@ -8,7 +8,6 @@ namespace ObjectTracker.UI.Desktop;
 
 public enum CameraTileFeedKind
 {
-    Usb,
     VideoFile
 }
 

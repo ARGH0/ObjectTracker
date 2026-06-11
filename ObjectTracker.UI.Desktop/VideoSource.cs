@@ -7,11 +7,24 @@ namespace ObjectTracker.UI.Desktop;
 
 internal interface IVideoSource : IAsyncDisposable
 {
-    UsbFrameSnapshot? ReadLatestFrame();
+    VideoFrameSnapshot? ReadLatestFrame();
+
+    ValueTask<VideoFrameSnapshot?> ReadFrameAsync(CancellationToken cancellationToken)
+    {
+        return ValueTask.FromResult(ReadLatestFrame());
+    }
 
     string SourceLabel { get; }
     int? Fps { get; }
 }
+
+internal readonly record struct VideoFrameSnapshot(
+    string SourceId,
+    long TimestampUtcMs,
+    int Width,
+    int Height,
+    byte[] EncodedJpeg,
+    long FrameVersion);
 
 internal sealed class VideoFileSource : IVideoSource
 {
@@ -29,7 +42,7 @@ internal sealed class VideoFileSource : IVideoSource
         _fps = _capture.IsOpened() ? _capture.Fps : 0;
     }
 
-    public UsbFrameSnapshot? ReadLatestFrame()
+    public VideoFrameSnapshot? ReadLatestFrame()
     {
         if (_disposed)
             return null;
@@ -42,7 +55,7 @@ internal sealed class VideoFileSource : IVideoSource
         }
 
         Cv2.ImEncode(".jpg", frame, out var jpeg);
-        var snapshot = new UsbFrameSnapshot(
+        var snapshot = new VideoFrameSnapshot(
             _label,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             frame.Width,
@@ -74,31 +87,4 @@ internal sealed class VideoFileSource : IVideoSource
 
     public string SourceLabel => _label;
     public int? Fps => _fps > 0 ? (int)_fps : null;
-}
-
-internal sealed class UsbVideoSource(UsbCameraOwnerManager manager, UsbCameraKey key) : IVideoSource
-{
-    private readonly UsbCameraOwnerManager _manager = manager;
-    private readonly UsbCameraKey _key = key;
-    private bool _disposed;
-
-    public UsbFrameSnapshot? ReadLatestFrame()
-    {
-        if (_disposed)
-            return null;
-        return _manager.GetLatestFrame(_key);
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        if (!_disposed)
-        {
-            _disposed = true;
-            _ = _manager.ReleaseAsync(_key);
-        }
-        return ValueTask.CompletedTask;
-    }
-
-    public string SourceLabel => $"USB camera {key.CameraIndex}";
-    public int? Fps => _manager.GetActualFps(_key) is { } fps ? (int)fps : null;
 }

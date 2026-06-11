@@ -24,9 +24,6 @@ using ObjectTracker.UI.Desktop.Plc.Implementation;
 using ObjectTracker.UI.Desktop.Plc.Model;
 using ObjectTracker.UI.Desktop.Plc.Siemens;
 using OpenCvSharp;
-using VideoCapture = OpenCvSharp.VideoCapture;
-using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
-using VideoCaptureProperties = OpenCvSharp.VideoCaptureProperties;
 
 namespace ObjectTracker.UI.Desktop;
 
@@ -246,6 +243,25 @@ public partial class MainWindow : AppWindow
         return isIncludedInVisionPipeline && debugViewEnabled;
     }
 
+    internal static IReadOnlyList<CameraTileFeedRequest> BuildCameraTileFeedRequests(
+        IReadOnlyList<CameraProfile> orderedCameras,
+        CameraGridProjection projection,
+        IReadOnlySet<string> availableTileImageIds,
+        bool isVisionPipelineRunning)
+    {
+        var visibleIds = projection.Tiles.Select(tile => tile.CameraId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return orderedCameras
+            .Where(camera => visibleIds.Contains(camera.Id))
+            .Where(camera => !isVisionPipelineRunning || !camera.IsIncludedInVisionPipeline)
+            .Where(camera => projection.Tiles.Any(tile =>
+                string.Equals(tile.CameraId, camera.Id, StringComparison.OrdinalIgnoreCase) &&
+                tile.FeedKind != FeedKind.DebugView))
+            .Where(camera => availableTileImageIds.Contains(camera.Id))
+            .Select(camera => new CameraTileFeedRequest(camera.Id, CameraTileFeedKind.VideoFile))
+            .ToList();
+    }
+
     public static string GetFeedKindBadge(FeedKind kind)
     {
         return kind switch
@@ -403,7 +419,6 @@ public partial class MainWindow : AppWindow
 
     private const int MaxLogEntries = 300;
     private const int PreviewIntervalMs = 33;
-    private const int MaxUsbCameraProbeIndex = 5;
 
     private readonly Lock cameraSync = new();
     private readonly Lock settingsSync = new();
@@ -413,11 +428,8 @@ public partial class MainWindow : AppWindow
 
     private readonly BackgroundEstimationEngine engine = new();
     private readonly CameraSettingsStore cameraSettingsStore = new();
-    private readonly UsbCaptureSettingsStore usbCaptureSettingsStore = new();
     private readonly CameraZoneBindingStore cameraZoneBindingStore = new();
     private readonly AppSettingsStore appSettingsStore = new();
-    private readonly UsbCameraOwnerManager usbCameraOwnerManager = new(new OpenCvUsbCaptureBackend());
-    private readonly UsbCaptureSettingsService usbCaptureSettingsService;
     private readonly SessionAuditLogger sessionAuditLogger = new();
     private readonly CameraZoneIdentityService cameraZoneIdentityService;
     private ObjectTracker.UI.Desktop.Region.Contracts.IRegionManagerService regionManagerService;
@@ -433,7 +445,6 @@ public partial class MainWindow : AppWindow
     private readonly Dictionary<string, Image> cameraTileImagesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, FeedKind> cameraTileFeedKindsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DebugTileImageSet> cameraTileDebugImagesById = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> pendingUsbCaptureSettingsCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
     private Task? runTask;
     private int selectedCameraIndex = -1;
     private int requestedCameraIndex = -1;
@@ -441,7 +452,6 @@ public partial class MainWindow : AppWindow
     private bool applyingCameraVisibilityUi;
     private bool applyingCameraInclusionUi;
     private bool applyingCameraDebugViewUi;
-    private bool applyingUsbCaptureSettingsUi;
     private bool hasPendingVisionPipelineRestart;
     private bool isCameraPanelOpen = true;
     private bool isCameraPanelPinned = true;
@@ -468,8 +478,6 @@ public partial class MainWindow : AppWindow
             cameraSettings[cameraId] = settings;
         }
 
-        usbCaptureSettingsService = new UsbCaptureSettingsService(usbCaptureSettingsStore.Load());
-
         var cameraZoneSnapshot = cameraZoneBindingStore.Load();
         cameraZoneIdentityService = new CameraZoneIdentityService(cameraZoneSnapshot.Zones, cameraZoneSnapshot.Bindings);
         InitializeRegionServices();
@@ -478,7 +486,6 @@ public partial class MainWindow : AppWindow
         PromptSettingsNavigationDecisionAsync = ShowSettingsNavigationGuardDialogAsync;
         ConfirmDestructiveActionAsync = ShowDestructiveConfirmationDialogAsync;
         cameraTileFeedCoordinator = new CameraTileFeedCoordinator(StartCameraTileFeedConsumer);
-        InitializeUsbCaptureSettingsUi();
         InitializePlcServices();
 
         HookEvents();
@@ -523,7 +530,6 @@ public partial class MainWindow : AppWindow
     {
         await StopCameraTilePreviewAsync();
         await StopProcessingAsync();
-        await usbCameraOwnerManager.StopAllAsync(CancellationToken.None);
         PersistCameraSettings();
         sessionAuditLogger.Dispose();
         base.OnClosing(e);
@@ -545,11 +551,6 @@ public partial class MainWindow : AppWindow
         CameraVisibilityCheckBox.IsCheckedChanged += CameraVisibilityCheckBoxOnChanged;
         VisionPipelineInclusionCheckBox.IsCheckedChanged += VisionPipelineInclusionCheckBoxOnChanged;
         CameraDebugViewCheckBox.IsCheckedChanged += CameraDebugViewCheckBoxOnChanged;
-        RestartUsbCameraSourceButton.Click += RestartUsbCameraSourceButtonOnClick;
-        UsbResolutionComboBox.SelectionChanged += UsbCaptureSettingsControlOnChanged;
-        UsbTargetFpsComboBox.SelectionChanged += UsbCaptureSettingsControlOnChanged;
-        ApplyUsbCaptureSettingsButton.Click += ApplyUsbCaptureSettingsButtonOnClick;
-        RevertUsbCaptureSettingsButton.Click += RevertUsbCaptureSettingsButtonOnClick;
         BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
         SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
         ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
@@ -975,15 +976,7 @@ public partial class MainWindow : AppWindow
             return;
         }
 
-        switch (selection.Value)
-        {
-            case CameraAddChoice.VideoFiles:
-                await AddVideoCamerasAsync();
-                break;
-            case CameraAddChoice.UsbCamera:
-                await AddUsbCameraAsync();
-                break;
-        }
+        await AddVideoCamerasAsync();
 
         if (activeWorkspace == Workspace.Regions)
         {
@@ -1054,60 +1047,6 @@ public partial class MainWindow : AppWindow
         {
             StartBakeForAllCameras(runCts?.Token ?? CancellationToken.None);
         }
-    }
-
-    private async Task AddUsbCameraAsync()
-    {
-        SetStatus("Status: scanning USB cameras...");
-        var alreadyAddedSourceIds = GetAddedUsbCameraSourceIds();
-        var usbOptions = await Task.Run(() => DiscoverUsbCameraOptions(alreadyAddedSourceIds));
-        if (usbOptions.Count == 0)
-        {
-            SetStatus("Status: no USB cameras detected.");
-            return;
-        }
-
-        var selectedOption = await new UsbCameraSelectionDialog(usbOptions).ShowDialog<UsbCameraOption?>(this);
-        if (selectedOption is null)
-        {
-            SetStatus("Status: USB camera selection cancelled.");
-            return;
-        }
-
-        var option = selectedOption.Value;
-        var added = false;
-
-        lock (cameraSync)
-        {
-            if (!cameras.Any(camera => string.Equals(camera.Id, option.Id, StringComparison.OrdinalIgnoreCase)))
-            {
-                cameras.Add(CameraProfile.CreateUsb(option.Id, option.DisplayName, option.CameraIndex, option.Api));
-                cameraZoneIdentityService.AssignSourceToZone(option.Id, requestedZoneName: option.DisplayName);
-
-                if (!cameraSettings.ContainsKey(option.Id))
-                {
-                    cameraSettings[option.Id] = RuntimeProcessingSettings.Default;
-                }
-
-                if (selectedCameraIndex < 0)
-                {
-                    selectedCameraIndex = 0;
-                }
-
-                added = true;
-            }
-        }
-
-        if (!added)
-        {
-            SetStatus($"Status: {option.DisplayName} is already added.");
-            return;
-        }
-
-        PersistCameraSettings();
-        PersistCameraZones();
-        RefreshCameraUi();
-        SetStatus($"Status: added {option.DisplayName}.");
     }
 
     private void BakeSourceComboBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -1253,8 +1192,6 @@ public partial class MainWindow : AppWindow
         }
 
         await StopCameraTilePreviewAsync();
-        await usbCameraOwnerManager.StopAllAsync(CancellationToken.None);
-
         PersistCameraSettings();
         PersistCameraZones();
         RefreshCameraUi();
@@ -1302,8 +1239,6 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(camera.Value.IsIncludedInVisionPipeline, camera.Value.DebugViewEnabled);
             applyingCameraDebugViewUi = false;
             CameraDebugViewCheckBox.IsEnabled = camera.Value.IsIncludedInVisionPipeline;
-            RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
-            RefreshUsbCaptureSettingsUi(camera.Value);
         }
 
         if (activeWorkspace == Workspace.Regions && camera is not null)
@@ -1416,6 +1351,8 @@ public partial class MainWindow : AppWindow
 
         hasPendingVisionPipelineRestart = false;
         SetRunState(isRunning: true);
+        await StopCameraTilePreviewAsync();
+        RefreshCameraUi();
         StartBakeForAllCameras(token);
         runTask = Task.Run(() => RunAllCamerasAsync(includedCameras, loopCameraVideos, token), token);
 
@@ -1456,7 +1393,7 @@ public partial class MainWindow : AppWindow
 
             sessionAuditLogger.StopSession();
             SetRunState(isRunning: false);
-            await ApplyPendingUsbCaptureSettingsAfterVisionPipelineStopAsync();
+            RefreshCameraUi();
         }
     }
 
@@ -1466,12 +1403,6 @@ public partial class MainWindow : AppWindow
         if (camera is null)
         {
             SetStatus("Status: select a camera first.");
-            return;
-        }
-
-        if (camera.Value.IsUsbCamera)
-        {
-            SetStatus("Status: baked masks are only available for video cameras.");
             return;
         }
 
@@ -1540,34 +1471,6 @@ public partial class MainWindow : AppWindow
             // Ignore stop-time exceptions.
         }
 
-        await ApplyPendingUsbCaptureSettingsAfterVisionPipelineStopAsync();
-    }
-
-    private async Task ApplyPendingUsbCaptureSettingsAfterVisionPipelineStopAsync()
-    {
-        if (pendingUsbCaptureSettingsCameraSourceIds.Count == 0)
-        {
-            return;
-        }
-
-        var pending = pendingUsbCaptureSettingsCameraSourceIds.ToList();
-        pendingUsbCaptureSettingsCameraSourceIds.Clear();
-
-        foreach (var cameraSourceId in pending)
-        {
-            if (!TryGetCameraById(cameraSourceId, out var camera) ||
-                !camera.IsVisible ||
-                camera.UsbCamera is not { } usb)
-            {
-                continue;
-            }
-
-            var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
-            await usbCameraOwnerManager.RestartAsync(key, ToUsbCaptureSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id)), CancellationToken.None);
-        }
-
-        hasPendingVisionPipelineRestart = false;
-        UpdateBottomStatusBar();
     }
 
     private async Task RunAllCamerasAsync(IReadOnlyList<CameraProfile> cameras, bool loopCameraVideos, CancellationToken cancellationToken)
@@ -1586,45 +1489,6 @@ public partial class MainWindow : AppWindow
 
     private async Task ProcessCameraAsync(CameraProfile camera, bool loopCameraVideos, BackgroundEstimationEngine engine, CancellationToken cancellationToken)
     {
-        if (camera.IsUsbCamera && camera.UsbCamera is { } usbCamera)
-        {
-            var settings = GetSettingsForCamera(camera.Id);
-            var options = new BackgroundEstimationEngine.ProcessingOptions(
-                settings.ProcessMaxWidth,
-                settings.MotionArea,
-                settings.ColorMinPixels,
-                settings.MorphKernelSize,
-                settings.ColorCalibrations);
-
-            var key = new UsbCameraKey(usbCamera.CameraIndex, usbCamera.Api.ToString().ToUpperInvariant());
-            var startupSettings = ToUsbCaptureSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id));
-            usbCameraOwnerManager.AddConsumer(key, startupSettings, cancellationToken);
-            await using var source = new UsbVideoSource(usbCameraOwnerManager, key);
-
-            var result = await engine.ProcessAsync(
-                source,
-                settings.SampleCount,
-                settings.Threshold,
-                options,
-                GetBakeImagePath(settings),
-                onFrame: frameSet =>
-                {
-                    QueuePreviewFrame(camera.Id, frameSet, cancellationToken);
-                    return Task.CompletedTask;
-                },
-                onStatus: async message => await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {message}")),
-                getLiveTuning: () => GetLiveTuningForCamera(camera.Id),
-                shouldStopEarly: null,
-                cancellationToken: cancellationToken);
-
-            if (!result.Success)
-            {
-                await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {result.Message}"));
-            }
-
-            return;
-        }
-
         for (var videoIndex = 0; !cancellationToken.IsCancellationRequested; videoIndex++)
         {
             var settings = GetSettingsForCamera(camera.Id);
@@ -1682,11 +1546,6 @@ public partial class MainWindow : AppWindow
 
         foreach (var camera in snapshot)
         {
-            if (camera.IsUsbCamera)
-            {
-                continue;
-            }
-
             var settings = GetSettingsForCamera(camera.Id);
             var options = new BackgroundEstimationEngine.ProcessingOptions(
                 settings.ProcessMaxWidth,
@@ -1843,10 +1702,6 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsChecked = false;
             applyingCameraDebugViewUi = false;
             CameraDebugViewCheckBox.IsEnabled = false;
-            UsbCameraSourceStatusText.Text = "USB Camera Source: -";
-            RestartUsbCameraSourceButton.IsVisible = false;
-            RestartUsbCameraSourceButton.IsEnabled = false;
-            UsbCaptureSettingsPanel.IsVisible = false;
             RegionsListBox.ItemsSource = null;
             return;
         }
@@ -1870,8 +1725,6 @@ public partial class MainWindow : AppWindow
         applyingCameraDebugViewUi = true;
         CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(selected.IsIncludedInVisionPipeline, selected.DebugViewEnabled);
         applyingCameraDebugViewUi = false;
-        RefreshSelectedUsbCameraSourceStatusUi(selected);
-        RefreshUsbCaptureSettingsUi(selected);
     }
 
     private void RefreshCameraWorkspaceTiles(IReadOnlyList<CameraProfile> orderedCameras)
@@ -1892,13 +1745,15 @@ public partial class MainWindow : AppWindow
 
     private void StartCameraTilePreview(IReadOnlyList<CameraProfile> orderedCameras, CameraGridProjection projection)
     {
-        var visibleIds = projection.Tiles.Select(tile => tile.CameraId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var requests = BuildCameraTileFeedRequests(
+            orderedCameras,
+            projection,
+            cameraTileImagesById.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            runTask is not null);
+        var requestIds = requests.Select(request => request.CameraId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var feedCameras = orderedCameras
-            .Where(camera => visibleIds.Contains(camera.Id))
-            .Where(camera =>
-                !cameraTileFeedKindsById.TryGetValue(camera.Id, out var kind) ||
-                kind != FeedKind.DebugView)
+            .Where(camera => requestIds.Contains(camera.Id))
             .ToList();
 
         cameraTileFeedCamerasById.Clear();
@@ -1906,13 +1761,6 @@ public partial class MainWindow : AppWindow
         {
             cameraTileFeedCamerasById[camera.Id] = camera;
         }
-
-        var requests = feedCameras
-            .Where(camera => cameraTileImagesById.ContainsKey(camera.Id))
-            .Select(camera => new CameraTileFeedRequest(
-                camera.Id,
-                camera.IsUsbCamera ? CameraTileFeedKind.Usb : CameraTileFeedKind.VideoFile))
-            .ToList();
 
         _ = cameraTileFeedCoordinator.ApplyAsync(requests, CancellationToken.None);
     }
@@ -1939,27 +1787,6 @@ public partial class MainWindow : AppWindow
     {
         try
         {
-            if (camera.IsUsbCamera && camera.UsbCamera is { } usb)
-            {
-                var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
-                var startupSettings = UsbCaptureSettingsProjection.BuildRawTileStartupSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Id));
-                usbCameraOwnerManager.AddConsumer(key, startupSettings, cancellationToken);
-                await using var source = new UsbVideoSource(usbCameraOwnerManager, key);
-
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    var snapshot = source.ReadLatestFrame();
-                    if (snapshot is not null)
-                    {
-                        RenderUsbSnapshotToTile(target, snapshot.Value);
-                    }
-
-                    await DelayIgnoringCancellationAsync(PreviewIntervalMs, cancellationToken);
-                }
-
-                return;
-            }
-
             if (string.IsNullOrWhiteSpace(camera.PrimaryVideoPath))
             {
                 return;
@@ -1972,7 +1799,7 @@ public partial class MainWindow : AppWindow
                 var snapshot = videoSource.ReadLatestFrame();
                 if (snapshot is not null)
                 {
-                    RenderUsbSnapshotToTile(target, snapshot.Value);
+                    RenderSnapshotToTile(target, snapshot.Value);
                 }
 
                 await DelayIgnoringCancellationAsync(PreviewIntervalMs, cancellationToken);
@@ -1994,7 +1821,7 @@ public partial class MainWindow : AppWindow
         await Task.Delay(milliseconds);
     }
 
-    private void RenderUsbSnapshotToTile(Image target, UsbFrameSnapshot snapshot)
+    private void RenderSnapshotToTile(Image target, VideoFrameSnapshot snapshot)
     {
         using var stream = new MemoryStream(snapshot.EncodedJpeg);
         var bitmap = new Bitmap(stream);
@@ -2101,28 +1928,6 @@ public partial class MainWindow : AppWindow
 
             panel.Children.Add(modeBadgeOverlay);
 
-            if (TryGetCameraById(cameraId, out var tileCamera))
-            {
-                var statusView = BuildUsbCameraSourceStatusView(tileCamera);
-                if (statusView.ShowPlaceholder)
-                {
-                    panel.Children.Add(new Border
-                    {
-                        Background = Avalonia.Media.Brush.Parse("#CC111820"),
-                        Child = new TextBlock
-                        {
-                            Text = statusView.StatusText,
-                            Foreground = Avalonia.Media.Brush.Parse("#EAF4FF"),
-                            FontWeight = Avalonia.Media.FontWeight.SemiBold,
-                            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-                            HorizontalAlignment = HorizontalAlignment.Center,
-                            VerticalAlignment = VerticalAlignment.Center,
-                            Margin = new Thickness(12)
-                        }
-                    });
-                }
-            }
-
             if (viewState.FeedKinds[i] != FeedKind.RawFeed)
             {
                 var title = new TextBlock
@@ -2170,180 +1975,6 @@ public partial class MainWindow : AppWindow
         }
 
         RefreshCameraUi();
-    }
-
-    private async void RestartUsbCameraSourceButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        var camera = GetSelectedCamera();
-        if (camera is not { IsUsbCamera: true, UsbCamera: { } usb })
-        {
-            return;
-        }
-
-        var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
-        try
-        {
-            SetStatus($"Status: restarting {camera.Value.DisplayName}...");
-            RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
-            await usbCameraOwnerManager.RestartAsync(key, ToUsbCaptureSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Value.Id)), CancellationToken.None);
-            RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
-            RefreshCameraUi();
-            SetStatus($"Status: restarted {camera.Value.DisplayName}.");
-        }
-        catch (Exception ex)
-        {
-            RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
-            RefreshCameraUi();
-            SetStatus($"Status: failed to restart {camera.Value.DisplayName} - {ex.Message}");
-        }
-    }
-
-    private void RefreshSelectedUsbCameraSourceStatusUi(CameraProfile camera)
-    {
-        var statusView = BuildUsbCameraSourceStatusView(camera);
-        UsbCameraSourceStatusText.IsVisible = camera.IsUsbCamera;
-        RestartUsbCameraSourceButton.IsVisible = camera.IsUsbCamera;
-        UsbCameraSourceStatusText.Text = statusView.StatusText;
-        RestartUsbCameraSourceButton.IsEnabled = statusView.RestartEnabled;
-        RestartUsbCameraSourceButton.Tag = statusView.RestartDisabledReason;
-    }
-
-    private void InitializeUsbCaptureSettingsUi()
-    {
-        UsbResolutionComboBox.ItemsSource = UsbCaptureSettingsService.ResolutionPresets.ToList();
-        UsbTargetFpsComboBox.ItemsSource = UsbCaptureSettingsService.TargetFpsPresets.ToList();
-    }
-
-    private void RefreshUsbCaptureSettingsUi(CameraProfile camera)
-    {
-        var requested = usbCaptureSettingsService.GetDraftSettings(camera.Id);
-        var statusView = BuildUsbCameraSourceStatusView(camera);
-        var usbStatus = camera is { IsUsbCamera: true, UsbCamera: { } usb }
-            ? usbCameraOwnerManager.GetStatus(new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant()), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
-            : new UsbCameraRuntimeStatus(UsbCameraOwnerState.Stopped, false, null, null, null, null, null);
-        var projection = UsbCaptureSettingsProjection.Build(camera.IsUsbCamera, camera.IsVisible, usbStatus, requested);
-
-        UsbCaptureSettingsPanel.IsVisible = projection.IsVisible;
-        UsbCaptureModeStatusText.Text = projection.ModeStatusText;
-        if (!projection.IsVisible)
-        {
-            return;
-        }
-
-        applyingUsbCaptureSettingsUi = true;
-        UsbResolutionComboBox.SelectedItem = new UsbResolutionPreset(requested.Width, requested.Height);
-        UsbTargetFpsComboBox.SelectedItem = requested.TargetFps;
-        applyingUsbCaptureSettingsUi = false;
-        ApplyUsbCaptureSettingsButton.IsEnabled = true;
-        RevertUsbCaptureSettingsButton.IsEnabled = true;
-    }
-
-    private void UsbCaptureSettingsControlOnChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (applyingUsbCaptureSettingsUi)
-        {
-            return;
-        }
-
-        var camera = GetSelectedCamera();
-        if (camera is not { IsUsbCamera: true })
-        {
-            return;
-        }
-
-        usbCaptureSettingsService.UpdateDraft(camera.Value.Id, ReadUsbCaptureSettingsDraft(camera.Value.Id));
-        RefreshUsbCaptureSettingsUi(camera.Value);
-    }
-
-    private async void ApplyUsbCaptureSettingsButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        var camera = GetSelectedCamera();
-        if (camera is not { IsUsbCamera: true, UsbCamera: { } usb })
-        {
-            return;
-        }
-
-        usbCaptureSettingsService.UpdateDraft(camera.Value.Id, ReadUsbCaptureSettingsDraft(camera.Value.Id));
-        var result = usbCaptureSettingsService.ApplyDraft(camera.Value.Id);
-        usbCaptureSettingsStore.Save(result.SettingsByCameraSourceId);
-
-        var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
-        var status = usbCameraOwnerManager.GetStatus(key, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        var decision = UsbCaptureSettingsProjection.BuildApplyDecision(
-            camera.Value.IsUsbCamera,
-            camera.Value.IsVisible,
-            camera.Value.IsIncludedInVisionPipeline,
-            runTask is not null,
-            status);
-        if (decision.ShouldRestartCameraSource)
-        {
-            await usbCameraOwnerManager.RestartAsync(key, ToUsbCaptureSettings(usbCaptureSettingsService.GetRequestedSettings(camera.Value.Id)), CancellationToken.None);
-            SetStatus($"Status: applied USB capture settings for {camera.Value.DisplayName}.");
-        }
-        else if (decision.RequiresVisionPipelineRestart)
-        {
-            pendingUsbCaptureSettingsCameraSourceIds.Add(camera.Value.Id);
-            hasPendingVisionPipelineRestart = true;
-            UpdateBottomStatusBar();
-            SetStatus($"Status: {decision.Message}");
-        }
-        else if (!string.IsNullOrWhiteSpace(decision.Message))
-        {
-            SetStatus($"Status: USB capture settings saved. {decision.Message}");
-        }
-        else
-        {
-            SetStatus($"Status: USB capture settings saved for {camera.Value.DisplayName}.");
-        }
-
-        RefreshSelectedUsbCameraSourceStatusUi(camera.Value);
-        RefreshUsbCaptureSettingsUi(camera.Value);
-    }
-
-    private void RevertUsbCaptureSettingsButtonOnClick(object? sender, RoutedEventArgs e)
-    {
-        var camera = GetSelectedCamera();
-        if (camera is not { IsUsbCamera: true })
-        {
-            return;
-        }
-
-        usbCaptureSettingsService.RevertDraft(camera.Value.Id);
-        RefreshUsbCaptureSettingsUi(camera.Value);
-        SetStatus($"Status: reverted USB capture settings for {camera.Value.DisplayName}.");
-    }
-
-    private UsbCaptureSettingsRequest ReadUsbCaptureSettingsDraft(string cameraSourceId)
-    {
-        var current = usbCaptureSettingsService.GetDraftSettings(cameraSourceId);
-        var resolution = UsbResolutionComboBox.SelectedItem is UsbResolutionPreset selectedResolution
-            ? selectedResolution
-            : new UsbResolutionPreset(current.Width, current.Height);
-        var targetFps = UsbTargetFpsComboBox.SelectedItem is int selectedFps ? selectedFps : current.TargetFps;
-        return new UsbCaptureSettingsRequest(resolution.Width, resolution.Height, targetFps);
-    }
-
-    private static UsbCaptureSettings ToUsbCaptureSettings(UsbCaptureSettingsRequest request)
-    {
-        return new UsbCaptureSettings(request.Width, request.Height, request.TargetFps);
-    }
-
-    private CameraSourceStatusView BuildUsbCameraSourceStatusView(CameraProfile camera)
-    {
-        if (!camera.IsUsbCamera || camera.UsbCamera is not { } usb)
-        {
-            return CameraSourceStatusProjection.BuildUsbStatus(
-                isUsbCameraSource: false,
-                isActivelyProcessedByVisionPipeline: false,
-                new UsbCameraRuntimeStatus(UsbCameraOwnerState.Stopped, false, null, null, null, null, null));
-        }
-
-        var key = new UsbCameraKey(usb.CameraIndex, usb.Api.ToString().ToUpperInvariant());
-        var status = usbCameraOwnerManager.GetStatus(key, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        return CameraSourceStatusProjection.BuildUsbStatus(
-            isUsbCameraSource: true,
-            isActivelyProcessedByVisionPipeline: runTask is not null,
-            status);
     }
 
     private bool TryGetCameraById(string cameraId, out CameraProfile camera)
@@ -2809,45 +2440,6 @@ public partial class MainWindow : AppWindow
         }
     }
 
-    private IReadOnlyList<string> GetAddedUsbCameraSourceIds()
-    {
-        lock (cameraSync)
-        {
-            return cameras
-                .Where(camera => camera.IsUsbCamera)
-                .Select(camera => camera.Id)
-                .ToList();
-        }
-    }
-
-    private static IReadOnlyList<UsbCameraOption> DiscoverUsbCameraOptions(IReadOnlyCollection<string> alreadyAddedSourceIds)
-    {
-        var api = GetDefaultUsbCaptureApi();
-        var discovery = new UsbCameraDiscoveryService(MaxUsbCameraProbeIndex, api, cameraIndex => ProbeUsbCamera(cameraIndex, api));
-        return discovery.DiscoverUsbCameraOptions(alreadyAddedSourceIds);
-    }
-
-    private static UsbCameraProbeResult ProbeUsbCamera(int cameraIndex, VideoCaptureAPIs api)
-    {
-        using var capture = new VideoCapture(cameraIndex, api);
-        capture.Set(VideoCaptureProperties.BufferSize, 1);
-        if (!capture.IsOpened())
-        {
-            return UsbCameraProbeResult.Unavailable;
-        }
-
-        var width = (int)Math.Round(capture.Get(VideoCaptureProperties.FrameWidth));
-        var height = (int)Math.Round(capture.Get(VideoCaptureProperties.FrameHeight));
-        return new UsbCameraProbeResult(true, width, height);
-    }
-
-    private static VideoCaptureAPIs GetDefaultUsbCaptureApi()
-    {
-        return OperatingSystem.IsWindows()
-            ? VideoCaptureAPIs.DSHOW
-            : VideoCaptureAPIs.ANY;
-    }
-
     private static string BuildCurrentSourceText(CameraProfile camera, string? activeSourceLabel = null)
     {
         var sourceLabel = string.IsNullOrWhiteSpace(activeSourceLabel)
@@ -2887,8 +2479,7 @@ public partial class MainWindow : AppWindow
 
     private void UpdateOpenBakedMaskButtonState(CameraProfile camera, RuntimeProcessingSettings settings)
     {
-        OpenBakedMaskButton.IsEnabled = !camera.IsUsbCamera
-            && (settings.BakeSourceMode == BakeSourceMode.Samples || !string.IsNullOrWhiteSpace(settings.BakeImagePath));
+        OpenBakedMaskButton.IsEnabled = settings.BakeSourceMode == BakeSourceMode.Samples || !string.IsNullOrWhiteSpace(settings.BakeImagePath);
     }
 
     private void SetStatus(string text)
@@ -3102,20 +2693,11 @@ public partial class MainWindow : AppWindow
         return name;
     }
 
-    internal enum CameraSourceKind
-    {
-        VideoFiles,
-        UsbCamera
-    }
-
     internal enum BakeSourceMode
     {
         Samples = 0,
         ImageFile = 1
     }
-
-    [StructLayout(LayoutKind.Auto)]
-    internal readonly record struct UsbCameraSource(int CameraIndex, VideoCaptureAPIs Api);
 
     internal readonly record struct CameraProfile(
         string Id,
@@ -3123,25 +2705,16 @@ public partial class MainWindow : AppWindow
         bool IsVisible,
         bool IsIncludedInVisionPipeline,
         bool DebugViewEnabled,
-        CameraSourceKind SourceKind,
-        List<string> VideoPaths,
-        UsbCameraSource? UsbCamera)
+        List<string> VideoPaths)
     {
         public string PrimaryVideoPath => VideoPaths.Count > 0 ? VideoPaths[0] : string.Empty;
 
-        public bool IsUsbCamera => SourceKind == CameraSourceKind.UsbCamera && UsbCamera is not null;
+        public bool CanOpenBakedMask => !string.IsNullOrWhiteSpace(PrimaryVideoPath);
 
-        public bool CanOpenBakedMask => SourceKind == CameraSourceKind.VideoFiles && !string.IsNullOrWhiteSpace(PrimaryVideoPath);
-
-        public string CurrentSourceLabel => IsUsbCamera && UsbCamera is { } usbCamera
-            ? $"USB camera {usbCamera.CameraIndex}"
-            : (string.IsNullOrWhiteSpace(PrimaryVideoPath) ? DisplayName : Path.GetFileName(PrimaryVideoPath));
+        public string CurrentSourceLabel => string.IsNullOrWhiteSpace(PrimaryVideoPath) ? DisplayName : Path.GetFileName(PrimaryVideoPath);
 
         public static CameraProfile CreateVideo(string id, string displayName, List<string> videoPaths)
-            => new(id, displayName, true, true, false, CameraSourceKind.VideoFiles, videoPaths, null);
-
-        public static CameraProfile CreateUsb(string id, string displayName, int cameraIndex, VideoCaptureAPIs api)
-            => new(id, displayName, true, true, false, CameraSourceKind.UsbCamera, new List<string>(), new UsbCameraSource(cameraIndex, api));
+            => new(id, displayName, true, true, false, videoPaths);
     }
 
     internal readonly record struct RuntimeProcessingSettings(
@@ -3232,7 +2805,7 @@ public partial class MainWindow : AppWindow
     {
         try
         {
-            if (camera.SourceKind == CameraSourceKind.VideoFiles && !string.IsNullOrWhiteSpace(camera.PrimaryVideoPath))
+            if (!string.IsNullOrWhiteSpace(camera.PrimaryVideoPath))
             {
                 using var capture = new VideoCapture(camera.PrimaryVideoPath);
                 if (capture.IsOpened())

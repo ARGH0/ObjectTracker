@@ -20,7 +20,7 @@
                        FontWeight="Bold"
                        Foreground="{StaticResource TextBrush}" />
 
-            <TextBlock Text="Choose whether you want to work from recorded footage or a live USB device."
+            <TextBlock Text="Choose recorded footage for this Camera Zone."
                        Classes="muted"
                        TextWrapping="Wrap" />
 
@@ -32,20 +32,6 @@
                             Height="44"
                             HorizontalAlignment="Stretch" />
                     <TextBlock Text="Best when you want stable repeatable testing with the same clips."
-                               Classes="muted"
-                               TextWrapping="Wrap"
-                               FontSize="12" />
-                </StackPanel>
-            </Border>
-
-            <Border Classes="surfaceAlt" Padding="14">
-                <StackPanel Spacing="8">
-                    <Button x:Name="UsbCameraButton"
-                            Classes="ghost"
-                            Content="Use USB Camera"
-                            Height="44"
-                            HorizontalAlignment="Stretch" />
-                    <TextBlock Text="Best for live tuning and quick validation with an attached device."
                                Classes="muted"
                                TextWrapping="Wrap"
                                FontSize="12" />

@@ -11,9 +11,6 @@ public class App : Application
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
-
-        var faTheme = (FluentAvaloniaTheme)Styles[0];
-        faTheme.CustomAccentColor = Avalonia.Media.Color.Parse("#6E92AB");
     }
 
     public override void OnFrameworkInitializationCompleted()

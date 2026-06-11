@@ -82,7 +82,7 @@ internal sealed class BackgroundEstimationEngine(
 
     private static async Task<UnifiedBackgroundSample> CreateMedianBackgroundFromSourceAsync(
         IVideoSource source,
-        UsbFrameSnapshot firstSnapshot,
+        VideoFrameSnapshot firstSnapshot,
         int sampleCount,
         Size processSize,
         string? bakeImagePath,
@@ -166,7 +166,7 @@ internal sealed class BackgroundEstimationEngine(
                 return VideoProcessResult.Stopped();
             }
 
-            var snapshot = source.ReadLatestFrame();
+            var snapshot = await source.ReadFrameAsync(cancellationToken);
             if (snapshot is null)
             {
                 await Task.Delay(16, cancellationToken);
@@ -252,7 +252,7 @@ internal sealed class BackgroundEstimationEngine(
         }
     }
 
-    private static void AddFrameSample(UsbFrameSnapshot snapshot, Size processSize, List<Mat> sampledFrames)
+    private static void AddFrameSample(VideoFrameSnapshot snapshot, Size processSize, List<Mat> sampledFrames)
     {
         using var frame = DecodeSnapshot(snapshot);
         using var gray = new Mat();
@@ -262,7 +262,7 @@ internal sealed class BackgroundEstimationEngine(
         sampledFrames.Add(resized);
     }
 
-    private static Mat DecodeSnapshot(UsbFrameSnapshot snapshot)
+    private static Mat DecodeSnapshot(VideoFrameSnapshot snapshot)
     {
         return Cv2.ImDecode(snapshot.EncodedJpeg, ImreadModes.Color);
     }

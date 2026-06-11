@@ -39,13 +39,6 @@ public sealed class RegionRegistryTests
         );
     }
 
-    private static async Task<RegionRegistry> CreateRegistryWithRegionsAsync(IEnumerable<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition> regions)
-    {
-        var fakePersistence = new FakeRegionPersistence();
-        await fakePersistence.SaveAsync(regions);
-        return await RegionRegistry.CreateAsync(fakePersistence);
-    }
-
     [Fact]
     public void Create_AssignsGuid_WhenIdIsEmpty()
     {
@@ -513,7 +506,8 @@ public sealed class RegionRegistryTests
             }
             catch (Exception ex)
             {
-                lock (exceptions) { exceptions.Add(ex); }
+                lock (exceptions)
+                { exceptions.Add(ex); }
             }
         });
 
@@ -554,7 +548,8 @@ public sealed class RegionRegistryTests
             }
             catch (Exception ex)
             {
-                lock (exceptions) { exceptions.Add(ex); }
+                lock (exceptions)
+                { exceptions.Add(ex); }
             }
         });
 
@@ -603,7 +598,8 @@ public sealed class RegionRegistryTests
             }
             catch (Exception ex)
             {
-                lock (exceptions) { exceptions.Add(ex); }
+                lock (exceptions)
+                { exceptions.Add(ex); }
             }
         });
 

@@ -83,13 +83,33 @@ public partial class MainWindow : AppWindow
         bool IsIncludedInVisionPipeline,
         bool DebugViewEnabled);
 
-    public readonly record struct CameraWorkspaceTile(string CameraId, string DisplayName, int Index, CameraRenderMode RenderMode);
+    public readonly record struct CameraWorkspaceTile(string CameraId, string DisplayName, int Index, FeedKind FeedKind, TileLayout Layout);
 
-    public enum CameraRenderMode
+    public enum FeedKind
     {
+        RawFeed,
         LiveAnnotated,
-        DebugView,
-        RawFeed
+        DebugView
+    }
+
+    public enum TileLayout
+    {
+        SingleImage,
+        MultiImage2x2
+    }
+
+    public static FeedKind GetFeedKind(bool isIncludedInVisionPipeline, bool debugViewEnabled)
+    {
+        if (!isIncludedInVisionPipeline)
+        {
+            return FeedKind.RawFeed;
+        }
+        return debugViewEnabled ? FeedKind.DebugView : FeedKind.LiveAnnotated;
+    }
+
+    public static TileLayout GetTileLayout(FeedKind feedKind)
+    {
+        return feedKind == FeedKind.DebugView ? TileLayout.MultiImage2x2 : TileLayout.SingleImage;
     }
 
     public enum SettingsNavigationDecision
@@ -116,7 +136,8 @@ public partial class MainWindow : AppWindow
         int Columns,
         IReadOnlyList<string> Titles,
         IReadOnlyList<string> CameraIds,
-        IReadOnlyList<CameraRenderMode> RenderModes);
+        IReadOnlyList<FeedKind> FeedKinds,
+        IReadOnlyList<TileLayout> Layouts);
 
     public readonly record struct CameraPanelLayoutState(
         bool IsOpen,
@@ -193,24 +214,20 @@ public partial class MainWindow : AppWindow
         var visible = cameras.Where(camera => camera.IsVisible).ToList();
         var (rows, columns) = ComputeCameraGridDimensions(visible.Count);
         var tiles = visible
-            .Select((camera, index) => new CameraWorkspaceTile(
-                camera.CameraId,
-                camera.DisplayName,
-                index,
-                GetCameraRenderMode(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled)))
+            .Select((camera, index) =>
+            {
+                var feedKind = GetFeedKind(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled);
+                var layout = GetTileLayout(feedKind);
+                return new CameraWorkspaceTile(
+                    camera.CameraId,
+                    camera.DisplayName,
+                    index,
+                    feedKind,
+                    layout);
+            })
             .ToList();
 
         return new CameraGridProjection(visible.Count, rows, columns, tiles);
-    }
-
-    public static CameraRenderMode GetCameraRenderMode(bool isIncludedInVisionPipeline, bool debugViewEnabled)
-    {
-        if (!isIncludedInVisionPipeline)
-        {
-            return CameraRenderMode.RawFeed;
-        }
-
-        return debugViewEnabled ? CameraRenderMode.DebugView : CameraRenderMode.LiveAnnotated;
     }
 
     public static bool NormalizeDebugViewEnabled(bool isIncludedInVisionPipeline, bool debugViewEnabled)
@@ -218,12 +235,12 @@ public partial class MainWindow : AppWindow
         return isIncludedInVisionPipeline && debugViewEnabled;
     }
 
-    public static string GetCameraRenderModeBadge(CameraRenderMode mode)
+    public static string GetFeedKindBadge(FeedKind kind)
     {
-        return mode switch
+        return kind switch
         {
-            CameraRenderMode.RawFeed => "RAW FEED",
-            CameraRenderMode.DebugView => "DEBUG VIEW",
+            FeedKind.RawFeed => "RAW FEED",
+            FeedKind.DebugView => "DEBUG VIEW",
             _ => "LIVE ANNOTATED"
         };
     }
@@ -243,11 +260,12 @@ public partial class MainWindow : AppWindow
     public static CameraTileViewState BuildCameraTileViewState(CameraGridProjection projection)
     {
         var titles = projection.Tiles
-            .Select((tile, index) => $"{index + 1}. {tile.DisplayName} [{tile.RenderMode}]")
+            .Select((tile, index) => $"{index + 1}. {tile.DisplayName} [{tile.FeedKind}]")
             .ToList();
         var ids = projection.Tiles.Select(tile => tile.CameraId).ToList();
-        var modes = projection.Tiles.Select(tile => tile.RenderMode).ToList();
-        return new CameraTileViewState(projection.Rows, projection.Columns, titles, ids, modes);
+        var feedKinds = projection.Tiles.Select(tile => tile.FeedKind).ToList();
+        var layouts = projection.Tiles.Select(tile => tile.Layout).ToList();
+        return new CameraTileViewState(projection.Rows, projection.Columns, titles, ids, feedKinds, layouts);
     }
 
     public static SelectionMode GetCameraListSelectionMode()
@@ -390,7 +408,7 @@ public partial class MainWindow : AppWindow
     private readonly CameraTileFeedCoordinator cameraTileFeedCoordinator;
     private readonly Dictionary<string, CameraProfile> cameraTileFeedCamerasById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Image> cameraTileImagesById = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, CameraRenderMode> cameraTileRenderModesById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, FeedKind> cameraTileFeedKindsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DebugTileImageSet> cameraTileDebugImagesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> pendingUsbCaptureSettingsCameraSourceIds = new(StringComparer.OrdinalIgnoreCase);
     private Task? runTask;
@@ -1608,8 +1626,8 @@ public partial class MainWindow : AppWindow
         var feedCameras = orderedCameras
             .Where(camera => visibleIds.Contains(camera.Id))
             .Where(camera =>
-                !cameraTileRenderModesById.TryGetValue(camera.Id, out var mode) ||
-                mode != CameraRenderMode.DebugView)
+                !cameraTileFeedKindsById.TryGetValue(camera.Id, out var kind) ||
+                kind != FeedKind.DebugView)
             .ToList();
 
         cameraTileFeedCamerasById.Clear();
@@ -1727,7 +1745,7 @@ public partial class MainWindow : AppWindow
 
         CameraTileGrid.Children.Clear();
         cameraTileImagesById.Clear();
-        cameraTileRenderModesById.Clear();
+        cameraTileFeedKindsById.Clear();
         cameraTileDebugImagesById.Clear();
 
         for (var i = 0; i < viewState.CameraIds.Count; i++)
@@ -1737,7 +1755,7 @@ public partial class MainWindow : AppWindow
                 ? existingImage
                 : new Image { Stretch = Avalonia.Media.Stretch.Uniform };
             cameraTileImagesById[cameraId] = image;
-            cameraTileRenderModesById[cameraId] = viewState.RenderModes[i];
+            cameraTileFeedKindsById[cameraId] = viewState.FeedKinds[i];
 
             var panel = new Panel();
             if (image.Parent is Panel currentParent)
@@ -1747,7 +1765,7 @@ public partial class MainWindow : AppWindow
 
             panel.Children.Add(image);
 
-            if (viewState.RenderModes[i] == CameraRenderMode.DebugView)
+            if (viewState.Layouts[i] == TileLayout.MultiImage2x2)
             {
                 var debugGrid = new Grid
                 {
@@ -1794,7 +1812,7 @@ public partial class MainWindow : AppWindow
 
             var modeBadge = new TextBlock
             {
-                Text = GetCameraRenderModeBadge(viewState.RenderModes[i]),
+                Text = GetFeedKindBadge(viewState.FeedKinds[i]),
                 FontSize = 10,
                 FontWeight = Avalonia.Media.FontWeight.SemiBold,
                 Foreground = Avalonia.Media.Brush.Parse("#EAF4FF")
@@ -1834,7 +1852,7 @@ public partial class MainWindow : AppWindow
                 }
             }
 
-            if (viewState.RenderModes[i] != CameraRenderMode.RawFeed)
+            if (viewState.FeedKinds[i] != FeedKind.RawFeed)
             {
                 var title = new TextBlock
                 {
@@ -2867,26 +2885,6 @@ public partial class MainWindow : AppWindow
         IReadOnlyList<ColorCalibrationProfile> ColorCalibrations)
     {
         public static RuntimeProcessingSettings Default => new(20, 100, 220, 40, 3, 640, BakeSourceMode.Samples, string.Empty, CreateDefaultColorCalibrations());
-    }
-
-    private readonly record struct CameraZoneComboItem(string CameraZoneId, string CameraZoneName)
-    {
-        public override string ToString() => CameraZoneName;
-    }
-
-    private readonly record struct LayerTypeComboItem(string LayerTypeId, string DisplayName)
-    {
-        public override string ToString() => DisplayName;
-    }
-
-    private readonly record struct LayerListItem(string LayerId, string Name, string LayerTypeId)
-    {
-        public override string ToString() => $"{Name} ({LayerTypeId})";
-    }
-
-    private readonly record struct RegionListItem(string RegionId, string Name, int? Code, string CellsText)
-    {
-        public override string ToString() => Code is null ? Name : $"{Name} [{Code}]";
     }
 
     private sealed class CameraTileFeedConsumer(CancellationTokenSource cts, Task task) : IAsyncDisposable

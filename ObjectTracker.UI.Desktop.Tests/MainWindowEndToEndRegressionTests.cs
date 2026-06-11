@@ -53,9 +53,14 @@ public sealed class MainWindowEndToEndRegressionTests
         Assert.Equal(new[] { "cam-raw", "cam-debug" }, viewState.CameraIds.ToArray());
         Assert.Equal(new[]
         {
-            MainWindow.CameraRenderMode.RawFeed,
-            MainWindow.CameraRenderMode.DebugView
-        }, viewState.RenderModes.ToArray());
+            MainWindow.FeedKind.RawFeed,
+            MainWindow.FeedKind.DebugView
+        }, viewState.FeedKinds.ToArray());
+        Assert.Equal(new[]
+        {
+            MainWindow.TileLayout.SingleImage,
+            MainWindow.TileLayout.MultiImage2x2
+        }, viewState.Layouts.ToArray());
         Assert.False(runningDestructiveState.DeleteSelectedEnabled);
         Assert.False(runningDestructiveState.ClearAllEnabled);
         Assert.True(stoppedDestructiveState.DeleteSelectedEnabled);

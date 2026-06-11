@@ -30,21 +30,6 @@ public sealed class MainWindowCameraGridProjectionTests
         Assert.Equal(MainWindow.FeedKind.LiveAnnotated, kind);
     }
 
-    [Fact]
-    public void TileLayout_DebugView_YieldsMultiImage2x2()
-    {
-        var layout = MainWindow.GetTileLayout(MainWindow.FeedKind.DebugView);
-
-        Assert.Equal(MainWindow.TileLayout.MultiImage2x2, layout);
-    }
-
-    [Fact]
-    public void TileLayout_NonDebugView_YieldsSingleImage()
-    {
-        Assert.Equal(MainWindow.TileLayout.SingleImage, MainWindow.GetTileLayout(MainWindow.FeedKind.RawFeed));
-        Assert.Equal(MainWindow.TileLayout.SingleImage, MainWindow.GetTileLayout(MainWindow.FeedKind.LiveAnnotated));
-    }
-
     [Theory]
     [InlineData(MainWindow.FeedKind.RawFeed, "RAW FEED")]
     [InlineData(MainWindow.FeedKind.DebugView, "DEBUG VIEW")]
@@ -134,7 +119,6 @@ public sealed class MainWindowCameraGridProjectionTests
         Assert.Equal("2. Camera A [LiveAnnotated]", viewState.Titles[1]);
         Assert.Equal(new[] { "cam-c", "cam-a" }, viewState.CameraIds.ToArray());
         Assert.Equal(new[] { MainWindow.FeedKind.LiveAnnotated, MainWindow.FeedKind.LiveAnnotated }, viewState.FeedKinds.ToArray());
-        Assert.Equal(new[] { MainWindow.TileLayout.SingleImage, MainWindow.TileLayout.SingleImage }, viewState.Layouts.ToArray());
     }
 
     [Fact]
@@ -156,7 +140,7 @@ public sealed class MainWindowCameraGridProjectionTests
     }
 
     [Fact]
-    public void CameraTileViewState_PreservesFeedKindsAndLayoutsPerVisibleCamera()
+    public void CameraTileViewState_PreservesFeedKindsPerVisibleCamera()
     {
         var projection = MainWindow.BuildCameraGridProjection(new[]
         {
@@ -173,26 +157,6 @@ public sealed class MainWindowCameraGridProjectionTests
             MainWindow.FeedKind.DebugView,
             MainWindow.FeedKind.LiveAnnotated
         }, viewState.FeedKinds.ToArray());
-
-        Assert.Equal(new[]
-        {
-            MainWindow.TileLayout.SingleImage,
-            MainWindow.TileLayout.MultiImage2x2,
-            MainWindow.TileLayout.SingleImage
-        }, viewState.Layouts.ToArray());
-    }
-
-    [Fact]
-    public void CameraGridProjection_CorrectlyDerivesLayoutFromFeedKind()
-    {
-        var projection = MainWindow.BuildCameraGridProjection(new[]
-        {
-            new MainWindow.CameraWorkspaceCamera("cam-raw", "Raw Camera", IsVisible: true, IsIncludedInVisionPipeline: false, DebugViewEnabled: false),
-            new MainWindow.CameraWorkspaceCamera("cam-debug", "Debug Camera", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: true)
-        });
-
-        Assert.Equal(MainWindow.TileLayout.SingleImage, projection.Tiles[0].Layout);
-        Assert.Equal(MainWindow.TileLayout.MultiImage2x2, projection.Tiles[1].Layout);
     }
 
     [Theory]

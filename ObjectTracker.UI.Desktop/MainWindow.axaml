@@ -141,10 +141,15 @@
                                                 <CheckBox x:Name="VisionPipelineInclusionCheckBox"
                                                           Content="Vision Pipeline Inclusion"
                                                           IsChecked="True" />
-                                                <CheckBox x:Name="CameraDebugViewCheckBox"
-                                                          Content="Debug View"
-                                                          IsChecked="False" />
-                                            </StackPanel>
+                                                 <CheckBox x:Name="CameraDebugViewCheckBox"
+                                                           Content="Debug View"
+                                                           IsChecked="False" />
+                                                  <ComboBox x:Name="DebugViewFrameTypeComboBox"
+                                                            SelectedIndex="0">
+                                                    <ComboBoxItem Content="Moving Color" />
+                                                    <ComboBoxItem Content="Color Detections" />
+                                                  </ComboBox>
+                                             </StackPanel>
                                         </Border>
 
                                         <Border Grid.Row="6"

@@ -53,11 +53,6 @@ public sealed class MainWindowEndToEndRegressionTests
             MainWindow.FeedKind.RawFeed,
             MainWindow.FeedKind.DebugView
         }, viewState.FeedKinds.ToArray());
-        Assert.Equal(new[]
-        {
-            MainWindow.TileLayout.SingleImage,
-            MainWindow.TileLayout.MultiImage2x2
-        }, viewState.Layouts.ToArray());
         Assert.False(runningDestructiveState.DeleteSelectedEnabled);
         Assert.False(runningDestructiveState.ClearAllEnabled);
         Assert.True(stoppedDestructiveState.DeleteSelectedEnabled);

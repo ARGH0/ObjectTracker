@@ -80,26 +80,27 @@ public partial class MainWindow : AppWindow
         bool HasPendingVisionPipelineRestart,
         string SettingsStatusText);
 
+    public enum DebugViewFrameType
+    {
+        MovingColor,
+        ColorDetections
+    }
+
     public readonly record struct CameraWorkspaceCamera(
         string CameraId,
         string DisplayName,
         bool IsVisible,
         bool IsIncludedInVisionPipeline,
-        bool DebugViewEnabled);
+        bool DebugViewEnabled,
+        DebugViewFrameType DebugViewFrameType = DebugViewFrameType.MovingColor);
 
-    public readonly record struct CameraWorkspaceTile(string CameraId, string DisplayName, int Index, FeedKind FeedKind, TileLayout Layout);
+    public readonly record struct CameraWorkspaceTile(string CameraId, string DisplayName, int Index, FeedKind FeedKind, DebugViewFrameType DebugViewFrameType);
 
     public enum FeedKind
     {
         RawFeed,
         LiveAnnotated,
         DebugView
-    }
-
-    public enum TileLayout
-    {
-        SingleImage,
-        MultiImage2x2
     }
 
     public static FeedKind GetFeedKind(bool isIncludedInVisionPipeline, bool debugViewEnabled)
@@ -109,11 +110,6 @@ public partial class MainWindow : AppWindow
             return FeedKind.RawFeed;
         }
         return debugViewEnabled ? FeedKind.DebugView : FeedKind.LiveAnnotated;
-    }
-
-    public static TileLayout GetTileLayout(FeedKind feedKind)
-    {
-        return feedKind == FeedKind.DebugView ? TileLayout.MultiImage2x2 : TileLayout.SingleImage;
     }
 
     public enum SettingsNavigationDecision
@@ -144,7 +140,7 @@ public partial class MainWindow : AppWindow
         IReadOnlyList<string> Titles,
         IReadOnlyList<string> CameraIds,
         IReadOnlyList<FeedKind> FeedKinds,
-        IReadOnlyList<TileLayout> Layouts);
+        IReadOnlyList<DebugViewFrameType> DebugViewFrameTypes);
 
     public readonly record struct CameraPanelLayoutState(
         bool IsOpen,
@@ -225,13 +221,12 @@ public partial class MainWindow : AppWindow
             .Select((camera, index) =>
             {
                 var feedKind = GetFeedKind(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled);
-                var layout = GetTileLayout(feedKind);
                 return new CameraWorkspaceTile(
                     camera.CameraId,
                     camera.DisplayName,
                     index,
                     feedKind,
-                    layout);
+                    camera.DebugViewFrameType);
             })
             .ToList();
 
@@ -291,8 +286,8 @@ public partial class MainWindow : AppWindow
             .ToList();
         var ids = projection.Tiles.Select(tile => tile.CameraId).ToList();
         var feedKinds = projection.Tiles.Select(tile => tile.FeedKind).ToList();
-        var layouts = projection.Tiles.Select(tile => tile.Layout).ToList();
-        return new CameraTileViewState(projection.Rows, projection.Columns, titles, ids, feedKinds, layouts);
+        var debugViewFrameTypes = projection.Tiles.Select(tile => tile.DebugViewFrameType).ToList();
+        return new CameraTileViewState(projection.Rows, projection.Columns, titles, ids, feedKinds, debugViewFrameTypes);
     }
 
     public static SelectionMode GetCameraListSelectionMode()
@@ -447,6 +442,7 @@ public partial class MainWindow : AppWindow
     private readonly Dictionary<string, Image> cameraTileImagesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, FeedKind> cameraTileFeedKindsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DebugTileImageSet> cameraTileDebugImagesById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DebugViewFrameType> cameraTileDebugFrameTypesById = new(StringComparer.OrdinalIgnoreCase);
     private Task? runTask;
     private int selectedCameraIndex = -1;
     private int requestedCameraIndex = -1;
@@ -462,7 +458,7 @@ public partial class MainWindow : AppWindow
     internal Func<Task<SettingsNavigationDecision>> PromptSettingsNavigationDecisionAsync { get; set; }
     private bool _isPlcConnected;
 
-    private sealed record DebugTileImageSet(Image Background, Image Moving, Image Color, Image Motion);
+    private sealed record DebugTileImageSet(Image DebugPreview);
 
     public MainWindow()
     {
@@ -568,6 +564,7 @@ public partial class MainWindow : AppWindow
         CameraVisibilityCheckBox.IsCheckedChanged += CameraVisibilityCheckBoxOnChanged;
         VisionPipelineInclusionCheckBox.IsCheckedChanged += VisionPipelineInclusionCheckBoxOnChanged;
         CameraDebugViewCheckBox.IsCheckedChanged += CameraDebugViewCheckBoxOnChanged;
+        DebugViewFrameTypeComboBox.SelectionChanged += DebugViewFrameTypeComboBoxOnSelectionChanged;
         BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
         SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
         ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
@@ -1733,10 +1730,19 @@ public partial class MainWindow : AppWindow
             return;
         }
 
-        UpdatePreviewImage(debugImages.Background, frameSet.BackgroundMaskJpeg);
-        UpdatePreviewImage(debugImages.Moving, frameSet.MovingColorJpeg);
-        UpdatePreviewImage(debugImages.Color, frameSet.ColorDetectionJpeg);
-        UpdatePreviewImage(debugImages.Motion, frameSet.MotionJpeg);
+        if (!cameraTileDebugFrameTypesById.TryGetValue(cameraId, out var frameType))
+        {
+            return;
+        }
+
+        var targetImage = frameType switch
+        {
+            DebugViewFrameType.MovingColor => frameSet.MovingColorJpeg,
+            DebugViewFrameType.ColorDetections => frameSet.ColorDetectionJpeg,
+            _ => frameSet.MovingColorJpeg
+        };
+
+        UpdatePreviewImage(debugImages.DebugPreview, targetImage);
     }
 
     private static void UpdatePreviewImage(Image target, byte[] imageBytes)
@@ -1806,6 +1812,8 @@ public partial class MainWindow : AppWindow
         CameraDebugViewCheckBox.IsEnabled = selected.IsIncludedInVisionPipeline;
         applyingCameraDebugViewUi = true;
         CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(selected.IsIncludedInVisionPipeline, selected.DebugViewEnabled);
+        DebugViewFrameTypeComboBox.IsVisible = CameraDebugViewCheckBox.IsChecked == true;
+        DebugViewFrameTypeComboBox.SelectedIndex = selected.DebugViewFrameType == DebugViewFrameType.ColorDetections ? 1 : 0;
         applyingCameraDebugViewUi = false;
     }
 
@@ -1817,7 +1825,8 @@ public partial class MainWindow : AppWindow
                 camera.DisplayName,
                 camera.IsVisible,
                 camera.IsIncludedInVisionPipeline,
-                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled)))
+                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled),
+                camera.DebugViewFrameType))
             .ToList());
 
         var viewState = BuildCameraTileViewState(projection);
@@ -1945,49 +1954,14 @@ public partial class MainWindow : AppWindow
 
             panel.Children.Add(image);
 
-            if (viewState.Layouts[i] == TileLayout.MultiImage2x2)
+            if (viewState.FeedKinds[i] == FeedKind.DebugView)
             {
-                var debugGrid = new Grid
-                {
-                    RowDefinitions = new RowDefinitions("*,*"),
-                    ColumnDefinitions = new ColumnDefinitions("*,*")
-                };
+                var debugPreview = new Image { Stretch = Avalonia.Media.Stretch.UniformToFill };
 
-                var debugBackground = new Image { Stretch = Avalonia.Media.Stretch.UniformToFill };
-                debugGrid.Children.Add(debugBackground);
+                cameraTileDebugImagesById[viewState.CameraIds[i]] = new DebugTileImageSet(debugPreview);
+                cameraTileDebugFrameTypesById[viewState.CameraIds[i]] = viewState.DebugViewFrameTypes[i];
 
-                var debugMoving = new Image { Stretch = Avalonia.Media.Stretch.UniformToFill };
-                Grid.SetColumn(debugMoving, 1);
-                debugGrid.Children.Add(debugMoving);
-
-                var debugColor = new Image { Stretch = Avalonia.Media.Stretch.UniformToFill };
-                Grid.SetRow(debugColor, 1);
-                debugGrid.Children.Add(debugColor);
-
-                var debugMotion = new Image { Stretch = Avalonia.Media.Stretch.UniformToFill };
-                Grid.SetRow(debugMotion, 1);
-                Grid.SetColumn(debugMotion, 1);
-                debugGrid.Children.Add(debugMotion);
-
-                cameraTileDebugImagesById[viewState.CameraIds[i]] = new DebugTileImageSet(
-                    debugBackground,
-                    debugMoving,
-                    debugColor,
-                    debugMotion);
-
-                debugGrid.Children.Add(new Border { BorderBrush = Avalonia.Media.Brush.Parse("#66FFFFFF"), BorderThickness = new Thickness(1), Margin = new Thickness(0) });
-                var topRight = new Border { BorderBrush = Avalonia.Media.Brush.Parse("#66FFFFFF"), BorderThickness = new Thickness(1), Margin = new Thickness(0) };
-                Grid.SetColumn(topRight, 1);
-                debugGrid.Children.Add(topRight);
-                var bottomLeft = new Border { BorderBrush = Avalonia.Media.Brush.Parse("#66FFFFFF"), BorderThickness = new Thickness(1), Margin = new Thickness(0) };
-                Grid.SetRow(bottomLeft, 1);
-                debugGrid.Children.Add(bottomLeft);
-                var bottomRight = new Border { BorderBrush = Avalonia.Media.Brush.Parse("#66FFFFFF"), BorderThickness = new Thickness(1), Margin = new Thickness(0) };
-                Grid.SetRow(bottomRight, 1);
-                Grid.SetColumn(bottomRight, 1);
-                debugGrid.Children.Add(bottomRight);
-
-                panel.Children.Add(debugGrid);
+                panel.Children.Add(debugPreview);
             }
 
             var modeBadge = new TextBlock
@@ -2127,6 +2101,41 @@ public partial class MainWindow : AppWindow
             cameras[selectedCameraIndex] = selected with
             {
                 DebugViewEnabled = NormalizeDebugViewEnabled(selected.IsIncludedInVisionPipeline, debugEnabled)
+            };
+        }
+
+        applyingCameraDebugViewUi = true;
+        DebugViewFrameTypeComboBox.IsVisible = CameraDebugViewCheckBox.IsChecked == true;
+        applyingCameraDebugViewUi = false;
+
+        RefreshCameraUi();
+    }
+
+    private void DebugViewFrameTypeComboBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (applyingCameraDebugViewUi)
+        {
+            return;
+        }
+
+        lock (cameraSync)
+        {
+            if (selectedCameraIndex < 0 || selectedCameraIndex >= cameras.Count)
+            {
+                return;
+            }
+
+            var selectedIndex = DebugViewFrameTypeComboBox.SelectedIndex;
+            if (selectedIndex < 0)
+            {
+                return;
+            }
+
+            var frameType = selectedIndex == 0 ? DebugViewFrameType.MovingColor : DebugViewFrameType.ColorDetections;
+            var selected = cameras[selectedCameraIndex];
+            cameras[selectedCameraIndex] = selected with
+            {
+                DebugViewFrameType = frameType
             };
         }
 
@@ -2787,7 +2796,8 @@ public partial class MainWindow : AppWindow
         bool IsVisible,
         bool IsIncludedInVisionPipeline,
         bool DebugViewEnabled,
-        List<string> VideoPaths)
+        List<string> VideoPaths,
+        DebugViewFrameType DebugViewFrameType = DebugViewFrameType.MovingColor)
     {
         public string PrimaryVideoPath => VideoPaths.Count > 0 ? VideoPaths[0] : string.Empty;
 

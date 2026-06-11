@@ -152,7 +152,6 @@ internal sealed class BackgroundEstimationEngine(
         var activeMorphKernelSize = options.MorphKernelSize;
         using var movingColor = new Mat();
         using var colorDetections = new Mat();
-        using var motionView = new Mat();
         using var hsv = new Mat();
         var activeColorCalibrations = options.ColorCalibrations;
 
@@ -214,10 +213,7 @@ internal sealed class BackgroundEstimationEngine(
             colorResized.CopyTo(colorDetections);
             RenderColorDetections(colorDetections, colorResized, refinedMask, hsv, movingRects, activeColorCalibrations, activeMinColorPixels);
 
-            colorResized.CopyTo(motionView);
-            RenderMotionOverlay(motionView, movingRects, snapshot.Value.TimestampUtcMs / 1000.0, ref previousTracks, ref nextTrackId);
-
-            var preview = BuildPreviewFrameSet(refinedMask, movingColor, colorDetections, motionView);
+            var preview = BuildPreviewFrameSet(movingColor, colorDetections);
             await onFrame(preview);
 
             if (OnTrainDetected is not null && movingRects.Count > 0)
@@ -429,74 +425,6 @@ internal sealed class BackgroundEstimationEngine(
         };
     }
 
-    private static void RenderMotionOverlay(
-        Mat destination,
-        IReadOnlyList<Rect> movingRects,
-        double timestampSec,
-        ref Dictionary<int, MotionTrackState> previousTracks,
-        ref int nextTrackId)
-    {
-        var currentTracks = new Dictionary<int, MotionTrackState>();
-        var availablePreviousIds = new HashSet<int>(previousTracks.Keys);
-
-        foreach (var rect in movingRects)
-        {
-            var center = new Point2f(rect.X + (rect.Width / 2f), rect.Y + (rect.Height / 2f));
-            var matchedId = FindBestTrackMatch(center, previousTracks, availablePreviousIds, maxDistancePixels: 80f);
-
-            if (matchedId is null)
-            {
-                matchedId = nextTrackId++;
-            }
-            else
-            {
-                availablePreviousIds.Remove(matchedId.Value);
-            }
-
-            currentTracks[matchedId.Value] = new MotionTrackState(center, rect, timestampSec);
-        }
-
-        foreach (var (id, current) in currentTracks)
-        {
-            Cv2.Rectangle(destination, current.Rect, new Scalar(0, 255, 255), 2);
-            Cv2.Circle(destination, (Point)current.Center, 5, new Scalar(255, 255, 0), -1);
-
-            var speed = 0.0;
-            var directionDeg = 0.0;
-            var hasHistory = previousTracks.TryGetValue(id, out var previous);
-
-            if (hasHistory)
-            {
-                var deltaTime = Math.Max(0.0001, current.TimestampSec - previous.TimestampSec);
-                var dx = current.Center.X - previous.Center.X;
-                var dy = current.Center.Y - previous.Center.Y;
-                speed = Math.Sqrt((dx * dx) + (dy * dy)) / deltaTime;
-                directionDeg = Math.Atan2(dy, dx) * 180.0 / Math.PI;
-
-                Cv2.ArrowedLine(destination, (Point)previous.Center, (Point)current.Center, new Scalar(0, 255, 255), 2, LineTypes.Link8, 0, 0.2);
-            }
-
-            var infoText = hasHistory
-                ? $"#{id} {speed:0.0}px/s {directionDeg:0.0}deg"
-                : $"#{id} acquiring";
-
-            Cv2.PutText(
-                destination,
-                infoText,
-                new Point(current.Rect.X, Math.Max(16, current.Rect.Y - 6)),
-                HersheyFonts.HersheySimplex,
-                0.48,
-                new Scalar(255, 255, 255),
-                2);
-        }
-
-        previousTracks = currentTracks;
-
-        if (currentTracks.Count == 0)
-        {
-            Cv2.PutText(destination, "No moving objects", new Point(10, 24), HersheyFonts.HersheySimplex, 0.55, new Scalar(255, 255, 255), 2);
-        }
-    }
 
     private static int? FindBestTrackMatch(
         Point2f center,
@@ -623,21 +551,15 @@ internal sealed class BackgroundEstimationEngine(
 
     internal readonly struct PreviewFrameSet
     {
-        public PreviewFrameSet(byte[] backgroundMaskJpeg, byte[] movingColorJpeg, byte[] colorDetectionJpeg, byte[] motionJpeg)
+        public PreviewFrameSet(byte[] movingColorJpeg, byte[] colorDetectionJpeg)
         {
-            BackgroundMaskJpeg = backgroundMaskJpeg;
             MovingColorJpeg = movingColorJpeg;
             ColorDetectionJpeg = colorDetectionJpeg;
-            MotionJpeg = motionJpeg;
         }
-
-        public byte[] BackgroundMaskJpeg { get; }
 
         public byte[] MovingColorJpeg { get; }
 
         public byte[] ColorDetectionJpeg { get; }
-
-        public byte[] MotionJpeg { get; }
     }
 
     private static double ComputeMaskCoverage(Mat mask)
@@ -697,13 +619,11 @@ internal sealed class BackgroundEstimationEngine(
         return matchedId.Value;
     }
 
-    private static PreviewFrameSet BuildPreviewFrameSet(Mat backgroundMask, Mat movingColor, Mat colorDetections, Mat motionView)
+    private static PreviewFrameSet BuildPreviewFrameSet(Mat movingColor, Mat colorDetections)
     {
-        Cv2.ImEncode(".jpg", backgroundMask, out var backgroundMaskJpeg, new[] { (int)ImwriteFlags.JpegQuality, 80 });
         Cv2.ImEncode(".jpg", movingColor, out var movingColorJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
         Cv2.ImEncode(".jpg", colorDetections, out var colorDetectionJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
-        Cv2.ImEncode(".jpg", motionView, out var motionJpeg, new[] { (int)ImwriteFlags.JpegQuality, 75 });
 
-        return new PreviewFrameSet(backgroundMaskJpeg, movingColorJpeg, colorDetectionJpeg, motionJpeg);
+        return new PreviewFrameSet(movingColorJpeg, colorDetectionJpeg);
     }
 }

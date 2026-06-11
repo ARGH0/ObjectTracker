@@ -801,7 +801,8 @@
                                 Classes="primary" />
                         <TextBlock x:Name="PlcConnectionStatusText"
                                    Text="Not connected"
-                                   Classes="muted" />
+                                   Classes="muted" 
+                                   TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
 

@@ -31,5 +31,6 @@
     <PackageReference Include="$(OpenCvSharpRuntimePackage)" Version="$(OpenCvSharpRuntimePackageVersion)" Condition="'$(OpenCvSharpRuntimePackage)' != ''" />
     <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
     <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="11.3.16" />
+    <PackageReference Include="Siemens.Simatic.S7.Webserver.API" Version="3.3.53" />
   </ItemGroup>
 </Project>

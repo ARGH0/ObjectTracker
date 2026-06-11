@@ -115,6 +115,11 @@ public readonly record struct AppSettings(int GridColumns, int GridRows, PlcSett
     public const int MaxGridRows = 200;
 
     public static AppSettings Default => new(DefaultColumns, DefaultRows, PlcSettings.Default);
+
+    public AppSettings(int GridColumns, int GridRows)
+        : this(GridColumns, GridRows, PlcSettings.Default)
+    {
+    }
 }
 
 public readonly record struct PlcSettings(string BaseUrl, string User, string Password)

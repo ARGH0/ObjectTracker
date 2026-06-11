@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -21,6 +22,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ObjectTracker.Core.Domain;
 using ObjectTracker.UI.Desktop.Plc.Implementation;
 using ObjectTracker.UI.Desktop.Plc.Model;
+using ObjectTracker.UI.Desktop.Plc.Siemens;
 using OpenCvSharp;
 using VideoCapture = OpenCvSharp.VideoCapture;
 using VideoCaptureAPIs = OpenCvSharp.VideoCaptureAPIs;
@@ -496,11 +498,11 @@ public partial class MainWindow : AppWindow
         {
             var plcConfig = appSettings.Plc.ToClientConfig();
             var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
-            services.AddPlcServices(plcConfig);
+            services.AddSiemensPlcServices(plcConfig);
             var sp = services.BuildServiceProvider();
             plcClient = sp.GetRequiredService<ObjectTracker.UI.Desktop.Plc.Contracts.IPlcClient>();
             plcSessionManager = sp.GetRequiredService<ObjectTracker.UI.Desktop.Plc.Contracts.IPlcSessionManager>();
-            AppendLog("PLC services initialized.");
+            AppendLog($"PLC services initialized (Siemens Webserver API): {plcClient.GetType().Name}.");
         }
         catch (Exception ex)
         {
@@ -776,6 +778,7 @@ public partial class MainWindow : AppWindow
         if (plcClient is null || plcSessionManager is null)
         {
             AppendLog("PLC client not initialized.");
+            PlcOperationLogText.Text = "PLC client not initialized.";
             return;
         }
 
@@ -786,8 +789,9 @@ public partial class MainWindow : AppWindow
 
         try
         {
-            await plcSessionManager.EnsureAuthenticatedAsync();
-            var isAuthenticated = await plcSessionManager.IsAuthenticatedAsync();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await plcSessionManager.EnsureAuthenticatedAsync(cts.Token);
+            var isAuthenticated = await plcSessionManager.IsAuthenticatedAsync(cts.Token);
 
             if (isAuthenticated)
             {
@@ -826,12 +830,20 @@ public partial class MainWindow : AppWindow
     private async void PlcReadButtonOnClick(object? sender, RoutedEventArgs e)
     {
         if (plcClient is null)
+        {
+            AppendLog("PLC read: client not initialized.");
+            PlcOperationLogText.Text = "PLC read: client not initialized.";
             return;
+        }
+
+        AppendLog($"PLC read button clicked; client={plcClient.GetType().Name}.");
+        PlcOperationLogText.Text = $"PLC read button clicked; client={plcClient.GetType().Name}.";
 
         var variableName = PlcReadVariableTextBox.Text?.Trim();
         if (string.IsNullOrWhiteSpace(variableName))
         {
             AppendLog("PLC read: variable name is empty.");
+            PlcOperationLogText.Text = "PLC read: variable name is empty.";
             return;
         }
 
@@ -850,7 +862,10 @@ public partial class MainWindow : AppWindow
         try
         {
             AppendLog($"PLC read: {variable.Address} [{plcType}]...");
-            var result = await plcClient.ReadAsync(variable);
+            PlcOperationLogText.Text = $"Reading: {variable.Address}...";
+            PlcReadButton.IsEnabled = false;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var result = await plcClient.ReadAsync(variable, cts.Token);
             AppendLog($"PLC read: {variable.Address} = {result.Value.Raw} ({result.Value.Type})");
             PlcOperationLogText.Text = $"Last read: {variable.Address} = {result.Value.Raw}";
         }
@@ -869,18 +884,30 @@ public partial class MainWindow : AppWindow
             AppendLog($"PLC read error: {ex.Message}");
             PlcOperationLogText.Text = $"Error: {ex.Message}";
         }
+        finally
+        {
+            PlcReadButton.IsEnabled = true;
+        }
     }
 
     private async void PlcWriteButtonOnClick(object? sender, RoutedEventArgs e)
     {
         if (plcClient is null)
+        {
+            AppendLog("PLC write: client not initialized.");
+            PlcOperationLogText.Text = "PLC write: client not initialized.";
             return;
+        }
+
+        AppendLog($"PLC write button clicked; client={plcClient.GetType().Name}.");
+        PlcOperationLogText.Text = $"PLC write button clicked; client={plcClient.GetType().Name}.";
 
         var variableName = PlcWriteVariableTextBox.Text?.Trim();
         var valueText = PlcWriteValueTextBox.Text?.Trim();
         if (string.IsNullOrWhiteSpace(variableName) || string.IsNullOrWhiteSpace(valueText))
         {
             AppendLog("PLC write: variable name or value is empty.");
+            PlcOperationLogText.Text = "PLC write: variable name or value is empty.";
             return;
         }
 
@@ -894,20 +921,23 @@ public partial class MainWindow : AppWindow
             _ => Plc.Model.PlcVariableType.Int32
         };
 
-        var variable = new Plc.Model.PlcVariable(variableName, plcType);
-        PlcValue value = plcType switch
-        {
-            Plc.Model.PlcVariableType.Int16 => PlcValue.Int16(short.Parse(valueText)),
-            Plc.Model.PlcVariableType.Int32 => PlcValue.Int32(int.Parse(valueText)),
-            Plc.Model.PlcVariableType.Real => PlcValue.Real(float.Parse(valueText)),
-            Plc.Model.PlcVariableType.Bool => PlcValue.Bool(bool.Parse(valueText)),
-            _ => throw new InvalidOperationException($"Unsupported type: {plcType}")
-        };
-
         try
         {
+            var variable = new Plc.Model.PlcVariable(variableName, plcType);
+            PlcValue value = plcType switch
+            {
+                Plc.Model.PlcVariableType.Int16 => PlcValue.Int16(short.Parse(valueText, CultureInfo.InvariantCulture)),
+                Plc.Model.PlcVariableType.Int32 => PlcValue.Int32(int.Parse(valueText, CultureInfo.InvariantCulture)),
+                Plc.Model.PlcVariableType.Real => PlcValue.Real(float.Parse(valueText, CultureInfo.InvariantCulture)),
+                Plc.Model.PlcVariableType.Bool => PlcValue.Bool(bool.Parse(valueText)),
+                _ => throw new InvalidOperationException($"Unsupported type: {plcType}")
+            };
+
             AppendLog($"PLC write: {variable.Address} = {value.Raw} ({plcType})...");
-            await plcClient.WriteAsync(variable);
+            PlcOperationLogText.Text = $"Writing: {variable.Address} = {value.Raw}...";
+            PlcWriteButton.IsEnabled = false;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await plcClient.WriteAsync(new[] { (variable, value) }, cts.Token);
             AppendLog($"PLC write: {variable.Address} = {value.Raw} (success)");
             PlcOperationLogText.Text = $"Last write: {variable.Address} = {value.Raw}";
         }
@@ -925,6 +955,10 @@ public partial class MainWindow : AppWindow
         {
             AppendLog($"PLC write error: {ex.Message}");
             PlcOperationLogText.Text = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            PlcWriteButton.IsEnabled = true;
         }
     }
 

@@ -1,0 +1,33 @@
+meta {
+  name: login to plc
+  type: http
+  seq: 1
+}
+
+post {
+  url: https://192.168.0.190/api/jsonrpc
+  body: json
+  auth: apikey
+}
+
+headers {
+  : 
+}
+
+auth:apikey {
+  key: X-Auth-Token
+  value: QgCCq.izN2J.UgxVOaYRXwC2esfk
+  placement: header
+}
+
+body:json {
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "Api.Login",
+    "params": {
+      "user": "admin",
+      "password": "Sander001!"
+    }
+  }
+}

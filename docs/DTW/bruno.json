@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "DTW",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

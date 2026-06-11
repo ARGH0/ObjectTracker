@@ -1,0 +1,32 @@
+meta {
+  name: Post to plc
+  type: http
+  seq: 4
+}
+
+post {
+  url: https://192.168.0.190/api/jsonrpc
+  body: json
+  auth: apikey
+}
+
+headers {
+  : 
+}
+
+auth:apikey {
+  key: X-Auth-Token
+  value: QgCCq.izN2J.UgxVOaYRXwC2esfk
+  placement: header
+}
+
+body:json {
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "method": "PlcProgram.write",
+    "params": {
+      "var": "\"Data\".random_nr"
+    }
+  }
+}

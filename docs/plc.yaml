@@ -1,0 +1,108 @@
+openapi: 3.0.0
+info:
+  title: plc
+  version: 1.0.0
+paths:
+  /api/jsonrpc:
+    post:
+      summary: Post to plc
+      operationId: d_bruno_dtw_post_to_plc_bru
+      description: ''
+      tags:
+        - ''
+      responses:
+        '200':
+          description: ''
+      requestBody:
+        $ref: '#/components/requestBodies/post_to_plc'
+      servers:
+        - url: https://192.168.0.190
+servers: []
+components:
+  schemas:
+    get_from_plc:
+      type: object
+      properties:
+        id:
+          type: integer
+        jsonrpc:
+          type: string
+        method:
+          type: string
+        params:
+          type: object
+          properties:
+            var:
+              type: string
+      example:
+        id: 1
+        jsonrpc: '2.0'
+        method: PlcProgram.Read
+        params:
+          var: '"Data".random_nr'
+    login_to_plc:
+      type: object
+      properties:
+        id:
+          type: integer
+        jsonrpc:
+          type: string
+        method:
+          type: string
+        params:
+          type: object
+          properties:
+            user:
+              type: string
+            password:
+              type: string
+      example:
+        id: 0
+        jsonrpc: '2.0'
+        method: Api.Login
+        params:
+          user: admin
+          password: Sander001!
+    post_to_plc:
+      type: object
+      properties:
+        id:
+          type: integer
+        jsonrpc:
+          type: string
+        method:
+          type: string
+        params:
+          type: object
+          properties:
+            var:
+              type: string
+      example:
+        id: 1
+        jsonrpc: '2.0'
+        method: PlcProgram.write
+        params:
+          var: '"Data".random_nr'
+  requestBodies:
+    get_from_plc:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/get_from_plc'
+      description: ''
+      required: true
+    login_to_plc:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/login_to_plc'
+      description: ''
+      required: true
+    post_to_plc:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/post_to_plc'
+      description: ''
+      required: true
+  securitySchemes: {}

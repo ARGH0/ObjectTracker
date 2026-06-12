@@ -295,9 +295,9 @@ public partial class MainWindow : AppWindow
             .ToList();
     }
 
-    public static bool NormalizeDebugViewEnabled(bool isIncludedInVisionPipeline, bool debugViewEnabled)
+    public static bool NormalizeDebugViewEnabled(bool isIncludedInVisionPipeline, bool isVisionPipelineRunning, bool debugViewEnabled)
     {
-        return isIncludedInVisionPipeline && debugViewEnabled;
+        return isIncludedInVisionPipeline && isVisionPipelineRunning && debugViewEnabled;
     }
 
     internal static IReadOnlyList<CameraTileFeedRequest> BuildCameraTileFeedRequests(
@@ -531,6 +531,7 @@ public partial class MainWindow : AppWindow
     private bool applyingShowRegionsUi;
     private bool applyingTrainColorPickerUi;
     private bool hasPendingVisionPipelineRestart;
+    private bool isVisionPipelineRunningForUi;
     private bool isCameraPanelOpen = true;
     private bool isCameraPanelPinned = true;
     private Workspace activeWorkspace = Workspace.Camera;
@@ -612,6 +613,7 @@ public partial class MainWindow : AppWindow
     {
         _ = Dispatcher.UIThread.InvokeAsync(() =>
         {
+            AppendLog($"PLC: {message}");
             plcLogEntries.Add(message);
             while (plcLogEntries.Count > MaxPlcLogEntries)
             {
@@ -1670,9 +1672,9 @@ public partial class MainWindow : AppWindow
             VisionPipelineInclusionCheckBox.IsChecked = camera.Value.IsIncludedInVisionPipeline;
             applyingCameraInclusionUi = false;
             applyingCameraDebugViewUi = true;
-            CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(camera.Value.IsIncludedInVisionPipeline, camera.Value.DebugViewEnabled);
+            CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(camera.Value.IsIncludedInVisionPipeline, isVisionPipelineRunningForUi, camera.Value.DebugViewEnabled);
             applyingCameraDebugViewUi = false;
-            CameraDebugViewCheckBox.IsEnabled = camera.Value.IsIncludedInVisionPipeline;
+            CameraDebugViewCheckBox.IsEnabled = camera.Value.IsIncludedInVisionPipeline && isVisionPipelineRunningForUi;
             applyingShowRegionsUi = true;
             ShowRegionsCheckBox.IsChecked = camera.Value.ShowRegionsEnabled;
             applyingShowRegionsUi = false;
@@ -1788,6 +1790,7 @@ public partial class MainWindow : AppWindow
 
         hasPendingVisionPipelineRestart = false;
         SetRunState(isRunning: true);
+        EnableDebugViewForIncludedCameras(DebugViewFrameType.ColorDetections);
         await StopCameraTilePreviewAsync();
         RefreshCameraUi();
         StartBakeForAllCameras(token);
@@ -1829,8 +1832,40 @@ public partial class MainWindow : AppWindow
             }
 
             sessionAuditLogger.StopSession();
+            DisableDebugViewForAllCameras();
             SetRunState(isRunning: false);
             RefreshCameraUi();
+        }
+    }
+
+    private void DisableDebugViewForAllCameras()
+    {
+        lock (cameraSync)
+        {
+            for (var i = 0; i < cameras.Count; i++)
+            {
+                cameras[i] = cameras[i] with { DebugViewEnabled = false };
+            }
+        }
+    }
+
+    private void EnableDebugViewForIncludedCameras(DebugViewFrameType frameType)
+    {
+        lock (cameraSync)
+        {
+            for (var i = 0; i < cameras.Count; i++)
+            {
+                if (!cameras[i].IsIncludedInVisionPipeline)
+                {
+                    continue;
+                }
+
+                cameras[i] = cameras[i] with
+                {
+                    DebugViewEnabled = true,
+                    DebugViewFrameType = frameType
+                };
+            }
         }
     }
 
@@ -2274,9 +2309,9 @@ public partial class MainWindow : AppWindow
         applyingCameraInclusionUi = true;
         VisionPipelineInclusionCheckBox.IsChecked = selected.IsIncludedInVisionPipeline;
         applyingCameraInclusionUi = false;
-        CameraDebugViewCheckBox.IsEnabled = selected.IsIncludedInVisionPipeline;
+        CameraDebugViewCheckBox.IsEnabled = selected.IsIncludedInVisionPipeline && isVisionPipelineRunningForUi;
         applyingCameraDebugViewUi = true;
-        CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(selected.IsIncludedInVisionPipeline, selected.DebugViewEnabled);
+        CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(selected.IsIncludedInVisionPipeline, isVisionPipelineRunningForUi, selected.DebugViewEnabled);
         DebugViewFrameTypeComboBox.IsVisible = CameraDebugViewCheckBox.IsChecked == true;
         DebugViewFrameTypeComboBox.SelectedIndex = selected.DebugViewFrameType == DebugViewFrameType.ColorDetections ? 1 : 0;
         applyingCameraDebugViewUi = false;
@@ -2294,7 +2329,7 @@ public partial class MainWindow : AppWindow
                 camera.DisplayName,
                 camera.IsVisible,
                 camera.IsIncludedInVisionPipeline,
-                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled),
+                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, isVisionPipelineRunningForUi, camera.DebugViewEnabled),
                 camera.DebugViewFrameType,
                 camera.ShowRegionsEnabled))
             .ToList());
@@ -2305,7 +2340,7 @@ public partial class MainWindow : AppWindow
                 camera.DisplayName,
                 camera.IsVisible,
                 camera.IsIncludedInVisionPipeline,
-                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled),
+                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, isVisionPipelineRunningForUi, camera.DebugViewEnabled),
                 camera.DebugViewFrameType,
                 camera.ShowRegionsEnabled))
             .ToList());
@@ -2582,13 +2617,13 @@ public partial class MainWindow : AppWindow
             cameras[selectedCameraIndex] = selected with
             {
                 IsIncludedInVisionPipeline = isIncluded,
-                DebugViewEnabled = NormalizeDebugViewEnabled(isIncluded, selected.DebugViewEnabled)
+                DebugViewEnabled = NormalizeDebugViewEnabled(isIncluded, isVisionPipelineRunningForUi, selected.DebugViewEnabled)
             };
         }
 
         applyingCameraDebugViewUi = true;
-        CameraDebugViewCheckBox.IsEnabled = VisionPipelineInclusionCheckBox.IsChecked == true;
-        CameraDebugViewCheckBox.IsChecked = VisionPipelineInclusionCheckBox.IsChecked == true && CameraDebugViewCheckBox.IsChecked == true;
+        CameraDebugViewCheckBox.IsEnabled = VisionPipelineInclusionCheckBox.IsChecked == true && isVisionPipelineRunningForUi;
+        CameraDebugViewCheckBox.IsChecked = VisionPipelineInclusionCheckBox.IsChecked == true && isVisionPipelineRunningForUi && CameraDebugViewCheckBox.IsChecked == true;
         applyingCameraDebugViewUi = false;
 
         RefreshCameraUi();
@@ -2612,7 +2647,7 @@ public partial class MainWindow : AppWindow
             var debugEnabled = CameraDebugViewCheckBox.IsChecked == true;
             cameras[selectedCameraIndex] = selected with
             {
-                DebugViewEnabled = NormalizeDebugViewEnabled(selected.IsIncludedInVisionPipeline, debugEnabled)
+                DebugViewEnabled = NormalizeDebugViewEnabled(selected.IsIncludedInVisionPipeline, isVisionPipelineRunningForUi, debugEnabled)
             };
         }
 
@@ -2684,6 +2719,7 @@ public partial class MainWindow : AppWindow
 
     private void SetRunState(bool isRunning)
     {
+        isVisionPipelineRunningForUi = isRunning;
         StartStopButton.Content = isRunning ? "Stop" : "Start";
         StartStopButton.IsEnabled = isRunning;
         var menuState = BuildVisionPipelineMenuState(isRunning);

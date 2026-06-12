@@ -271,10 +271,7 @@ internal sealed class BackgroundEstimationEngine(
                         ref medianBackground);
                 }
 
-                if (frameIndex % 20 == 0)
-                {
-                    await onStatus($"processing {source.SourceLabel} | frame {frameIndex}");
-                }
+                await onStatus($"processing {source.SourceLabel}");
             }
 
             return VideoProcessResult.Ok();

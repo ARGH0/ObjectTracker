@@ -40,13 +40,14 @@ public sealed class MainWindowCameraGridProjectionTests
     }
 
     [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(false, true, false)]
-    [InlineData(true, false, false)]
-    [InlineData(true, true, true)]
-    public void NormalizeDebugViewEnabled_RespectsVisionPipelineInclusion(bool included, bool debugRequested, bool expected)
+    [InlineData(false, false, false, false)]
+    [InlineData(false, true, true, false)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, true, true, true)]
+    public void NormalizeDebugViewEnabled_RequiresInclusionAndRunningVisionPipeline(bool included, bool running, bool debugRequested, bool expected)
     {
-        Assert.Equal(expected, MainWindow.NormalizeDebugViewEnabled(included, debugRequested));
+        Assert.Equal(expected, MainWindow.NormalizeDebugViewEnabled(included, running, debugRequested));
     }
 
     [Fact]

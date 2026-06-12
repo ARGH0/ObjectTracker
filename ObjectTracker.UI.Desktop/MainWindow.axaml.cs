@@ -323,8 +323,17 @@ public partial class MainWindow : AppWindow
                 string.Equals(tile.CameraId, camera.Id, StringComparison.OrdinalIgnoreCase) &&
                 tile.FeedKind != FeedKind.DebugView))
             .Where(camera => availableTileImageIds.Contains(camera.Id))
-            .Select(camera => new CameraTileFeedRequest(camera.Id, CameraTileFeedKind.VideoFile))
+            .Select(camera => new CameraTileFeedRequest(camera.Id, GetCameraTileFeedKind(camera.SourceKind)))
             .ToList();
+    }
+
+    private static CameraTileFeedKind GetCameraTileFeedKind(CameraSourceKind sourceKind)
+    {
+        return sourceKind switch
+        {
+            CameraSourceKind.UsbCamera => CameraTileFeedKind.UsbCamera,
+            _ => CameraTileFeedKind.VideoFile
+        };
     }
 
     public static string GetFeedKindBadge(FeedKind kind)
@@ -1330,7 +1339,16 @@ public partial class MainWindow : AppWindow
             return;
         }
 
-        await AddVideoCamerasAsync();
+        switch (selection.Value)
+        {
+            case CameraAddChoice.VideoFiles:
+                await AddVideoCamerasAsync();
+                break;
+
+            case CameraAddChoice.UsbCamera:
+                await AddUsbCameraAsync();
+                break;
+        }
 
         if (activeWorkspace == Workspace.Regions)
         {
@@ -1396,6 +1414,52 @@ public partial class MainWindow : AppWindow
         SetStatus(added == 0
             ? "Status: no new video cameras added."
             : $"Status: added {added} video camera(s).");
+
+        if (runTask is not null)
+        {
+            StartBakeForAllCameras(runCts?.Token ?? CancellationToken.None);
+        }
+    }
+
+    private async Task AddUsbCameraAsync()
+    {
+        var dialog = new UsbCameraChoiceDialog();
+        var selectedDevice = await dialog.ShowDialog<UsbCameraDevice?>(this);
+        if (selectedDevice is null)
+        {
+            return;
+        }
+
+        var device = selectedDevice.Value;
+        var cameraId = device.Id;
+        var displayName = device.DisplayName;
+
+        lock (cameraSync)
+        {
+            if (cameras.Any(c => string.Equals(c.Id, cameraId, StringComparison.OrdinalIgnoreCase)))
+            {
+                SetStatus($"Status: USB camera '{displayName}' is already added.");
+                return;
+            }
+
+            cameras.Add(CameraProfile.CreateUsbCamera(device));
+            cameraZoneIdentityService.AssignSourceToZone(cameraId, requestedZoneName: displayName);
+
+            if (!cameraSettings.ContainsKey(cameraId))
+            {
+                cameraSettings[cameraId] = RuntimeProcessingSettings.Default;
+            }
+
+            if (selectedCameraIndex < 0 && cameras.Count > 0)
+            {
+                selectedCameraIndex = 0;
+            }
+        }
+
+        PersistCameraSettings();
+        PersistCameraZones();
+        RefreshCameraUi();
+        SetStatus($"Status: added USB camera '{displayName}'.");
 
         if (runTask is not null)
         {
@@ -1900,6 +1964,12 @@ public partial class MainWindow : AppWindow
             WritePlcTransition(matchingRegion.Name, detection.Train.PlcId);
         };
 
+        if (camera.SourceKind == CameraSourceKind.UsbCamera)
+        {
+            await ProcessUsbCameraAsync(camera, engine, cancellationToken);
+            return;
+        }
+
         for (var videoIndex = 0; !cancellationToken.IsCancellationRequested; videoIndex++)
         {
             var settings = GetSettingsForCamera(camera.Id);
@@ -1924,6 +1994,44 @@ public partial class MainWindow : AppWindow
             await Dispatcher.UIThread.InvokeAsync(() => CurrentVideoText.Text = BuildCurrentSourceText(camera, Path.GetFileName(videoPath)));
 
             await using var source = new VideoFileSource(videoPath, camera.DisplayName);
+            var result = await engine.ProcessAsync(
+                source,
+                settings.SampleCount,
+                settings.Threshold,
+                options,
+                GetBakeImagePath(settings),
+                onFrame: frameSet =>
+                {
+                    QueuePreviewFrame(camera.Id, frameSet, cancellationToken);
+                    return Task.CompletedTask;
+                },
+                onStatus: async message => await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {message}")),
+                getLiveTuning: () => GetLiveTuningForCamera(camera.Id),
+                shouldStopEarly: null,
+                cancellationToken: cancellationToken);
+
+            if (!result.Success)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => SetStatus($"Status: {result.Message}"));
+            }
+        }
+    }
+
+    private async Task ProcessUsbCameraAsync(CameraProfile camera, BackgroundEstimationEngine engine, CancellationToken cancellationToken)
+    {
+        for (; !cancellationToken.IsCancellationRequested; )
+        {
+            var settings = GetSettingsForCamera(camera.Id);
+            var options = new BackgroundEstimationEngine.ProcessingOptions(
+                settings.ProcessMaxWidth,
+                settings.MotionArea,
+                settings.ColorMinPixels,
+                settings.MorphKernelSize,
+                GetConfiguredTrainProfiles());
+
+            await Dispatcher.UIThread.InvokeAsync(() => CurrentVideoText.Text = BuildCurrentSourceText(camera, camera.DisplayName));
+
+            await using var source = CameraSourceFactory.Create(camera);
             var result = await engine.ProcessAsync(
                 source,
                 settings.SampleCount,
@@ -2248,12 +2356,7 @@ public partial class MainWindow : AppWindow
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(camera.PrimaryVideoPath))
-            {
-                return;
-            }
-
-            await using var videoSource = new VideoFileSource(camera.PrimaryVideoPath, camera.DisplayName);
+            await using var videoSource = CameraSourceFactory.Create(camera);
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -3155,6 +3258,12 @@ public partial class MainWindow : AppWindow
         ImageFile = 1
     }
 
+    internal enum CameraSourceKind
+    {
+        VideoFile = 0,
+        UsbCamera = 1
+    }
+
     internal readonly record struct CameraProfile(
         string Id,
         string DisplayName,
@@ -3162,6 +3271,8 @@ public partial class MainWindow : AppWindow
         bool IsIncludedInVisionPipeline,
         bool DebugViewEnabled,
         List<string> VideoPaths,
+        CameraSourceKind SourceKind = CameraSourceKind.VideoFile,
+        int? UsbDeviceIndex = null,
         DebugViewFrameType DebugViewFrameType = DebugViewFrameType.MovingColor,
         bool ShowAnnotationsEnabled = false,
         bool ShowRegionsEnabled = false)
@@ -3174,6 +3285,9 @@ public partial class MainWindow : AppWindow
 
         public static CameraProfile CreateVideo(string id, string displayName, List<string> videoPaths)
             => new(id, displayName, true, true, false, videoPaths);
+
+        public static CameraProfile CreateUsbCamera(UsbCameraDevice device)
+            => new(device.Id, device.DisplayName, true, true, false, new List<string>(), CameraSourceKind.UsbCamera, device.DeviceIndex);
     }
 
     internal readonly record struct RuntimeProcessingSettings(
@@ -3306,6 +3420,23 @@ public partial class MainWindow : AppWindow
     {
         try
         {
+            if (camera.SourceKind == CameraSourceKind.UsbCamera)
+            {
+                var deviceIndex = camera.UsbDeviceIndex ?? 0;
+                using var capture = new VideoCapture(deviceIndex);
+                if (capture.IsOpened())
+                {
+                    using var mat = new Mat();
+                    if (capture.Read(mat) && !mat.Empty())
+                    {
+                        Cv2.ImEncode(".jpg", mat, out var jpegBytes, new[] { (int)ImwriteFlags.JpegQuality, 80 });
+                        return jpegBytes;
+                    }
+                }
+
+                return null;
+            }
+
             if (!string.IsNullOrWhiteSpace(camera.PrimaryVideoPath))
             {
                 using var capture = new VideoCapture(camera.PrimaryVideoPath);

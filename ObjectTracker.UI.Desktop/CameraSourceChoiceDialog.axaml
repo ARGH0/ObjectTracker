@@ -35,6 +35,16 @@
                                Classes="muted"
                                TextWrapping="Wrap"
                                FontSize="12" />
+
+                    <Button x:Name="UsbCameraButton"
+                            Classes="primary"
+                            Content="Use USB Camera"
+                            Height="44"
+                            HorizontalAlignment="Stretch" />
+                    <TextBlock Text="Best when you want to connect a live webcam feed to this Camera Zone."
+                               Classes="muted"
+                               TextWrapping="Wrap"
+                               FontSize="12" />
                 </StackPanel>
             </Border>
 

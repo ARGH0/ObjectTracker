@@ -88,3 +88,89 @@ internal sealed class VideoFileSource : IVideoSource
     public string SourceLabel => _label;
     public int? Fps => _fps > 0 ? (int)_fps : null;
 }
+
+internal sealed class UsbCameraSource : IVideoSource
+{
+    private readonly int _deviceIndex;
+    private readonly string _label;
+    private VideoCapture? _capture;
+    private double _fps;
+    private bool _disposed;
+    private bool _triedToOpen;
+    private long _frameVersion;
+
+    public UsbCameraSource(int deviceIndex, string label)
+    {
+        _deviceIndex = deviceIndex;
+        _label = label;
+    }
+
+    private VideoCapture? Capture
+    {
+        get
+        {
+            if (_disposed)
+            {
+                return null;
+            }
+
+            if (_capture is not null && _capture.IsOpened())
+            {
+                return _capture;
+            }
+
+            if (!_triedToOpen)
+            {
+                _triedToOpen = true;
+                _capture = new VideoCapture(_deviceIndex);
+                if (_capture.IsOpened())
+                {
+                    _capture.Set(VideoCaptureProperties.FrameWidth, 1280);
+                    _capture.Set(VideoCaptureProperties.FrameHeight, 720);
+                    _fps = _capture.Fps > 0 ? _capture.Fps : 30;
+                }
+            }
+
+            return _capture;
+        }
+    }
+
+    public VideoFrameSnapshot? ReadLatestFrame()
+    {
+        if (_disposed)
+        {
+            return null;
+        }
+
+        var capture = Capture;
+        if (capture is null || !capture.IsOpened())
+        {
+            return null;
+        }
+
+        using var frame = new Mat();
+        if (!capture.Read(frame) || frame.Empty())
+        {
+            return null;
+        }
+
+        Cv2.ImEncode(".jpg", frame, out var jpeg);
+        return new VideoFrameSnapshot(
+            _label,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            frame.Width,
+            frame.Height,
+            jpeg,
+            Interlocked.Increment(ref _frameVersion));
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        _capture?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+
+    public string SourceLabel => _label;
+    public int? Fps => _fps > 0 ? (int)_fps : null;
+}

@@ -2,5 +2,6 @@ namespace ObjectTracker.UI.Desktop;
 
 internal enum CameraAddChoice
 {
-    VideoFiles
+    VideoFiles,
+    UsbCamera
 }

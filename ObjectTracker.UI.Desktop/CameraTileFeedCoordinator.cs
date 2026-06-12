@@ -8,7 +8,8 @@ namespace ObjectTracker.UI.Desktop;
 
 public enum CameraTileFeedKind
 {
-    VideoFile
+    VideoFile,
+    UsbCamera
 }
 
 public readonly record struct CameraTileFeedRequest(string CameraId, CameraTileFeedKind Kind);

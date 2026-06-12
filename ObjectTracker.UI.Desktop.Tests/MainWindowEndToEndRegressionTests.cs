@@ -37,7 +37,7 @@ public sealed class MainWindowEndToEndRegressionTests
             new MainWindow.CameraWorkspaceCamera("cam-debug", "Debug Camera", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: true),
             new MainWindow.CameraWorkspaceCamera("cam-hidden", "Hidden Camera", IsVisible: false, IsIncludedInVisionPipeline: true, DebugViewEnabled: false)
         });
-        var viewState = MainWindow.BuildCameraTileViewState(projection);
+        var viewState = MainWindow.BuildCameraTileViewState(projection, Array.Empty<bool>(), Array.Empty<bool>());
         var runningDestructiveState = MainWindow.BuildCameraDestructiveActionsState(
             isVisionPipelineRunning: true,
             hasSelectedCamera: true,

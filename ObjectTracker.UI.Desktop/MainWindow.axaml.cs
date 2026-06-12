@@ -92,7 +92,9 @@ public partial class MainWindow : AppWindow
         bool IsVisible,
         bool IsIncludedInVisionPipeline,
         bool DebugViewEnabled,
-        DebugViewFrameType DebugViewFrameType = DebugViewFrameType.MovingColor);
+        DebugViewFrameType DebugViewFrameType = DebugViewFrameType.MovingColor,
+        bool ShowAnnotationsEnabled = false,
+        bool ShowRegionsEnabled = false);
 
     public readonly record struct CameraWorkspaceTile(string CameraId, string DisplayName, int Index, FeedKind FeedKind, DebugViewFrameType DebugViewFrameType);
 
@@ -140,7 +142,9 @@ public partial class MainWindow : AppWindow
         IReadOnlyList<string> Titles,
         IReadOnlyList<string> CameraIds,
         IReadOnlyList<FeedKind> FeedKinds,
-        IReadOnlyList<DebugViewFrameType> DebugViewFrameTypes);
+        IReadOnlyList<DebugViewFrameType> DebugViewFrameTypes,
+        IReadOnlyList<bool> ShowAnnotationsEnabled,
+        IReadOnlyList<bool> ShowRegionsEnabled);
 
     public readonly record struct CameraPanelLayoutState(
         bool IsOpen,
@@ -233,6 +237,22 @@ public partial class MainWindow : AppWindow
         return new CameraGridProjection(visible.Count, rows, columns, tiles);
     }
 
+    public static IReadOnlyList<bool> BuildShowAnnotationsList(IReadOnlyList<CameraWorkspaceCamera> cameras)
+    {
+        return cameras
+            .Where(camera => camera.IsVisible)
+            .Select(camera => camera.ShowAnnotationsEnabled)
+            .ToList();
+    }
+
+    public static IReadOnlyList<bool> BuildShowRegionsList(IReadOnlyList<CameraWorkspaceCamera> cameras)
+    {
+        return cameras
+            .Where(camera => camera.IsVisible)
+            .Select(camera => camera.ShowRegionsEnabled)
+            .ToList();
+    }
+
     public static bool NormalizeDebugViewEnabled(bool isIncludedInVisionPipeline, bool debugViewEnabled)
     {
         return isIncludedInVisionPipeline && debugViewEnabled;
@@ -279,7 +299,7 @@ public partial class MainWindow : AppWindow
         };
     }
 
-    public static CameraTileViewState BuildCameraTileViewState(CameraGridProjection projection)
+    public static CameraTileViewState BuildCameraTileViewState(CameraGridProjection projection, IReadOnlyList<bool> showAnnotationsEnabled, IReadOnlyList<bool> showRegionsEnabled)
     {
         var titles = projection.Tiles
             .Select((tile, index) => $"{index + 1}. {tile.DisplayName} [{tile.FeedKind}]")
@@ -287,7 +307,7 @@ public partial class MainWindow : AppWindow
         var ids = projection.Tiles.Select(tile => tile.CameraId).ToList();
         var feedKinds = projection.Tiles.Select(tile => tile.FeedKind).ToList();
         var debugViewFrameTypes = projection.Tiles.Select(tile => tile.DebugViewFrameType).ToList();
-        return new CameraTileViewState(projection.Rows, projection.Columns, titles, ids, feedKinds, debugViewFrameTypes);
+        return new CameraTileViewState(projection.Rows, projection.Columns, titles, ids, feedKinds, debugViewFrameTypes, showAnnotationsEnabled, showRegionsEnabled);
     }
 
     public static SelectionMode GetCameraListSelectionMode()
@@ -443,6 +463,8 @@ public partial class MainWindow : AppWindow
     private readonly Dictionary<string, FeedKind> cameraTileFeedKindsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DebugTileImageSet> cameraTileDebugImagesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DebugViewFrameType> cameraTileDebugFrameTypesById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> cameraTileAnnotationsEnabledById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> cameraTileRegionsEnabledById = new(StringComparer.OrdinalIgnoreCase);
     private Task? runTask;
     private int selectedCameraIndex = -1;
     private int requestedCameraIndex = -1;
@@ -450,6 +472,8 @@ public partial class MainWindow : AppWindow
     private bool applyingCameraVisibilityUi;
     private bool applyingCameraInclusionUi;
     private bool applyingCameraDebugViewUi;
+    private bool applyingShowAnnotationsUi;
+    private bool applyingShowRegionsUi;
     private bool hasPendingVisionPipelineRestart;
     private bool isCameraPanelOpen = true;
     private bool isCameraPanelPinned = true;
@@ -565,6 +589,8 @@ public partial class MainWindow : AppWindow
         VisionPipelineInclusionCheckBox.IsCheckedChanged += VisionPipelineInclusionCheckBoxOnChanged;
         CameraDebugViewCheckBox.IsCheckedChanged += CameraDebugViewCheckBoxOnChanged;
         DebugViewFrameTypeComboBox.SelectionChanged += DebugViewFrameTypeComboBoxOnSelectionChanged;
+        ShowAnnotationsCheckBox.IsCheckedChanged += ShowAnnotationsCheckBoxOnChanged;
+        ShowRegionsCheckBox.IsCheckedChanged += ShowRegionsCheckBoxOnChanged;
         BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
         SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
         ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
@@ -1261,6 +1287,12 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(camera.Value.IsIncludedInVisionPipeline, camera.Value.DebugViewEnabled);
             applyingCameraDebugViewUi = false;
             CameraDebugViewCheckBox.IsEnabled = camera.Value.IsIncludedInVisionPipeline;
+            applyingShowAnnotationsUi = true;
+            ShowAnnotationsCheckBox.IsChecked = camera.Value.ShowAnnotationsEnabled;
+            applyingShowAnnotationsUi = false;
+            applyingShowRegionsUi = true;
+            ShowRegionsCheckBox.IsChecked = camera.Value.ShowRegionsEnabled;
+            applyingShowRegionsUi = false;
         }
 
         if (activeWorkspace == Workspace.Regions && camera is not null)
@@ -1790,6 +1822,10 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsChecked = false;
             applyingCameraDebugViewUi = false;
             CameraDebugViewCheckBox.IsEnabled = false;
+            ShowAnnotationsCheckBox.IsChecked = false;
+            ShowAnnotationsCheckBox.IsEnabled = false;
+            ShowRegionsCheckBox.IsChecked = false;
+            ShowRegionsCheckBox.IsEnabled = false;
             RegionsListBox.ItemsSource = null;
             return;
         }
@@ -1815,6 +1851,12 @@ public partial class MainWindow : AppWindow
         DebugViewFrameTypeComboBox.IsVisible = CameraDebugViewCheckBox.IsChecked == true;
         DebugViewFrameTypeComboBox.SelectedIndex = selected.DebugViewFrameType == DebugViewFrameType.ColorDetections ? 1 : 0;
         applyingCameraDebugViewUi = false;
+        applyingShowAnnotationsUi = true;
+        ShowAnnotationsCheckBox.IsChecked = selected.ShowAnnotationsEnabled;
+        applyingShowAnnotationsUi = false;
+        applyingShowRegionsUi = true;
+        ShowRegionsCheckBox.IsChecked = selected.ShowRegionsEnabled;
+        applyingShowRegionsUi = false;
     }
 
     private void RefreshCameraWorkspaceTiles(IReadOnlyList<CameraProfile> orderedCameras)
@@ -1826,10 +1868,36 @@ public partial class MainWindow : AppWindow
                 camera.IsVisible,
                 camera.IsIncludedInVisionPipeline,
                 NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled),
-                camera.DebugViewFrameType))
+                camera.DebugViewFrameType,
+                camera.ShowAnnotationsEnabled,
+                camera.ShowRegionsEnabled))
             .ToList());
 
-        var viewState = BuildCameraTileViewState(projection);
+        var annotationsList = BuildShowAnnotationsList(orderedCameras
+            .Select(camera => new CameraWorkspaceCamera(
+                camera.Id,
+                camera.DisplayName,
+                camera.IsVisible,
+                camera.IsIncludedInVisionPipeline,
+                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled),
+                camera.DebugViewFrameType,
+                camera.ShowAnnotationsEnabled,
+                camera.ShowRegionsEnabled))
+            .ToList());
+
+        var regionsList = BuildShowRegionsList(orderedCameras
+            .Select(camera => new CameraWorkspaceCamera(
+                camera.Id,
+                camera.DisplayName,
+                camera.IsVisible,
+                camera.IsIncludedInVisionPipeline,
+                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled),
+                camera.DebugViewFrameType,
+                camera.ShowAnnotationsEnabled,
+                camera.ShowRegionsEnabled))
+            .ToList());
+
+        var viewState = BuildCameraTileViewState(projection, annotationsList, regionsList);
         ApplyCameraTileViewState(viewState);
         StartCameraTilePreview(orderedCameras, projection);
     }
@@ -1890,7 +1958,7 @@ public partial class MainWindow : AppWindow
                 var snapshot = videoSource.ReadLatestFrame();
                 if (snapshot is not null)
                 {
-                    RenderSnapshotToTile(target, snapshot.Value);
+                    RenderSnapshotToTile(camera.Id, target, snapshot.Value);
                 }
 
                 await DelayIgnoringCancellationAsync(PreviewIntervalMs, cancellationToken);
@@ -1912,11 +1980,100 @@ public partial class MainWindow : AppWindow
         await Task.Delay(milliseconds);
     }
 
-    private void RenderSnapshotToTile(Image target, VideoFrameSnapshot snapshot)
+    private void RenderSnapshotToTile(string cameraId, Image target, VideoFrameSnapshot snapshot)
     {
-        using var stream = new MemoryStream(snapshot.EncodedJpeg);
+        var jpegBytes = snapshot.EncodedJpeg;
+
+        if (cameraTileFeedKindsById.TryGetValue(cameraId, out var feedKind) && feedKind != FeedKind.DebugView)
+        {
+            var showAnnotations = cameraTileAnnotationsEnabledById.TryGetValue(cameraId, out var ann) && ann;
+            var showRegions = cameraTileRegionsEnabledById.TryGetValue(cameraId, out var reg) && reg;
+
+            if (showAnnotations || showRegions)
+            {
+                jpegBytes = ApplyTileOverlays(cameraId, jpegBytes, showAnnotations, showRegions);
+            }
+        }
+
+        using var stream = new MemoryStream(jpegBytes);
         var bitmap = new Bitmap(stream);
         Dispatcher.UIThread.Post(() => UpdatePreviewBitmap(target, bitmap), DispatcherPriority.Background);
+    }
+
+    private byte[] ApplyTileOverlays(
+        string cameraId,
+        byte[] rawJpeg,
+        bool annotationsEnabled,
+        bool regionsEnabled)
+    {
+        var result = rawJpeg;
+        var settings = GetSettingsForCamera(cameraId);
+
+        if (annotationsEnabled)
+        {
+            var annotated = TileOverlayRenderer.RenderAnnotations(
+                rawJpeg,
+                settings.ColorCalibrations,
+                minMotionArea: settings.MotionArea,
+                minColorPixels: settings.ColorMinPixels,
+                morphKernelSize: settings.MorphKernelSize);
+
+            if (annotated is not null)
+            {
+                result = annotated;
+            }
+        }
+
+        if (regionsEnabled)
+        {
+            var regions = GetRegionsForCamera(cameraId);
+            if (regions.Count > 0)
+            {
+                if (annotationsEnabled)
+                {
+                    result = TileOverlayRenderer.CompositeWithRegions(
+                        result,
+                        appSettings.GridColumns,
+                        appSettings.GridRows,
+                        regions);
+                }
+                else
+                {
+                    result = TileOverlayRenderer.DrawRegions(
+                        rawJpeg,
+                        appSettings.GridColumns,
+                        appSettings.GridRows,
+                        regions);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private IReadOnlyList<RegionOverlayInfo> GetRegionsForCamera(string cameraId)
+    {
+        try
+        {
+            if (!cameraZoneIdentityService.TryGetCameraZoneForSource(cameraId, out var zone))
+                return Array.Empty<RegionOverlayInfo>();
+
+            var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+            var regions = regionRegistry?.GetByZone(zoneId) ?? Array.Empty<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition>();
+
+            return regions
+                .Where(r => r.Type == ObjectTracker.UI.Desktop.Region.Model.RegionType.EnterCrossroadRegion ||
+                            r.Type == ObjectTracker.UI.Desktop.Region.Model.RegionType.ExitCrossroadRegion)
+                .Select(r => new RegionOverlayInfo(
+                    r.Name,
+                    (int)r.Type,
+                    r.Cells.ToList()))
+                .ToList();
+        }
+        catch
+        {
+            return Array.Empty<RegionOverlayInfo>();
+        }
     }
 
     private static void UpdatePreviewBitmap(Image target, Bitmap bitmap)
@@ -1936,6 +2093,8 @@ public partial class MainWindow : AppWindow
         cameraTileImagesById.Clear();
         cameraTileFeedKindsById.Clear();
         cameraTileDebugImagesById.Clear();
+        cameraTileAnnotationsEnabledById.Clear();
+        cameraTileRegionsEnabledById.Clear();
 
         for (var i = 0; i < viewState.CameraIds.Count; i++)
         {
@@ -1945,6 +2104,8 @@ public partial class MainWindow : AppWindow
                 : new Image { Stretch = Avalonia.Media.Stretch.Uniform };
             cameraTileImagesById[cameraId] = image;
             cameraTileFeedKindsById[cameraId] = viewState.FeedKinds[i];
+            cameraTileAnnotationsEnabledById[cameraId] = viewState.ShowAnnotationsEnabled[i];
+            cameraTileRegionsEnabledById[cameraId] = viewState.ShowRegionsEnabled[i];
 
             var panel = new Panel();
             if (image.Parent is Panel currentParent)
@@ -2137,6 +2298,50 @@ public partial class MainWindow : AppWindow
             {
                 DebugViewFrameType = frameType
             };
+        }
+
+        RefreshCameraUi();
+    }
+
+    private void ShowAnnotationsCheckBoxOnChanged(object? sender, RoutedEventArgs e)
+    {
+        if (applyingShowAnnotationsUi)
+        {
+            return;
+        }
+
+        lock (cameraSync)
+        {
+            if (selectedCameraIndex < 0 || selectedCameraIndex >= cameras.Count)
+            {
+                return;
+            }
+
+            var selected = cameras[selectedCameraIndex];
+            var showAnnotations = ShowAnnotationsCheckBox.IsChecked == true;
+            cameras[selectedCameraIndex] = selected with { ShowAnnotationsEnabled = showAnnotations };
+        }
+
+        RefreshCameraUi();
+    }
+
+    private void ShowRegionsCheckBoxOnChanged(object? sender, RoutedEventArgs e)
+    {
+        if (applyingShowRegionsUi)
+        {
+            return;
+        }
+
+        lock (cameraSync)
+        {
+            if (selectedCameraIndex < 0 || selectedCameraIndex >= cameras.Count)
+            {
+                return;
+            }
+
+            var selected = cameras[selectedCameraIndex];
+            var showRegions = ShowRegionsCheckBox.IsChecked == true;
+            cameras[selectedCameraIndex] = selected with { ShowRegionsEnabled = showRegions };
         }
 
         RefreshCameraUi();
@@ -2797,7 +3002,9 @@ public partial class MainWindow : AppWindow
         bool IsIncludedInVisionPipeline,
         bool DebugViewEnabled,
         List<string> VideoPaths,
-        DebugViewFrameType DebugViewFrameType = DebugViewFrameType.MovingColor)
+        DebugViewFrameType DebugViewFrameType = DebugViewFrameType.MovingColor,
+        bool ShowAnnotationsEnabled = false,
+        bool ShowRegionsEnabled = false)
     {
         public string PrimaryVideoPath => VideoPaths.Count > 0 ? VideoPaths[0] : string.Empty;
 

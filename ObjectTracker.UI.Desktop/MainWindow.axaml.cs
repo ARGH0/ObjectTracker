@@ -2203,6 +2203,8 @@ public partial class MainWindow : AppWindow
             _ => frameSet.MovingColorJpeg
         };
 
+        targetImage = ApplyTileOverlaysIfEnabled(cameraId, targetImage);
+
         UpdatePreviewImage(debugImages.DebugPreview, targetImage);
     }
 
@@ -2388,21 +2390,17 @@ public partial class MainWindow : AppWindow
 
     private void RenderSnapshotToTile(string cameraId, Image target, VideoFrameSnapshot snapshot)
     {
-        var jpegBytes = snapshot.EncodedJpeg;
-
-        if (cameraTileFeedKindsById.TryGetValue(cameraId, out var feedKind) && feedKind != FeedKind.DebugView)
-        {
-            var showRegions = cameraTileRegionsEnabledById.TryGetValue(cameraId, out var reg) && reg;
-
-            if (showRegions)
-            {
-                jpegBytes = ApplyTileOverlays(cameraId, jpegBytes);
-            }
-        }
+        var jpegBytes = ApplyTileOverlaysIfEnabled(cameraId, snapshot.EncodedJpeg);
 
         using var stream = new MemoryStream(jpegBytes);
         var bitmap = new Bitmap(stream);
         Dispatcher.UIThread.Post(() => UpdatePreviewBitmap(target, bitmap), DispatcherPriority.Background);
+    }
+
+    private byte[] ApplyTileOverlaysIfEnabled(string cameraId, byte[] rawJpeg)
+    {
+        var showRegions = cameraTileRegionsEnabledById.TryGetValue(cameraId, out var reg) && reg;
+        return showRegions ? ApplyTileOverlays(cameraId, rawJpeg) : rawJpeg;
     }
 
     private byte[] ApplyTileOverlays(

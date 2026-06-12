@@ -90,8 +90,6 @@ public partial class MainWindow : AppWindow
         string PlcId,
         uint MinColor,
         uint MaxColor,
-        string MaxWidth,
-        string MaxHeight,
         string HueLower,
         string HueUpper,
         string SaturationLower,
@@ -221,8 +219,6 @@ public partial class MainWindow : AppWindow
             train.PlcId,
             train.MinColor,
             train.MaxColor,
-            train.MaxWidth.ToString(CultureInfo.InvariantCulture),
-            train.MaxHeight.ToString(CultureInfo.InvariantCulture),
             train.Calibration.HueLower.ToString(CultureInfo.InvariantCulture),
             train.Calibration.HueUpper.ToString(CultureInfo.InvariantCulture),
             train.Calibration.SaturationLower.ToString(CultureInfo.InvariantCulture),
@@ -962,8 +958,6 @@ public partial class MainWindow : AppWindow
         TrainNameTextBox.Text = projection.Name;
         TrainPlcIdTextBox.Text = projection.PlcId;
         SetTrainPickerColors(projection.MinColor, projection.MaxColor);
-        TrainMaxWidthTextBox.Text = projection.MaxWidth;
-        TrainMaxHeightTextBox.Text = projection.MaxHeight;
         TrainHueLowerTextBox.Text = projection.HueLower;
         TrainHueUpperTextBox.Text = projection.HueUpper;
         TrainSaturationLowerTextBox.Text = projection.SaturationLower;
@@ -981,8 +975,6 @@ public partial class MainWindow : AppWindow
         TrainMaxColorTextBox.IsEnabled = isEnabled;
         TrainMinColorPicker.IsEnabled = isEnabled;
         TrainMaxColorPicker.IsEnabled = isEnabled;
-        TrainMaxWidthTextBox.IsEnabled = isEnabled;
-        TrainMaxHeightTextBox.IsEnabled = isEnabled;
         TrainHueLowerTextBox.IsEnabled = isEnabled;
         TrainHueUpperTextBox.IsEnabled = isEnabled;
         TrainSaturationLowerTextBox.IsEnabled = isEnabled;
@@ -1039,8 +1031,6 @@ public partial class MainWindow : AppWindow
             string.Empty,
             0xFFC8C8C8,
             0xFFFFFFFF,
-            160,
-            80,
             new ColorCalibrationProfile("New Train", 0, 180, 0, 50, 190, 255));
 
         lock (settingsSync)
@@ -1087,8 +1077,6 @@ public partial class MainWindow : AppWindow
             (TrainPlcIdTextBox.Text ?? string.Empty).Trim(),
             ToArgb(TrainMinColorPicker.Color),
             ToArgb(TrainMaxColorPicker.Color),
-            ParseInt(TrainMaxWidthTextBox.Text, 160, 1, 100000),
-            ParseInt(TrainMaxHeightTextBox.Text, 80, 1, 100000),
             NormalizeColorCalibration(new ColorCalibrationProfile(
                 name,
                 ParseInt(TrainHueLowerTextBox.Text, 0, 0, 180),

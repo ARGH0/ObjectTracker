@@ -702,25 +702,6 @@
                                 </StackPanel>
                             </Grid>
 
-                            <TextBlock Text="Max Detection Size"
-                                       Classes="sectionTitle" />
-                            <Grid ColumnDefinitions="*,8,*">
-                                <StackPanel Grid.Column="0"
-                                            Spacing="4">
-                                    <TextBlock Text="Max Width"
-                                               Classes="eyebrow" />
-                                    <TextBox x:Name="TrainMaxWidthTextBox"
-                                             Watermark="160" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="2"
-                                            Spacing="4">
-                                    <TextBlock Text="Max Height"
-                                               Classes="eyebrow" />
-                                    <TextBox x:Name="TrainMaxHeightTextBox"
-                                             Watermark="80" />
-                                </StackPanel>
-                            </Grid>
-
                             <TextBlock Text="Advanced Calibration"
                                        Classes="sectionTitle" />
                             <Grid ColumnDefinitions="*,8,*"

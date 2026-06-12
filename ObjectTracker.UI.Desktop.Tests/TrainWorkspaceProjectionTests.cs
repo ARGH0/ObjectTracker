@@ -16,8 +16,6 @@ public sealed class TrainWorkspaceProjectionTests
             "PLC-17",
             0xFF8A0000,
             0xFFFF6060,
-            120,
-            60,
             new ColorCalibrationProfile("Cargo Red", 170, 10, 120, 255, 70, 255));
 
         var projection = MainWindow.BuildTrainEditorProjection(train);
@@ -27,8 +25,6 @@ public sealed class TrainWorkspaceProjectionTests
         Assert.Equal("PLC-17", projection.PlcId);
         Assert.Equal(0xFF8A0000u, projection.MinColor);
         Assert.Equal(0xFFFF6060u, projection.MaxColor);
-        Assert.Equal("120", projection.MaxWidth);
-        Assert.Equal("60", projection.MaxHeight);
         Assert.Equal("170", projection.HueLower);
         Assert.Equal("10", projection.HueUpper);
         Assert.Equal("120", projection.SaturationLower);

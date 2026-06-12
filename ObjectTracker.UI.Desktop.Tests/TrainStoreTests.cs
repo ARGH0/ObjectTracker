@@ -36,8 +36,6 @@ public sealed class TrainStoreTests
                 "PLC-17",
                 0xFF8A0000,
                 0xFFFF6060,
-                120,
-                60,
                 new ColorCalibrationProfile("Cargo Red", 170, 10, 120, 255, 70, 255))
         });
 
@@ -48,8 +46,6 @@ public sealed class TrainStoreTests
         Assert.Equal("PLC-17", loaded.PlcId);
         Assert.Equal(0xFF8A0000u, loaded.MinColor);
         Assert.Equal(0xFFFF6060u, loaded.MaxColor);
-        Assert.Equal(120, loaded.MaxWidth);
-        Assert.Equal(60, loaded.MaxHeight);
         Assert.Equal(170, loaded.Calibration.HueLower);
         Assert.Equal(10, loaded.Calibration.HueUpper);
         Assert.Equal(120, loaded.Calibration.SaturationLower);

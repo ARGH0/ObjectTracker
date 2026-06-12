@@ -56,8 +56,6 @@ internal sealed class TrainStore
                 item.PlcId?.Trim() ?? string.Empty,
                 item.MinColor,
                 item.MaxColor,
-                Math.Clamp(item.MaxWidth, 1, 100000),
-                Math.Clamp(item.MaxHeight, 1, 100000),
                 NormalizeCalibration(new ColorCalibrationProfile(
                     item.Name.Trim(),
                     item.HueLower,
@@ -87,8 +85,6 @@ internal sealed class TrainStore
                         PlcId = train.PlcId.Trim(),
                         MinColor = train.MinColor,
                         MaxColor = train.MaxColor,
-                        MaxWidth = Math.Clamp(train.MaxWidth, 1, 100000),
-                        MaxHeight = Math.Clamp(train.MaxHeight, 1, 100000),
                         HueLower = calibration.HueLower,
                         HueUpper = calibration.HueUpper,
                         SaturationLower = calibration.SaturationLower,
@@ -114,10 +110,10 @@ internal sealed class TrainStore
     {
         return new List<ConfiguredTrain>
         {
-            new(Guid.Parse("10000000-0000-0000-0000-000000000001"), "Red Train", "RED", 0xFF8A0000, 0xFFFF6060, 160, 80, new ColorCalibrationProfile("Red Train", 170, 10, 120, 255, 70, 255)),
-            new(Guid.Parse("10000000-0000-0000-0000-000000000002"), "Green Train", "GREEN", 0xFF006A20, 0xFF70FF70, 160, 80, new ColorCalibrationProfile("Green Train", 35, 85, 80, 255, 60, 255)),
-            new(Guid.Parse("10000000-0000-0000-0000-000000000003"), "Blue Train", "BLUE", 0xFF003C8F, 0xFF60B0FF, 160, 80, new ColorCalibrationProfile("Blue Train", 90, 130, 100, 255, 60, 255)),
-            new(Guid.Parse("10000000-0000-0000-0000-000000000004"), "White Train", "WHITE", 0xFFC8C8C8, 0xFFFFFFFF, 160, 80, new ColorCalibrationProfile("White Train", 0, 180, 0, 50, 190, 255))
+            new(Guid.Parse("10000000-0000-0000-0000-000000000001"), "Red Train", "RED", 0xFF8A0000, 0xFFFF6060, new ColorCalibrationProfile("Red Train", 170, 10, 120, 255, 70, 255)),
+            new(Guid.Parse("10000000-0000-0000-0000-000000000002"), "Green Train", "GREEN", 0xFF006A20, 0xFF70FF70, new ColorCalibrationProfile("Green Train", 35, 85, 80, 255, 60, 255)),
+            new(Guid.Parse("10000000-0000-0000-0000-000000000003"), "Blue Train", "BLUE", 0xFF003C8F, 0xFF60B0FF, new ColorCalibrationProfile("Blue Train", 90, 130, 100, 255, 60, 255)),
+            new(Guid.Parse("10000000-0000-0000-0000-000000000004"), "White Train", "WHITE", 0xFFC8C8C8, 0xFFFFFFFF, new ColorCalibrationProfile("White Train", 0, 180, 0, 50, 190, 255))
         };
     }
 
@@ -149,10 +145,6 @@ internal sealed class TrainStore
         public uint MinColor { get; set; }
 
         public uint MaxColor { get; set; }
-
-        public int MaxWidth { get; set; } = 160;
-
-        public int MaxHeight { get; set; } = 80;
 
         public int HueLower { get; set; }
 

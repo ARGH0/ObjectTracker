@@ -20,8 +20,6 @@ public sealed class TrainDetectionProfileTests
                 "PLC-17",
                 0xFF8A0000,
                 0xFFFF6060,
-                120,
-                60,
                 new ColorCalibrationProfile("Cargo Red", 170, 10, 120, 255, 70, 255))
         };
 
@@ -48,8 +46,6 @@ public sealed class TrainDetectionProfileTests
             "PLC-17",
             0xFF8A0000,
             0xFFFF6060,
-            120,
-            60,
             new ColorCalibrationProfile("Cargo Red", 170, 10, 120, 255, 70, 255));
         var profiles = TrainDetectionProfile.FromConfiguredTrains(new[] { train });
 
@@ -86,7 +82,7 @@ public sealed class TrainDetectionProfileTests
     }
 
     [Fact]
-    public void BuildTrainDetectionCandidates_WhenRectExceedsTrainMaxDimensions_DoesNotEmitCandidate()
+    public void BuildTrainDetectionCandidates_WhenRectExceedsFormerTrainMaxDimensions_StillEmitsCandidate()
     {
         var train = new ConfiguredTrain(
             Guid.NewGuid(),
@@ -94,8 +90,6 @@ public sealed class TrainDetectionProfileTests
             "PLC-17",
             0xFF8A0000,
             0xFFFF6060,
-            20,
-            20,
             new ColorCalibrationProfile("Cargo Red", 170, 10, 120, 255, 70, 255));
         var profile = TrainDetectionProfile.FromConfiguredTrains(new[] { train }).Single();
         var rects = new[] { new Rect(0, 0, 30, 10) };
@@ -103,6 +97,43 @@ public sealed class TrainDetectionProfileTests
 
         var candidates = BackgroundEstimationEngine.BuildTrainDetectionCandidates(rects, matches);
 
+        var candidate = Assert.Single(candidates);
+        Assert.Equal(rects[0], candidate.Rect);
+    }
+
+    [Fact]
+    public void BuildTrainDetectionCandidates_WhenTrainColorIsUnknown_DoesNotEmitCandidate()
+    {
+        var rects = new[] { new Rect(0, 0, 10, 10) };
+        var matches = new TrainDetectionProfile?[] { null };
+
+        var candidates = BackgroundEstimationEngine.BuildTrainDetectionCandidates(rects, matches);
+
         Assert.Empty(candidates);
+    }
+
+    [Fact]
+    public void RenderColorDetections_WhenTrainColorIsUnknown_DoesNotDrawDetectionBox()
+    {
+        using var source = new Mat(24, 24, MatType.CV_8UC3, Scalar.All(20));
+        using var destination = source.Clone();
+        using var motionMask = new Mat(24, 24, MatType.CV_8UC1, Scalar.Black);
+        using var hsv = new Mat();
+        var rect = new Rect(4, 4, 10, 10);
+        Cv2.Rectangle(motionMask, rect, Scalar.White, -1);
+
+        BackgroundEstimationEngine.RenderColorDetections(
+            destination,
+            source,
+            motionMask,
+            hsv,
+            new[] { rect },
+            Array.Empty<TrainDetectionProfile>(),
+            minColorPixels: 1);
+
+        using var diff = new Mat();
+        Cv2.Absdiff(source, destination, diff);
+
+        Assert.Equal(0, Cv2.CountNonZero(diff.Reshape(1)));
     }
 }

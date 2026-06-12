@@ -451,7 +451,7 @@ internal sealed class BackgroundEstimationEngine(
         }
     }
 
-    private static void RenderColorDetections(
+    internal static void RenderColorDetections(
         Mat destination,
         Mat sourceColor,
         Mat motionMask,
@@ -467,8 +467,13 @@ internal sealed class BackgroundEstimationEngine(
             Cv2.CvtColor(colorRoi, hsv, ColorConversionCodes.BGR2HSV);
 
             var train = ClassifyDominantTrain(hsv, motionRoi, trains, minColorPixels);
-            var label = train?.TrainName ?? "Unknown";
-            var color = train?.OverlayColor ?? new Scalar(180, 180, 180);
+            if (train is null)
+            {
+                continue;
+            }
+
+            var label = train.Value.TrainName;
+            var color = train.Value.OverlayColor;
 
             Cv2.Rectangle(destination, rect, color, 2);
             Cv2.PutText(destination, label, new Point(rect.X, Math.Max(16, rect.Y - 4)), HersheyFonts.HersheySimplex, 0.55, color, 2);
@@ -752,10 +757,7 @@ internal sealed class BackgroundEstimationEngine(
 
         foreach (var (rect, train) in movingRects.Zip(trainMatches))
         {
-            if (train is null
-                || rect.Width > train.Value.Train.MaxWidth
-                || rect.Height > train.Value.Train.MaxHeight
-                || !emittedTrainIds.Add(train.Value.TrainId))
+            if (train is null || !emittedTrainIds.Add(train.Value.TrainId))
             {
                 continue;
             }

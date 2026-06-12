@@ -9,6 +9,4 @@ public readonly record struct ConfiguredTrain(
     string PlcId,
     uint MinColor,
     uint MaxColor,
-    int MaxWidth,
-    int MaxHeight,
     ColorCalibrationProfile Calibration);

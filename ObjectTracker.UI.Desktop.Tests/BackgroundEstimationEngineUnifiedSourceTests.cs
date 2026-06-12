@@ -144,8 +144,6 @@ public sealed class BackgroundEstimationEngineUnifiedSourceTests : IDisposable
             "PLC-RED",
             0xFF0000CC,
             0xFFFF6060,
-            30,
-            30,
             new ColorCalibrationProfile("Red Train", 0, 10, 120, 255, 70, 255));
         var options = BackgroundEstimationEngine.ProcessingOptions.Default with
         {
@@ -195,8 +193,6 @@ public sealed class BackgroundEstimationEngineUnifiedSourceTests : IDisposable
             "PLC-RED",
             0xFF0000CC,
             0xFFFF6060,
-            30,
-            30,
             new ColorCalibrationProfile("Red Train", 0, 10, 120, 255, 70, 255));
         var options = BackgroundEstimationEngine.ProcessingOptions.Default with
         {

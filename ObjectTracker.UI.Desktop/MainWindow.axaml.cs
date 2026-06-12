@@ -577,7 +577,6 @@ public partial class MainWindow : AppWindow
         RefreshSettingsWorkspaceUi();
         RefreshCameraUi();
         AppendLog("Application initialized.");
-        UpdateBottomStatusBar();
     }
 
     private void InitializePlcServices()
@@ -821,7 +820,6 @@ public partial class MainWindow : AppWindow
         }
 
         RefreshSettingsWorkspaceUi();
-        UpdateBottomStatusBar();
         SetActiveWorkspace(result.Workspace);
     }
 
@@ -833,7 +831,6 @@ public partial class MainWindow : AppWindow
         hasPendingVisionPipelineRestart = hasPendingVisionPipelineRestart || impact.HasPendingVisionPipelineRestart;
         appSettingsStore.Save(appSettings);
         RefreshSettingsWorkspaceUi();
-        UpdateBottomStatusBar();
         SetStatus("Status: settings saved.");
     }
 
@@ -1133,7 +1130,6 @@ public partial class MainWindow : AppWindow
         if (runTask is not null)
         {
             hasPendingVisionPipelineRestart = true;
-            UpdateBottomStatusBar();
         }
 
         SetStatus(status);
@@ -2728,8 +2724,6 @@ public partial class MainWindow : AppWindow
         }
 
         ApplyCameraDestructiveActionsState(GetCameraCount());
-
-        UpdateBottomStatusBar();
     }
 
     private void ApplyCameraDestructiveActionsState(int cameraCount)
@@ -2855,14 +2849,6 @@ public partial class MainWindow : AppWindow
         return result;
     }
 
-    private void UpdateBottomStatusBar()
-    {
-        var snapshot = BuildBottomStatusSnapshot(runTask is not null, hasPendingVisionPipelineRestart);
-        BottomVisionPipelineStateText.Text = snapshot.VisionPipeline;
-        BottomCalibrationStateText.Text = snapshot.Calibration;
-        BottomPendingRestartStateText.Text = snapshot.PendingRestart;
-    }
-
     private void RuntimeSettingControlOnLostFocus(object? sender, RoutedEventArgs e)
     {
         UpdateSelectedCameraSettingsFromUi(logChange: true);
@@ -2912,7 +2898,6 @@ public partial class MainWindow : AppWindow
         if (runTask is not null)
         {
             hasPendingVisionPipelineRestart = true;
-            UpdateBottomStatusBar();
         }
 
         if (logChange)

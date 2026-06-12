@@ -998,23 +998,5 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="2"
-                Classes="surfaceAlt"
-                Margin="0,8,0,0"
-                Padding="8">
-            <Grid ColumnDefinitions="*,16,*,16,*,16,*">
-                <TextBlock x:Name="BottomVisionPipelineStateText"
-                           Grid.Column="0"
-                           Text="Vision Pipeline: stopped"
-                           FontWeight="SemiBold" />
-                <TextBlock x:Name="BottomCalibrationStateText"
-                           Grid.Column="4"
-                           Text="Calibration: unknown" />
-                <TextBlock x:Name="BottomPendingRestartStateText"
-                           Grid.Column="6"
-                           Text="Pending restart: none" />
-            </Grid>
-        </Border>
-
     </Grid>
 </wnd:AppWindow>

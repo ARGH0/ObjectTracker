@@ -2510,7 +2510,7 @@ public partial class MainWindow : AppWindow
 
             if (viewState.FeedKinds[i] == FeedKind.DebugView)
             {
-                var debugPreview = new Image { Stretch = Avalonia.Media.Stretch.UniformToFill };
+                var debugPreview = new Image { Stretch = Avalonia.Media.Stretch.Uniform };
 
                 cameraTileDebugImagesById[viewState.CameraIds[i]] = new DebugTileImageSet(debugPreview);
                 cameraTileDebugFrameTypesById[viewState.CameraIds[i]] = viewState.DebugViewFrameTypes[i];

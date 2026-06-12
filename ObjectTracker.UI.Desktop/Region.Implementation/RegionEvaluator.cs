@@ -46,7 +46,7 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
         }
 
         bool isCurrentlyInEnterCrossroad = matchingRegions.Any(r => r.Type == RegionType.EnterCrossroadRegion);
-        if (isCurrentlyInEnterCrossroad)
+        if (isCurrentlyInEnterCrossroad && !wasInEnterCrossroadBefore)
         {
             var enterRegion = matchingRegions.First(r => r.Type == RegionType.EnterCrossroadRegion);
             var previousCellText = previousCell.HasValue

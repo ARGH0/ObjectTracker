@@ -1939,7 +1939,7 @@ public partial class MainWindow : AppWindow
                 ImageHeight: (int)detection.BoundingBoxHeight + 480);
 
             var enriched = regionProcessor.ProcessDetection(trainDetection, zoneId.Value);
-            if (!enriched.HasValue || !enriched.Value.TransitionEvents.Any() || string.IsNullOrEmpty(enriched.Value.ActiveRegionName))
+            if (!enriched.HasValue || enriched.Value.TransitionEvents.Count == 0 || string.IsNullOrEmpty(enriched.Value.ActiveRegionName))
             {
                 AppendPlcLog($"No transition for train {detection.Train.Name} in zone {zoneId.Value}");
                 return;
@@ -2019,7 +2019,7 @@ public partial class MainWindow : AppWindow
 
     private async Task ProcessUsbCameraAsync(CameraProfile camera, BackgroundEstimationEngine engine, CancellationToken cancellationToken)
     {
-        for (; !cancellationToken.IsCancellationRequested; )
+        for (; !cancellationToken.IsCancellationRequested;)
         {
             var settings = GetSettingsForCamera(camera.Id);
             var options = new BackgroundEstimationEngine.ProcessingOptions(

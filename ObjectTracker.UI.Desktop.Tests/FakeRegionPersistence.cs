@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using CameraZoneId = ObjectTracker.UI.Desktop.Region.Model.CameraZoneId;
 using ObjectTracker.UI.Desktop.Region.Contracts;
 using ObjectTracker.UI.Desktop.Region.Model;
+using CameraZoneId = ObjectTracker.UI.Desktop.Region.Model.CameraZoneId;
 
 namespace ObjectTracker.UI.Desktop.Tests;
 

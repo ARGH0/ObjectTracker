@@ -20,7 +20,7 @@ public partial class GridEditorDialogViewModel : ObservableObject
 
     public IReadOnlyCollection<GridCell> SelectedCells => _selectedCells;
     public IReadOnlyCollection<GridCell> OriginalCells => _originalCells;
-    public IReadOnlyList<int> PencilSizes { get; } = new[] { 1, 4, 9, 16, 20, 32, 49};
+    public IReadOnlyList<int> PencilSizes { get; } = new[] { 1, 4, 9, 16, 20, 32, 49 };
 
     public GridEditorDialogViewModel(
         int gridColumns,

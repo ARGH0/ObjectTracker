@@ -1955,29 +1955,38 @@ public partial class MainWindow : AppWindow
                 ImageHeight: (int)detection.BoundingBoxHeight + 480);
 
             var enriched = regionProcessor.ProcessDetection(trainDetection, zoneId.Value);
-            if (!enriched.HasValue || enriched.Value.TransitionEvents.Count == 0 || string.IsNullOrEmpty(enriched.Value.ActiveRegionName))
+            if (!enriched.HasValue || enriched.Value.TransitionEvents.Count == 0)
             {
-                AppendPlcLog($"No transition for train {detection.Train.Name} in zone {zoneId.Value}");
                 return;
             }
 
             var regions = regionRegistry.GetByZone(zoneId);
-            var matchingRegion = regions.FirstOrDefault(r => r.Name == enriched.Value.ActiveRegionName);
-            if (matchingRegion.Id == Guid.Empty)
+            foreach (var transitionEvent in enriched.Value.TransitionEvents)
             {
-                AppendPlcLog($"Region not found: {enriched.Value.ActiveRegionName}");
-                return;
-            }
+                var transitionRegionName = ExtractTransitionRegionName(transitionEvent) ?? enriched.Value.ActiveRegionName;
+                if (string.IsNullOrWhiteSpace(transitionRegionName))
+                {
+                    AppendPlcLog($"Transition region missing: {transitionEvent}");
+                    continue;
+                }
 
-            var type = matchingRegion.Type;
-            if (type != RegionType.EnterCrossroadRegion &&
-                type != RegionType.ExitCrossroadRegion)
-            {
-                AppendPlcLog($"Not an enter/exit region: {matchingRegion.Name} (type={type})");
-                return;
-            }
+                var matchingRegion = regions.FirstOrDefault(r => r.Name == transitionRegionName);
+                if (matchingRegion.Id == Guid.Empty)
+                {
+                    AppendPlcLog($"Region not found: {transitionRegionName}");
+                    continue;
+                }
 
-            WritePlcTransition(matchingRegion.Name, detection.Train.PlcId);
+                var type = matchingRegion.Type;
+                if (type != RegionType.EnterCrossroadRegion &&
+                    type != RegionType.ExitCrossroadRegion)
+                {
+                    AppendPlcLog($"Not an enter/exit region: {matchingRegion.Name} (type={type})");
+                    continue;
+                }
+
+                WritePlcTransition(matchingRegion.Name, detection.Train.PlcId);
+            }
         };
 
         if (camera.SourceKind == CameraSourceKind.UsbCamera)
@@ -3359,6 +3368,20 @@ public partial class MainWindow : AppWindow
                 AppendPlcLog($"PLC write error ({plcAddress}): {ex.Message}");
             }
         });
+    }
+
+    private static string? ExtractTransitionRegionName(string transitionEvent)
+    {
+        const string marker = "regionName=";
+        var start = transitionEvent.IndexOf(marker, StringComparison.Ordinal);
+        if (start < 0)
+        {
+            return null;
+        }
+
+        start += marker.Length;
+        var end = transitionEvent.IndexOf(',', start);
+        return (end < 0 ? transitionEvent[start..] : transitionEvent[start..end]).Trim();
     }
 
     private async Task<ObjectTracker.UI.Desktop.Region.Implementation.GridEditorDialog?> BuildGridEditorDialogAsync(Avalonia.Controls.Window owner, Guid? regionId)

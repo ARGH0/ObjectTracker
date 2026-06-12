@@ -46,9 +46,13 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
         }
 
         bool isCurrentlyInEnterCrossroad = matchingRegions.Any(r => r.Type == RegionType.EnterCrossroadRegion);
-        if (isCurrentlyInEnterCrossroad && previousCell.HasValue && !wasInEnterCrossroadBefore)
+        if (isCurrentlyInEnterCrossroad && !wasInEnterCrossroadBefore)
         {
-            transitionEvents.Add($"TrainEnteredCrossroad: trainId={detection.GlobalTrainId}, zoneId={zoneId}, timestamp={DateTime.UtcNow.Ticks}, previousCell=({previousCell.Value.Column},{previousCell.Value.Row}), newCell=({cell.Column},{cell.Row})");
+            var enterRegion = matchingRegions.First(r => r.Type == RegionType.EnterCrossroadRegion);
+            var previousCellText = previousCell.HasValue
+                ? $"({previousCell.Value.Column},{previousCell.Value.Row})"
+                : "unknown";
+            transitionEvents.Add($"TrainEnteredCrossroad: trainId={detection.GlobalTrainId}, zoneId={zoneId}, regionName={enterRegion.Name}, timestamp={DateTime.UtcNow.Ticks}, previousCell={previousCellText}, newCell=({cell.Column},{cell.Row})");
         }
 
         bool wasInExitCrossroadBefore = false;
@@ -67,7 +71,8 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
 
         if (wasInExitCrossroadBefore && !isCurrentlyInExitCrossroad && previousCellForExit.HasValue)
         {
-            transitionEvents.Add($"TrainExitedCrossroad: trainId={detection.GlobalTrainId}, zoneId={zoneId}, timestamp={DateTime.UtcNow.Ticks}, previousCell=({previousCellForExit.Value.Column},{previousCellForExit.Value.Row}), newCell=({cell.Column},{cell.Row})");
+            var exitRegion = regions.First(r => r.Type == RegionType.ExitCrossroadRegion && r.Cells.Any(c => c.Column == previousCellForExit.Value.Column && c.Row == previousCellForExit.Value.Row));
+            transitionEvents.Add($"TrainExitedCrossroad: trainId={detection.GlobalTrainId}, zoneId={zoneId}, regionName={exitRegion.Name}, timestamp={DateTime.UtcNow.Ticks}, previousCell=({previousCellForExit.Value.Column},{previousCellForExit.Value.Row}), newCell=({cell.Column},{cell.Row})");
         }
 
         var activeRegionName = resolved.Count != 0 ? resolved.First().Item1.Name : null;

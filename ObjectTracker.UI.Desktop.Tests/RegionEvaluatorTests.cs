@@ -486,8 +486,24 @@ public sealed class RegionEvaluatorTests
         Assert.Contains("TrainEnteredCrossroad", entryEvent, StringComparison.Ordinal);
         Assert.Contains($"trainId={trainId}", entryEvent, StringComparison.Ordinal);
         Assert.Contains("zone-main", entryEvent, StringComparison.Ordinal);
+        Assert.Contains("regionName=test-region", entryEvent, StringComparison.Ordinal);
         Assert.Contains("previousCell=(10,10)", entryEvent, StringComparison.Ordinal);
         Assert.Contains("newCell=(5,5)", entryEvent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Evaluate_FirstSeenInsideEnterCrossroadRegion_EmitsTrainEnteredCrossroadEvent()
+    {
+        var mapper = new CoordinateMapper();
+        var evaluator = new RegionEvaluator(mapper);
+
+        var trainId = Guid.Parse("12121212-1212-1212-1212-121212121212");
+        var detectionInside = Detection(trainId, pixelX: 50f, pixelY: 50f);
+        var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
+
+        var result = evaluator.Evaluate(detectionInside, "zone-main", new[] { enterRegion });
+
+        Assert.Contains(result.TransitionEvents, e => e.Contains("TrainEnteredCrossroad", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -625,6 +641,7 @@ public sealed class RegionEvaluatorTests
         Assert.Contains("TrainExitedCrossroad", exitEvent, StringComparison.Ordinal);
         Assert.Contains($"trainId={trainId}", exitEvent, StringComparison.Ordinal);
         Assert.Contains("zone-main", exitEvent, StringComparison.Ordinal);
+        Assert.Contains("regionName=test-region", exitEvent, StringComparison.Ordinal);
         Assert.Contains("previousCell=(5,5)", exitEvent, StringComparison.Ordinal);
         Assert.Contains("newCell=(10,10)", exitEvent, StringComparison.Ordinal);
     }

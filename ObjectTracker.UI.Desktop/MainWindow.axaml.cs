@@ -1951,8 +1951,8 @@ public partial class MainWindow : AppWindow
                 GridRows: appSettings.GridRows,
                 Confidence: detection.Confidence,
                 MotionState: "moving",
-                ImageWidth: (int)detection.BoundingBoxWidth + 640,
-                ImageHeight: (int)detection.BoundingBoxHeight + 480);
+                ImageWidth: detection.FrameWidth,
+                ImageHeight: detection.FrameHeight);
 
             var enriched = regionProcessor.ProcessDetection(trainDetection, zoneId.Value);
             if (!enriched.HasValue || enriched.Value.TransitionEvents.Count == 0)

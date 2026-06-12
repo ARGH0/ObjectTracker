@@ -20,7 +20,7 @@ internal sealed class PlcTransitionWriter
 
     public async Task WriteTransitionAsync(string regionName, string trainColor, bool isPlcConnected, CancellationToken ct = default)
     {
-        var variableName = $"Data.{regionName}";
+        var variableName = $"data.{regionName}";
         var variable = new PlcVariable(variableName, PlcVariableType.Int32);
         if (!TryGetTrainColorValue(trainColor, out var colorValue))
         {

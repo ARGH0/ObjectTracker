@@ -21,7 +21,9 @@ public sealed class RegionEvaluatorTests
         float pixelX = 100f,
         float pixelY = 100f,
         float confidence = 0.9f,
-        Guid? globalTrainId = null)
+        Guid? globalTrainId = null,
+        int imageWidth = 640,
+        int imageHeight = 480)
     {
         return new TrainDetection(
             GlobalTrainId: globalTrainId ?? localTrainId,
@@ -35,8 +37,8 @@ public sealed class RegionEvaluatorTests
             GridRows: 48,
             Confidence: confidence,
             MotionState: "moving",
-            ImageWidth: 640,
-            ImageHeight: 480);
+            ImageWidth: imageWidth,
+            ImageHeight: imageHeight);
     }
 
     private static RegionDefinition CreateRegion(RegionType type, float confidenceBoost = 0f, params (int Col, int Row)[] cells)
@@ -420,7 +422,7 @@ public sealed class RegionEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_RemainingInEnterCrossroadRegion_DoesNotReTriggerEntryEvent()
+    public void Evaluate_RemainingInEnterCrossroadRegion_EmitsEntryEventOnEveryHit()
     {
         var mapper = new CoordinateMapper();
         var evaluator = new RegionEvaluator(mapper);
@@ -436,7 +438,7 @@ public sealed class RegionEvaluatorTests
         evaluator.Evaluate(detectionInside1, "zone-1", new[] { enterRegion });
         var result = evaluator.Evaluate(detectionInside2, "zone-1", new[] { enterRegion });
 
-        Assert.DoesNotContain(result.TransitionEvents, e => e.Contains("TrainEnteredCrossroad", StringComparison.Ordinal));
+        Assert.Contains(result.TransitionEvents, e => e.Contains("TrainEnteredCrossroad", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -502,6 +504,21 @@ public sealed class RegionEvaluatorTests
         var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
 
         var result = evaluator.Evaluate(detectionInside, "zone-main", new[] { enterRegion });
+
+        Assert.Contains(result.TransitionEvents, e => e.Contains("TrainEnteredCrossroad", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Evaluate_UsesProcessingFrameDimensionsToMapDetectionToRegionCell()
+    {
+        var mapper = new CoordinateMapper();
+        var evaluator = new RegionEvaluator(mapper);
+
+        var trainId = Guid.Parse("13131313-1313-1313-1313-131313131313");
+        var detection = Detection(trainId, pixelX: 320f, pixelY: 180f, imageWidth: 640, imageHeight: 360);
+        var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(32, 24)]);
+
+        var result = evaluator.Evaluate(detection, "zone-main", new[] { enterRegion });
 
         Assert.Contains(result.TransitionEvents, e => e.Contains("TrainEnteredCrossroad", StringComparison.Ordinal));
     }

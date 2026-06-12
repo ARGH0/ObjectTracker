@@ -10,4 +10,6 @@ public interface IRegionPersistence
     ValueTask SaveAsync(IEnumerable<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition> regions);
     ValueTask ExportAsync(CameraZoneId cameraZoneId, string filePath);
     ValueTask ImportAsync(string filePath, CameraZoneId targetCameraZoneId);
+    ValueTask ExportCameraRegionsAsync(CameraZoneId cameraZoneId, string filePath);
+    ValueTask<IReadOnlyCollection<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition>> ImportCameraRegionsAsync(string filePath, CameraZoneId targetCameraZoneId);
 }

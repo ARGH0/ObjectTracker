@@ -321,4 +321,101 @@ public sealed class RegionPersistenceTests : IDisposable
         var loaded = (await persistence.LoadAsync()).ToList();
         Assert.Empty(loaded);
     }
+
+    [Fact]
+    public async Task ExportCameraRegionsAsync_WritesFullRegionDefinitionsForCameraZone()
+    {
+        var zoneA = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-a");
+        var zoneB = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-b");
+        var exportPath = Path.Combine(Path.GetTempPath(), $"objecttracker-camera-regions-{Guid.NewGuid()}.json");
+
+        try
+        {
+            var regions = new[]
+            {
+                new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
+                    Id: Guid.NewGuid(),
+                    Name: "Zone A Region",
+                    Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.HighProbabilityRailRegion,
+                    CameraZoneId: zoneA,
+                    Cells: new[] { new ObjectTracker.UI.Desktop.Region.Model.GridCell(1, 2) },
+                    CreatedAt: DateTime.UtcNow,
+                    UpdatedAt: DateTime.UtcNow,
+                    OverlappingZoneIds: null),
+                new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
+                    Id: Guid.NewGuid(),
+                    Name: "Zone B Region",
+                    Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.ExcludeRegion,
+                    CameraZoneId: zoneB,
+                    Cells: new[] { new ObjectTracker.UI.Desktop.Region.Model.GridCell(3, 4) },
+                    CreatedAt: DateTime.UtcNow,
+                    UpdatedAt: DateTime.UtcNow,
+                    OverlappingZoneIds: null)
+            };
+
+            var persistence = new RegionPersistence(_testFilePath);
+            await persistence.SaveAsync(regions);
+
+            await persistence.ExportCameraRegionsAsync(zoneA, exportPath);
+
+            var importedPersistence = new RegionPersistence(exportPath);
+            var exportedRegions = (await importedPersistence.LoadAsync()).ToList();
+            var exportedRegion = Assert.Single(exportedRegions);
+            Assert.Equal("Zone A Region", exportedRegion.Name);
+            Assert.Equal(zoneA, exportedRegion.CameraZoneId);
+        }
+        finally
+        {
+            if (File.Exists(exportPath))
+            {
+                File.Delete(exportPath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ImportCameraRegionsAsync_AddsAllFileRegionsToTargetCameraZoneWithNewIds()
+    {
+        var sourceZone = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("source-zone");
+        var targetZone = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("target-zone");
+        var importPath = Path.Combine(Path.GetTempPath(), $"objecttracker-camera-regions-{Guid.NewGuid()}.json");
+
+        try
+        {
+            var sourceRegion = new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
+                Id: Guid.NewGuid(),
+                Name: "Imported Region",
+                Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.EnterCrossroadRegion,
+                CameraZoneId: sourceZone,
+                Cells: new[] { new ObjectTracker.UI.Desktop.Region.Model.GridCell(7, 8) },
+                CreatedAt: DateTime.UtcNow.AddDays(-1),
+                UpdatedAt: DateTime.UtcNow.AddDays(-1),
+                OverlappingZoneIds: new[] { "other-zone" });
+
+            var sourcePersistence = new RegionPersistence(importPath);
+            await sourcePersistence.SaveAsync(new[] { sourceRegion });
+
+            var persistence = new RegionPersistence(_testFilePath);
+            await persistence.SaveAsync(Array.Empty<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition>());
+
+            var importedRegions = await persistence.ImportCameraRegionsAsync(importPath, targetZone);
+
+            var importedRegion = Assert.Single(importedRegions);
+            Assert.NotEqual(sourceRegion.Id, importedRegion.Id);
+            Assert.Equal("Imported Region", importedRegion.Name);
+            Assert.Equal(targetZone, importedRegion.CameraZoneId);
+            Assert.Null(importedRegion.OverlappingZoneIds);
+
+            var loadedRegion = Assert.Single(await persistence.LoadAsync());
+            Assert.Equal(importedRegion.Id, loadedRegion.Id);
+            Assert.Equal(targetZone, loadedRegion.CameraZoneId);
+        }
+        finally
+        {
+            if (File.Exists(importPath))
+            {
+                File.Delete(importPath);
+            }
+        }
+    }
 }

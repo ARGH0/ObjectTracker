@@ -135,6 +135,65 @@ public sealed class RegionPersistence : ObjectTracker.UI.Desktop.Region.Contract
         await SaveAsync(updatedRegions);
     }
 
+    public async ValueTask ExportCameraRegionsAsync(CameraZoneId cameraZoneId, string filePath)
+    {
+        var allRegions = await LoadAsync();
+        var zoneRegions = allRegions.Where(r => r.CameraZoneId.Equals(cameraZoneId)).ToList();
+        var wrapper = new RegionWrapper(zoneRegions);
+        var options = new JsonSerializerOptions
+        {
+            WriteIndented = true
+        };
+        var json = JsonSerializer.Serialize(wrapper, options);
+
+        var directory = System.IO.Path.GetDirectoryName(filePath)!;
+        if (!string.IsNullOrEmpty(directory) && !System.IO.Directory.Exists(directory))
+        {
+            System.IO.Directory.CreateDirectory(directory);
+        }
+
+        await System.IO.File.WriteAllTextAsync(filePath, json);
+    }
+
+    public async ValueTask<IReadOnlyCollection<RegionDefinition>> ImportCameraRegionsAsync(string filePath, CameraZoneId targetCameraZoneId)
+    {
+        if (!System.IO.File.Exists(filePath))
+        {
+            return [];
+        }
+
+        var json = await System.IO.File.ReadAllTextAsync(filePath);
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            WriteIndented = false
+        };
+
+        var wrapper = JsonSerializer.Deserialize<RegionWrapper>(json, options);
+        if (wrapper == null || wrapper.Regions.Count == 0)
+        {
+            return [];
+        }
+
+        var now = System.DateTime.UtcNow;
+        var importedRegions = wrapper.Regions
+            .Select(region => region with
+            {
+                Id = System.Guid.NewGuid(),
+                CameraZoneId = targetCameraZoneId,
+                CreatedAt = now,
+                UpdatedAt = now,
+                OverlappingZoneIds = null
+            })
+            .ToList();
+
+        var existingRegions = (await LoadAsync()).ToList();
+        existingRegions.AddRange(importedRegions);
+        await SaveAsync(existingRegions);
+
+        return importedRegions;
+    }
+
     private sealed record RegionWrapper(IList<RegionDefinition> Regions);
 
     private sealed class ExportWrapper

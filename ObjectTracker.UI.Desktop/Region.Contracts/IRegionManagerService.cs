@@ -14,4 +14,6 @@ public interface IRegionManagerService
     Task DeleteRegionAsync(Guid regionId);
     Task ExportZoneRegionsAsync(CameraZoneId cameraZoneId, string filePath);
     Task ImportZoneRegionsAsync(CameraZoneId cameraZoneId, string filePath);
+    Task ExportCameraRegionsAsync(CameraZoneId cameraZoneId, string filePath);
+    Task<int> ImportCameraRegionsAsync(CameraZoneId cameraZoneId, string filePath);
 }

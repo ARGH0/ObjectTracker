@@ -90,4 +90,158 @@ public sealed class RegionManagerServiceTests
         Assert.True(deletedFired);
         Assert.Equal(id, receivedId);
     }
+
+    [Fact]
+    public async Task ImportZoneRegionsAsync_AddsImportedRegionsToRegistry()
+    {
+        var storagePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"objecttracker-regions-{Guid.NewGuid()}.json");
+        var importPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"objecttracker-import-{Guid.NewGuid()}.json");
+
+        try
+        {
+            var importData = new
+            {
+                regions = new[]
+                {
+                    new
+                    {
+                        Name = "Imported Region",
+                        Type = 10,
+                        Cells = new[] { new { Column = 2, Row = 3 } }
+                    }
+                }
+            };
+
+            await System.IO.File.WriteAllTextAsync(
+                importPath,
+                System.Text.Json.JsonSerializer.Serialize(importData));
+
+            var persistence = new RegionPersistence(storagePath);
+            var registry = new RegionRegistry(persistence);
+            var service = new RegionManagerService(registry, persistence);
+            var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-a");
+
+            await service.ImportZoneRegionsAsync(zoneId, importPath);
+
+            var regions = service.GetRegionsForZone(zoneId).ToList();
+
+            var region = Assert.Single(regions);
+            Assert.Equal("Imported Region", region.Name);
+            Assert.Equal(ObjectTracker.UI.Desktop.Region.Model.RegionType.HighProbabilityRailRegion, region.Type);
+            Assert.Equal(new GridCell(2, 3), Assert.Single(region.Cells));
+        }
+        finally
+        {
+            if (System.IO.File.Exists(storagePath))
+                System.IO.File.Delete(storagePath);
+
+            if (System.IO.File.Exists(importPath))
+                System.IO.File.Delete(importPath);
+        }
+    }
+
+    [Fact]
+    public async Task ImportZoneRegionsAsync_UpdatesExistingRegistryRegionByImportedName()
+    {
+        var storagePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"objecttracker-regions-{Guid.NewGuid()}.json");
+        var importPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"objecttracker-import-{Guid.NewGuid()}.json");
+
+        try
+        {
+            var importData = new
+            {
+                regions = new[]
+                {
+                    new
+                    {
+                        Name = "Existing Region",
+                        Type = 10,
+                        Cells = new[] { new { Column = 4, Row = 5 } }
+                    }
+                }
+            };
+
+            await System.IO.File.WriteAllTextAsync(
+                importPath,
+                System.Text.Json.JsonSerializer.Serialize(importData));
+
+            var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-a");
+            var existingRegion = new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
+                Id: Guid.NewGuid(),
+                Name: "Existing Region",
+                Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.ExcludeRegion,
+                CameraZoneId: zoneId,
+                Cells: new[] { new GridCell(1, 1) },
+                CreatedAt: DateTime.UtcNow,
+                UpdatedAt: DateTime.UtcNow,
+                OverlappingZoneIds: null);
+
+            var persistence = new RegionPersistence(storagePath);
+            await persistence.SaveAsync(new[] { existingRegion });
+
+            var registry = new RegionRegistry(persistence);
+            registry.Create(existingRegion);
+            var service = new RegionManagerService(registry, persistence);
+
+            await service.ImportZoneRegionsAsync(zoneId, importPath);
+
+            var region = Assert.Single(service.GetRegionsForZone(zoneId));
+            Assert.Equal(existingRegion.Id, region.Id);
+            Assert.Equal(ObjectTracker.UI.Desktop.Region.Model.RegionType.ExcludeRegion, region.Type);
+            Assert.Equal(new GridCell(4, 5), Assert.Single(region.Cells));
+        }
+        finally
+        {
+            if (System.IO.File.Exists(storagePath))
+                System.IO.File.Delete(storagePath);
+
+            if (System.IO.File.Exists(importPath))
+                System.IO.File.Delete(importPath);
+        }
+    }
+
+    [Fact]
+    public async Task ImportCameraRegionsAsync_AddsImportedCameraRegionsToRegistry()
+    {
+        var storagePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"objecttracker-regions-{Guid.NewGuid()}.json");
+        var importPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"objecttracker-import-{Guid.NewGuid()}.json");
+
+        try
+        {
+            var sourceZone = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("source-zone");
+            var targetZone = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("target-zone");
+            var sourceRegion = new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
+                Id: Guid.NewGuid(),
+                Name: "Imported Camera Region",
+                Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.ExitCrossroadRegion,
+                CameraZoneId: sourceZone,
+                Cells: new[] { new GridCell(6, 7) },
+                CreatedAt: DateTime.UtcNow,
+                UpdatedAt: DateTime.UtcNow,
+                OverlappingZoneIds: null);
+
+            var importPersistence = new RegionPersistence(importPath);
+            await importPersistence.SaveAsync(new[] { sourceRegion });
+
+            var persistence = new RegionPersistence(storagePath);
+            var registry = new RegionRegistry(persistence);
+            var service = new RegionManagerService(registry, persistence);
+
+            var importedCount = await service.ImportCameraRegionsAsync(targetZone, importPath);
+
+            Assert.Equal(1, importedCount);
+            var region = Assert.Single(service.GetRegionsForZone(targetZone));
+            Assert.Equal("Imported Camera Region", region.Name);
+            Assert.Equal(targetZone, region.CameraZoneId);
+            Assert.NotEqual(sourceRegion.Id, region.Id);
+        }
+        finally
+        {
+            if (System.IO.File.Exists(storagePath))
+                System.IO.File.Delete(storagePath);
+
+            if (System.IO.File.Exists(importPath))
+                System.IO.File.Delete(importPath);
+        }
+    }
 }

@@ -670,8 +670,10 @@ public partial class MainWindow : AppWindow
         CreateRegionButton.Click += CreateRegionButtonOnClick;
         EditRegionButton.Click += EditRegionButtonOnClick;
         DeleteRegionButton.Click += DeleteRegionButtonOnClick;
-        ExportRegionMenuButton.Click += ExportRegionButtonOnClick;
-        ImportRegionMenuButton.Click += ImportRegionButtonOnClick;
+        ExportRegionButton.Click += ExportRegionButtonOnClick;
+        ImportRegionButton.Click += ImportRegionButtonOnClick;
+        ExportCameraRegionsButton.Click += ExportCameraRegionsButtonOnClick;
+        ImportCameraRegionsButton.Click += ImportCameraRegionsButtonOnClick;
         RegionsListBox.SelectionChanged += RegionsListBoxOnSelectionChanged;
         StartVisionPipelineMenuItem.Click += StartVisionPipelineMenuItemOnClick;
         StopVisionPipelineMenuItem.Click += StopVisionPipelineMenuItemOnClick;
@@ -3212,6 +3214,17 @@ public partial class MainWindow : AppWindow
         return name;
     }
 
+    private static string BuildSafeFileName(string value, string fallback)
+    {
+        var name = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        foreach (var invalidChar in Path.GetInvalidFileNameChars())
+        {
+            name = name.Replace(invalidChar, '-');
+        }
+
+        return string.IsNullOrWhiteSpace(name) ? fallback : name;
+    }
+
     internal enum BakeSourceMode
     {
         Samples = 0,
@@ -3669,6 +3682,112 @@ public partial class MainWindow : AppWindow
             ("Zone", zone.CameraZoneId));
 
         SetStatus("Status: regions imported successfully.");
+        RefreshRegionsList(camera.Value);
+    }
+
+    private async void ExportCameraRegionsButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (StorageProvider is null)
+        {
+            SetStatus("Status: file picker is not available in this runtime.");
+            return;
+        }
+
+        var camera = GetSelectedCamera();
+        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
+        {
+            SetStatus("Status: select a camera first.");
+            return;
+        }
+
+        var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+        var regions = regionManagerService.GetRegionsForZone(zoneId);
+        if (regions.Count == 0)
+        {
+            SetStatus("Status: no regions to export for this camera.");
+            return;
+        }
+
+        var saveOptions = new FilePickerSaveOptions
+        {
+            Title = "Export All Camera Regions",
+            DefaultExtension = "json",
+            SuggestedFileName = $"{BuildSafeFileName(camera.Value.DisplayName, "camera-source")}.json",
+            ShowOverwritePrompt = true
+        };
+
+        var file = await StorageProvider.SaveFilePickerAsync(saveOptions);
+        if (file == null)
+        {
+            return;
+        }
+
+        var path = file.TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            SetStatus("Status: could not resolve export file path.");
+            return;
+        }
+
+        await regionManagerService.ExportCameraRegionsAsync(zoneId, path);
+
+        sessionAuditLogger.AppendEvent(
+            SessionAuditLogger.EventRegionExported,
+            $"Camera regions exported to '{System.IO.Path.GetFileName(path)}'.",
+            ("Zone", zone.CameraZoneId),
+            ("Camera", camera.Value.DisplayName));
+
+        SetStatus($"Status: {regions.Count} camera region(s) exported.");
+    }
+
+    private async void ImportCameraRegionsButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (StorageProvider is null)
+        {
+            SetStatus("Status: file picker is not available in this runtime.");
+            return;
+        }
+
+        var camera = GetSelectedCamera();
+        if (camera is null || !cameraZoneIdentityService.TryGetCameraZoneForSource(camera.Value.Id, out var zone))
+        {
+            SetStatus("Status: select a camera first.");
+            return;
+        }
+
+        var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId(zone.CameraZoneId);
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import All Camera Regions",
+            AllowMultiple = false,
+            FileTypeFilter = new List<FilePickerFileType>
+            {
+                new ("JSON files") { Patterns = new[] { "*.json" } },
+                new ("All files") { Patterns = new[] { "*.*", "*" } }
+            }
+        });
+
+        if (files == null || files.Count == 0)
+        {
+            return;
+        }
+
+        var path = files[0].TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            SetStatus("Status: could not resolve import file path.");
+            return;
+        }
+
+        var importedCount = await regionManagerService.ImportCameraRegionsAsync(zoneId, path);
+
+        sessionAuditLogger.AppendEvent(
+            SessionAuditLogger.EventRegionImported,
+            $"Camera regions imported from '{System.IO.Path.GetFileName(path)}'.",
+            ("Zone", zone.CameraZoneId),
+            ("Camera", camera.Value.DisplayName));
+
+        SetStatus($"Status: {importedCount} camera region(s) imported.");
         RefreshRegionsList(camera.Value);
     }
 }

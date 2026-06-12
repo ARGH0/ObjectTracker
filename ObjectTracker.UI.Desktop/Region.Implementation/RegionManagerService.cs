@@ -104,5 +104,44 @@ public sealed class RegionManagerService : ObjectTracker.UI.Desktop.Region.Contr
             return;
 
         await _persistence.ImportAsync(filePath, cameraZoneId);
+
+        var importedRegions = (await _persistence.LoadAsync())
+            .Where(region => region.CameraZoneId.Equals(cameraZoneId))
+            .ToList();
+
+        foreach (var importedRegion in importedRegions)
+        {
+            var existingRegion = _registry.GetById(importedRegion.Id);
+            if (existingRegion is null)
+            {
+                _registry.Create(importedRegion);
+            }
+            else
+            {
+                _registry.Update(importedRegion);
+            }
+        }
+    }
+
+    public async Task ExportCameraRegionsAsync(CameraZoneId cameraZoneId, string filePath)
+    {
+        if (_persistence == null)
+            return;
+
+        await _persistence.ExportCameraRegionsAsync(cameraZoneId, filePath);
+    }
+
+    public async Task<int> ImportCameraRegionsAsync(CameraZoneId cameraZoneId, string filePath)
+    {
+        if (_persistence == null)
+            return 0;
+
+        var importedRegions = await _persistence.ImportCameraRegionsAsync(filePath, cameraZoneId);
+        foreach (var importedRegion in importedRegions)
+        {
+            _registry.Create(importedRegion);
+        }
+
+        return importedRegions.Count;
     }
 }

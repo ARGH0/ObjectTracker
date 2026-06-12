@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -23,4 +24,9 @@ public sealed class FakeRegionPersistence : IRegionPersistence
     public ValueTask ExportAsync(CameraZoneId cameraZoneId, string filePath) => ValueTask.CompletedTask;
 
     public ValueTask ImportAsync(string filePath, CameraZoneId targetCameraZoneId) => ValueTask.CompletedTask;
+
+    public ValueTask ExportCameraRegionsAsync(CameraZoneId cameraZoneId, string filePath) => ValueTask.CompletedTask;
+
+    public ValueTask<IReadOnlyCollection<RegionDefinition>> ImportCameraRegionsAsync(string filePath, CameraZoneId targetCameraZoneId)
+        => ValueTask.FromResult<IReadOnlyCollection<RegionDefinition>>(Array.Empty<RegionDefinition>());
 }

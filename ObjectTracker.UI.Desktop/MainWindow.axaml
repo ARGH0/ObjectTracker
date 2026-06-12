@@ -32,12 +32,7 @@
                               x:Name="ClearCamerasMenuItem" />
                 </MenuItem>
                 <MenuItem Header="Regions"
-                          x:Name="RegionsWorkspaceMenuItem">
-                    <MenuItem Header="Export Regions"
-                              x:Name="ExportRegionMenuButton" />
-                    <MenuItem Header="Import Regions"
-                              x:Name="ImportRegionMenuButton" />
-                </MenuItem>
+                          x:Name="RegionsWorkspaceMenuItem" />
                 <MenuItem Header="Trains"
                           x:Name="TrainsWorkspaceMenuItem" />
                 <MenuItem Header="Settings"
@@ -507,7 +502,7 @@
 
                 <Grid Grid.Row="2"
                       Grid.Column="2"
-                      RowDefinitions="Auto,8,Auto,8,*">
+                      RowDefinitions="Auto,8,Auto,8,Auto,8,*">
                     <Border Grid.Row="0"
                             Classes="surfaceAlt"
                             Padding="10">
@@ -538,17 +533,50 @@
                         </Grid>
                     </Border>
 
-                    <StackPanel Grid.Row="2"
-                                Spacing="8">
-                        <Button x:Name="EditRegionButton"
-                                Classes="primary"
-                                Content="Edit Selected Region" />
-                        <Button x:Name="DeleteRegionButton"
-                                Classes="destructive"
-                                Content="Delete Selected Region" />
-                    </StackPanel>
+                    <Border Grid.Row="2"
+                            Classes="surfaceAlt"
+                            Padding="10">
+                        <Grid RowDefinitions="Auto,8,Auto,8,Auto,8,Auto"
+                              ColumnDefinitions="*,8,*">
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="0"
+                                       Grid.ColumnSpan="3"
+                                       Text="Region Actions"
+                                       Classes="sectionTitle" />
+                            <Button Grid.Row="2"
+                                    Grid.Column="0"
+                                    x:Name="EditRegionButton"
+                                    Classes="primary"
+                                    Content="Edit Selected Region" />
+                            <Button Grid.Row="2"
+                                    Grid.Column="2"
+                                    x:Name="DeleteRegionButton"
+                                    Classes="destructive"
+                                    Content="Delete Selected Region" />
+                            <Button Grid.Row="4"
+                                    Grid.Column="0"
+                                    x:Name="ImportRegionButton"
+                                    Classes="ghost"
+                                    Content="Import Regions" />
+                            <Button Grid.Row="4"
+                                    Grid.Column="2"
+                                    x:Name="ExportRegionButton"
+                                    Classes="ghost"
+                                    Content="Export Regions" />
+                            <Button Grid.Row="6"
+                                    Grid.Column="0"
+                                    x:Name="ImportCameraRegionsButton"
+                                    Classes="ghost"
+                                    Content="Import All Camera Regions" />
+                            <Button Grid.Row="6"
+                                    Grid.Column="2"
+                                    x:Name="ExportCameraRegionsButton"
+                                    Classes="ghost"
+                                    Content="Export All Camera Regions" />
+                        </Grid>
+                    </Border>
 
-                    <Border Grid.Row="4"
+                    <Border Grid.Row="6"
                             Classes="surfaceAlt"
                             Padding="10">
                         <Grid RowDefinitions="Auto,8,*">

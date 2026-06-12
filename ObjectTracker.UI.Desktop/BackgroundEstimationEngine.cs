@@ -192,26 +192,36 @@ internal sealed class BackgroundEstimationEngine(
                 activeMorphKernelSize = live.MorphKernelSize;
             }
 
-            Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
-            Cv2.Resize(frame, colorResized, processSize, interpolation: InterpolationFlags.Area);
-            Cv2.Resize(gray, resized, processSize, interpolation: InterpolationFlags.Area);
-            Cv2.Absdiff(medianBackground, resized, diff);
-            Cv2.Threshold(diff, mask, activeThreshold, 255, ThresholdTypes.Binary);
-            Cv2.BitwiseAnd(mask, railRoiMask, mask);
-            using var refined = _motionMaskRefiner.Refine(mask, BuildRefinerOptions(activeMorphKernelSize));
-            refined.CopyTo(refinedMask);
+            // Create the analysis frames first. Rendering is added later so the source mats stay clean.
+            CreateProcessFrames(
+                frame,
+                processSize,
+                medianBackground,
+                railRoiMask,
+                activeThreshold,
+                activeMorphKernelSize,
+                gray,
+                colorResized,
+                resized,
+                diff,
+                mask,
+                refinedMask);
 
+            // Detect train candidates and classify their operator-recognized Train Color.
             var movingRects = GetMovingObjectRectangles(refinedMask, activeMinMotionArea);
-
             var frameColors = ClassifyColorsPerRect(
                 colorResized, refinedMask, hsv, movingRects, activeColorCalibrations, activeMinColorPixels);
 
-            movingColor.SetTo(Scalar.Black);
-            colorResized.CopyTo(movingColor, refinedMask);
-            DrawMovingObjectBoxes(movingColor, movingRects);
-
-            colorResized.CopyTo(colorDetections);
-            RenderColorDetections(colorDetections, colorResized, refinedMask, hsv, movingRects, activeColorCalibrations, activeMinColorPixels);
+            // Build preview frames last by drawing overlays on top of the processed frames.
+            RenderPreviewFrames(
+                colorResized,
+                refinedMask,
+                hsv,
+                movingRects,
+                activeColorCalibrations,
+                activeMinColorPixels,
+                movingColor,
+                colorDetections);
 
             var preview = BuildPreviewFrameSet(movingColor, colorDetections);
             await onFrame(preview);
@@ -322,6 +332,49 @@ internal sealed class BackgroundEstimationEngine(
         }
 
         return rects;
+    }
+
+    private void CreateProcessFrames(
+        Mat frame,
+        Size processSize,
+        Mat medianBackground,
+        Mat railRoiMask,
+        int threshold,
+        int morphKernelSize,
+        Mat gray,
+        Mat colorResized,
+        Mat resized,
+        Mat diff,
+        Mat mask,
+        Mat refinedMask)
+    {
+        Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
+        Cv2.Resize(frame, colorResized, processSize, interpolation: InterpolationFlags.Area);
+        Cv2.Resize(gray, resized, processSize, interpolation: InterpolationFlags.Area);
+        Cv2.Absdiff(medianBackground, resized, diff);
+        Cv2.Threshold(diff, mask, threshold, 255, ThresholdTypes.Binary);
+        Cv2.BitwiseAnd(mask, railRoiMask, mask);
+
+        using var refined = _motionMaskRefiner.Refine(mask, BuildRefinerOptions(morphKernelSize));
+        refined.CopyTo(refinedMask);
+    }
+
+    private static void RenderPreviewFrames(
+        Mat colorResized,
+        Mat refinedMask,
+        Mat hsv,
+        IReadOnlyList<Rect> movingRects,
+        IReadOnlyList<ColorCalibrationProfile> colorCalibrations,
+        int minColorPixels,
+        Mat movingColor,
+        Mat colorDetections)
+    {
+        movingColor.SetTo(Scalar.Black);
+        colorResized.CopyTo(movingColor, refinedMask);
+        DrawMovingObjectBoxes(movingColor, movingRects);
+
+        colorResized.CopyTo(colorDetections);
+        RenderColorDetections(colorDetections, colorResized, refinedMask, hsv, movingRects, colorCalibrations, minColorPixels);
     }
 
     private static void DrawMovingObjectBoxes(Mat destination, IReadOnlyList<Rect> movingRects)

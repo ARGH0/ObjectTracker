@@ -58,6 +58,8 @@ public sealed class TrainDetectionProfileTests
             MinMotionArea: 220,
             MinColorPixels: 40,
             MorphKernelSize: 3,
+            AdaptiveBackgroundSampleCount: 30,
+            AdaptiveBackgroundUpdateIntervalFrames: 30,
             Trains: profiles);
 
         Assert.Equal(trainId, options.Trains.Single().TrainId);

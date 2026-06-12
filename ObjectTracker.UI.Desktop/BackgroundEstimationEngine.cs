@@ -64,13 +64,12 @@ internal sealed class BackgroundEstimationEngine(
             onStatus,
             cancellationToken);
 
-        using var medianBackground = background.MedianBackground;
-        using var railRoiMask = _railRoiMaskBuilder.BuildFromBackground(medianBackground);
+        using var railRoiMask = _railRoiMaskBuilder.BuildFromBackground(background.MedianBackground);
 
         return await ProcessFramesFromSourceAsync(
             source,
             processSize,
-            medianBackground,
+            background.MedianBackground,
             railRoiMask,
             threshold,
             options,
@@ -158,104 +157,127 @@ internal sealed class BackgroundEstimationEngine(
 
         var previousTracks = new Dictionary<int, MotionTrackState>();
         var nextTrackId = 1;
+        var adaptiveSamples = new Queue<Mat>();
+        adaptiveSamples.Enqueue(medianBackground.Clone());
 
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            if (shouldStopEarly?.Invoke() == true)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                return VideoProcessResult.Stopped();
-            }
-
-            var snapshot = await source.ReadFrameAsync(cancellationToken);
-            if (snapshot is null)
-            {
-                await Task.Delay(16, cancellationToken);
-                continue;
-            }
-
-            using var frame = DecodeSnapshot(snapshot.Value);
-            if (frame.Empty())
-            {
-                continue;
-            }
-
-            var activeThreshold = threshold;
-            var activeMinMotionArea = options.MinMotionArea;
-            var activeMinColorPixels = options.MinColorPixels;
-
-            if (getLiveTuning is not null)
-            {
-                var live = getLiveTuning();
-                activeThreshold = live.Threshold;
-                activeMinMotionArea = live.MinMotionArea;
-                activeMinColorPixels = live.MinColorPixels;
-                activeMorphKernelSize = live.MorphKernelSize;
-            }
-
-            // Create the analysis frames first. Rendering is added later so the source mats stay clean.
-            CreateProcessFrames(
-                frame,
-                processSize,
-                medianBackground,
-                railRoiMask,
-                activeThreshold,
-                activeMorphKernelSize,
-                gray,
-                colorResized,
-                resized,
-                diff,
-                mask,
-                refinedMask);
-
-            // Detect train candidates and classify their operator-recognized Train Color.
-            var movingRects = GetMovingObjectRectangles(refinedMask, activeMinMotionArea);
-            var frameTrains = ClassifyTrainsPerRect(
-                colorResized, refinedMask, hsv, movingRects, activeTrains, activeMinColorPixels);
-
-            // Build preview frames last by drawing overlays on top of the processed frames.
-            RenderPreviewFrames(
-                colorResized,
-                refinedMask,
-                hsv,
-                movingRects,
-                activeTrains,
-                activeMinColorPixels,
-                movingColor,
-                colorDetections);
-
-            var preview = BuildPreviewFrameSet(movingColor, colorDetections);
-            await onFrame(preview);
-
-            if (OnTrainDetected is not null && movingRects.Count > 0)
-            {
-                foreach (var candidate in BuildTrainDetectionCandidates(movingRects, frameTrains))
+                if (shouldStopEarly?.Invoke() == true)
                 {
-                    var rect = candidate.Rect;
-                    var train = candidate.Train;
-                    var center = new Point2f(rect.X + rect.Width / 2f, rect.Y + rect.Height / 2f);
-                    OnTrainDetected(new TrainDetected(
-                        CameraZoneId: source.SourceLabel,
-                        LocalTrainId: GetNextTrackId(previousTracks, ref nextTrackId, center),
-                        Train: train.Train,
-                        PositionX: center.X,
-                        PositionY: center.Y,
-                        BoundingBoxWidth: rect.Width,
-                        BoundingBoxHeight: rect.Height,
-                        TrainColor: train.TrainName,
-                        Confidence: 1.0f,
-                        Timestamp: snapshot.Value.TimestampUtcMs,
-                        FrameNumber: frameIndex));
+                    return VideoProcessResult.Stopped();
+                }
+
+                var snapshot = await source.ReadFrameAsync(cancellationToken);
+                if (snapshot is null)
+                {
+                    await Task.Delay(16, cancellationToken);
+                    continue;
+                }
+
+                using var frame = DecodeSnapshot(snapshot.Value);
+                if (frame.Empty())
+                {
+                    continue;
+                }
+
+                var activeThreshold = threshold;
+                var activeMinMotionArea = options.MinMotionArea;
+                var activeMinColorPixels = options.MinColorPixels;
+
+                if (getLiveTuning is not null)
+                {
+                    var live = getLiveTuning();
+                    activeThreshold = live.Threshold;
+                    activeMinMotionArea = live.MinMotionArea;
+                    activeMinColorPixels = live.MinColorPixels;
+                    activeMorphKernelSize = live.MorphKernelSize;
+                }
+
+                // Create the analysis frames first. Rendering is added later so the source mats stay clean.
+                CreateProcessFrames(
+                    frame,
+                    processSize,
+                    medianBackground,
+                    railRoiMask,
+                    activeThreshold,
+                    activeMorphKernelSize,
+                    gray,
+                    colorResized,
+                    resized,
+                    diff,
+                    mask,
+                    refinedMask);
+
+                // Detect train candidates and classify their operator-recognized Train Color.
+                var movingRects = GetMovingObjectRectangles(refinedMask, activeMinMotionArea);
+                var frameTrains = ClassifyTrainsPerRect(
+                    colorResized, refinedMask, hsv, movingRects, activeTrains, activeMinColorPixels);
+
+                // Build preview frames last by drawing overlays on top of the processed frames.
+                RenderPreviewFrames(
+                    colorResized,
+                    refinedMask,
+                    hsv,
+                    movingRects,
+                    activeTrains,
+                    activeMinColorPixels,
+                    movingColor,
+                    colorDetections);
+
+                var preview = BuildPreviewFrameSet(movingColor, colorDetections);
+                await onFrame(preview);
+
+                if (OnTrainDetected is not null && movingRects.Count > 0)
+                {
+                    foreach (var candidate in BuildTrainDetectionCandidates(movingRects, frameTrains))
+                    {
+                        var rect = candidate.Rect;
+                        var train = candidate.Train;
+                        var center = new Point2f(rect.X + rect.Width / 2f, rect.Y + rect.Height / 2f);
+                        OnTrainDetected(new TrainDetected(
+                            CameraZoneId: source.SourceLabel,
+                            LocalTrainId: GetNextTrackId(previousTracks, ref nextTrackId, center),
+                            Train: train.Train,
+                            PositionX: center.X,
+                            PositionY: center.Y,
+                            BoundingBoxWidth: rect.Width,
+                            BoundingBoxHeight: rect.Height,
+                            TrainColor: train.TrainName,
+                            Confidence: 1.0f,
+                            Timestamp: snapshot.Value.TimestampUtcMs,
+                            FrameNumber: frameIndex));
+                    }
+                }
+
+                frameIndex++;
+                if (frameIndex % options.AdaptiveBackgroundUpdateIntervalFrames == 0)
+                {
+                    RefreshAdaptiveBackground(
+                        resized,
+                        adaptiveSamples,
+                        options.AdaptiveBackgroundSampleCount,
+                        processSize,
+                        ref medianBackground);
+                }
+
+                if (frameIndex % 20 == 0)
+                {
+                    await onStatus($"processing {source.SourceLabel} | frame {frameIndex}");
                 }
             }
 
-            frameIndex++;
-            if (frameIndex % 20 == 0)
+            return VideoProcessResult.Ok();
+        }
+        finally
+        {
+            medianBackground.Dispose();
+            foreach (var sample in adaptiveSamples)
             {
-                await onStatus($"processing {source.SourceLabel} | frame {frameIndex}");
+                sample.Dispose();
             }
         }
-
-        return VideoProcessResult.Ok();
     }
 
     public async Task<string> EnsureBakedBackgroundAsync(
@@ -503,6 +525,17 @@ internal sealed class BackgroundEstimationEngine(
 
     private static Mat BuildMedianBackground(List<Mat> sampledFrames, Size processSize)
     {
+        var medianMat = BuildMedianBackgroundFromRetainedSamples(sampledFrames, processSize);
+        foreach (var mat in sampledFrames)
+        {
+            mat.Dispose();
+        }
+
+        return medianMat;
+    }
+
+    private static Mat BuildMedianBackgroundFromRetainedSamples(IReadOnlyList<Mat> sampledFrames, Size processSize)
+    {
         var pixelCount = processSize.Width * processSize.Height;
         var samples = sampledFrames.Select(ToByteArray).ToArray();
         var median = new byte[pixelCount];
@@ -519,14 +552,32 @@ internal sealed class BackgroundEstimationEngine(
             median[pixel] = values[values.Length / 2];
         }
 
-        foreach (var mat in sampledFrames)
-        {
-            mat.Dispose();
-        }
-
         var medianMat = new Mat(processSize.Height, processSize.Width, MatType.CV_8UC1);
         medianMat.SetArray(median);
         return medianMat;
+    }
+
+    private static void RefreshAdaptiveBackground(
+        Mat currentResizedGrayFrame,
+        Queue<Mat> adaptiveSamples,
+        int sampleCount,
+        Size processSize,
+        ref Mat medianBackground)
+    {
+        if (currentResizedGrayFrame.Width != processSize.Width || currentResizedGrayFrame.Height != processSize.Height)
+        {
+            throw new InvalidOperationException("Adaptive background sample size must match the processing frame size.");
+        }
+
+        adaptiveSamples.Enqueue(currentResizedGrayFrame.Clone());
+        while (adaptiveSamples.Count > sampleCount)
+        {
+            adaptiveSamples.Dequeue().Dispose();
+        }
+
+        var refreshed = BuildMedianBackgroundFromRetainedSamples(adaptiveSamples.ToArray(), processSize);
+        medianBackground.Dispose();
+        medianBackground = refreshed;
     }
 
     private static Size BuildProcessSize(int sourceWidth, int sourceHeight, int maxWidth)
@@ -576,9 +627,11 @@ internal sealed class BackgroundEstimationEngine(
         int MinMotionArea,
         int MinColorPixels,
         int MorphKernelSize,
+        int AdaptiveBackgroundSampleCount,
+        int AdaptiveBackgroundUpdateIntervalFrames,
         IReadOnlyList<TrainDetectionProfile> Trains)
     {
-        public static ProcessingOptions Default => new(640, 220, 40, 3, TrainDetectionProfile.FromConfiguredTrains(TrainStore.CreateDefaultTrains()));
+        public static ProcessingOptions Default => new(640, 220, 40, 3, 30, 30, TrainDetectionProfile.FromConfiguredTrains(TrainStore.CreateDefaultTrains()));
     }
 
     internal readonly record struct LiveTuning(

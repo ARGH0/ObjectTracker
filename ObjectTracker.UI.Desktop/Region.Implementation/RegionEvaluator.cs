@@ -38,7 +38,7 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
 
         GridCell? previousCell = null;
         bool wasInEnterCrossroadBefore = false;
-        if (_previousCells.TryGetValue(detection.LocalTrainId, out var prev))
+        if (_previousCells.TryGetValue(detection.GlobalTrainId, out var prev))
         {
             previousCell = prev;
             var prevMatchingRegions = regions.Where(r => r.Cells.Any(c => c.Column == previousCell.Value.Column && c.Row == previousCell.Value.Row)).ToList();
@@ -48,11 +48,11 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
         bool isCurrentlyInEnterCrossroad = matchingRegions.Any(r => r.Type == RegionType.EnterCrossroadRegion);
         if (isCurrentlyInEnterCrossroad && previousCell.HasValue && !wasInEnterCrossroadBefore)
         {
-            transitionEvents.Add($"TrainEnteredCrossroad: trainId={detection.LocalTrainId}, zoneId={zoneId}, timestamp={DateTime.UtcNow.Ticks}, previousCell=({previousCell.Value.Column},{previousCell.Value.Row}), newCell=({cell.Column},{cell.Row})");
+            transitionEvents.Add($"TrainEnteredCrossroad: trainId={detection.GlobalTrainId}, zoneId={zoneId}, timestamp={DateTime.UtcNow.Ticks}, previousCell=({previousCell.Value.Column},{previousCell.Value.Row}), newCell=({cell.Column},{cell.Row})");
         }
 
         bool wasInExitCrossroadBefore = false;
-        if (_previousCells.TryGetValue(detection.LocalTrainId, out var prevExit))
+        if (_previousCells.TryGetValue(detection.GlobalTrainId, out var prevExit))
         {
             var prevExitMatchingRegions = regions.Where(r => r.Cells.Any(c => c.Column == prevExit.Column && c.Row == prevExit.Row)).ToList();
             wasInExitCrossroadBefore = prevExitMatchingRegions.Any(r => r.Type == RegionType.ExitCrossroadRegion);
@@ -60,21 +60,22 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
 
         bool isCurrentlyInExitCrossroad = matchingRegions.Any(r => r.Type == RegionType.ExitCrossroadRegion);
         GridCell? previousCellForExit = null;
-        if (_previousCells.TryGetValue(detection.LocalTrainId, out var prevExitCell))
+        if (_previousCells.TryGetValue(detection.GlobalTrainId, out var prevExitCell))
         {
             previousCellForExit = prevExitCell;
         }
 
         if (wasInExitCrossroadBefore && !isCurrentlyInExitCrossroad && previousCellForExit.HasValue)
         {
-            transitionEvents.Add($"TrainExitedCrossroad: trainId={detection.LocalTrainId}, zoneId={zoneId}, timestamp={DateTime.UtcNow.Ticks}, previousCell=({previousCellForExit.Value.Column},{previousCellForExit.Value.Row}), newCell=({cell.Column},{cell.Row})");
+            transitionEvents.Add($"TrainExitedCrossroad: trainId={detection.GlobalTrainId}, zoneId={zoneId}, timestamp={DateTime.UtcNow.Ticks}, previousCell=({previousCellForExit.Value.Column},{previousCellForExit.Value.Row}), newCell=({cell.Column},{cell.Row})");
         }
 
         var activeRegionName = resolved.Count != 0 ? resolved.First().Item1.Name : null;
 
-        _previousCells[detection.LocalTrainId] = cell;
+        _previousCells[detection.GlobalTrainId] = cell;
 
         return new EnrichedTrainState(
+            detection.GlobalTrainId,
             detection.LocalTrainId,
             detection.TrainColor,
             detection.PixelX,

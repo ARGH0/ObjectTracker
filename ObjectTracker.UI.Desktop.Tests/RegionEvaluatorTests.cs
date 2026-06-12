@@ -13,6 +13,32 @@ namespace ObjectTracker.UI.Desktop.Tests;
 
 public sealed class RegionEvaluatorTests
 {
+    private static readonly Guid DefaultGlobalTrainId = Guid.Parse("99999999-9999-9999-9999-999999999999");
+
+    private static TrainDetection Detection(
+        Guid localTrainId,
+        string trainColor = "Red",
+        float pixelX = 100f,
+        float pixelY = 100f,
+        float confidence = 0.9f,
+        Guid? globalTrainId = null)
+    {
+        return new TrainDetection(
+            GlobalTrainId: globalTrainId ?? localTrainId,
+            LocalTrainId: localTrainId,
+            TrainColor: trainColor,
+            PixelX: pixelX,
+            PixelY: pixelY,
+            ProcessWidth: 50f,
+            ProcessHeight: 30f,
+            GridCols: 64,
+            GridRows: 48,
+            Confidence: confidence,
+            MotionState: "moving",
+            ImageWidth: 640,
+            ImageHeight: 480);
+    }
+
     private static RegionDefinition CreateRegion(RegionType type, float confidenceBoost = 0f, params (int Col, int Row)[] cells)
     {
         var baseTime = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -40,6 +66,7 @@ public sealed class RegionEvaluatorTests
         var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
+            DefaultGlobalTrainId,
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             "Red",
             100f,
@@ -66,6 +93,7 @@ public sealed class RegionEvaluatorTests
         var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
+            DefaultGlobalTrainId,
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             "Red",
             100f,
@@ -94,6 +122,7 @@ public sealed class RegionEvaluatorTests
         var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
+            DefaultGlobalTrainId,
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             "Blue",
             100f,
@@ -122,6 +151,7 @@ public sealed class RegionEvaluatorTests
         var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
+            DefaultGlobalTrainId,
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             "Green",
             100f,
@@ -153,6 +183,7 @@ public sealed class RegionEvaluatorTests
         var trainId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var detection1 = new TrainDetection(
             trainId,
+            trainId,
             "Red",
             100f,
             200f,
@@ -166,6 +197,7 @@ public sealed class RegionEvaluatorTests
             480);
 
         var detection2 = new TrainDetection(
+            trainId,
             trainId,
             "Red",
             200f,
@@ -189,6 +221,27 @@ public sealed class RegionEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_SameGlobalTrainAcrossCameraLocalIds_TracksOneTrainState()
+    {
+        var mapper = new CoordinateMapper();
+        var evaluator = new RegionEvaluator(mapper);
+
+        var globalTrainId = Guid.Parse("12121212-1212-1212-1212-121212121212");
+        var zoneOneLocalTrainId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var zoneTwoLocalTrainId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var zoneOneDetection = Detection(zoneOneLocalTrainId, pixelX: 100f, pixelY: 100f, globalTrainId: globalTrainId);
+        var zoneTwoDetection = Detection(zoneTwoLocalTrainId, pixelX: 50f, pixelY: 50f, globalTrainId: globalTrainId);
+        var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
+
+        evaluator.Evaluate(zoneOneDetection, "zone-1", new[] { enterRegion });
+        var result = evaluator.Evaluate(zoneTwoDetection, "zone-2", new[] { enterRegion });
+
+        Assert.Equal(globalTrainId, result.GlobalTrainId);
+        Assert.Equal(zoneTwoLocalTrainId, result.LocalTrainId);
+        Assert.Contains(result.TransitionEvents, e => e.Contains($"trainId={globalTrainId}", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Evaluate_Integration_FullPipelineFromDetectionToEnrichedOutput()
     {
         var mapper = new CoordinateMapper();
@@ -196,6 +249,7 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("22222222-2222-2222-2222-222222222222");
         var detection = new TrainDetection(
+            trainId,
             trainId,
             "White",
             320f,
@@ -214,6 +268,7 @@ public sealed class RegionEvaluatorTests
 
         var result = evaluator.Evaluate(detection, "zone-main", new[] { excludeRegion, railRegion });
 
+        Assert.Equal(trainId, result.GlobalTrainId);
         Assert.Equal(trainId, result.LocalTrainId);
         Assert.Equal("White", result.TrainColor);
         Assert.Equal(0.85f, result.Confidence);
@@ -230,6 +285,7 @@ public sealed class RegionEvaluatorTests
         var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
+            DefaultGlobalTrainId,
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             "Red",
             100f,
@@ -259,6 +315,7 @@ public sealed class RegionEvaluatorTests
         var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
+            DefaultGlobalTrainId,
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             "Red",
             100f,
@@ -288,6 +345,7 @@ public sealed class RegionEvaluatorTests
         var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
+            DefaultGlobalTrainId,
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             "Red",
             100f,
@@ -318,6 +376,7 @@ public sealed class RegionEvaluatorTests
         var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
+            DefaultGlobalTrainId,
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             "Red",
             100f,
@@ -333,6 +392,7 @@ public sealed class RegionEvaluatorTests
 
         var result = evaluator.Evaluate(detection, "zone-1", Array.Empty<RegionDefinition>());
 
+        Assert.Equal(DefaultGlobalTrainId, result.GlobalTrainId);
         Assert.Equal(Guid.Parse("11111111-1111-1111-1111-111111111111"), result.LocalTrainId);
         Assert.Equal("Red", result.TrainColor);
         Assert.Equal(0.9f, result.Confidence);
@@ -347,33 +407,9 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
-        var detectionOutside = new TrainDetection(
-            trainId,
-            "Red",
-            100f,
-            100f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionOutside = Detection(trainId, pixelX: 100f, pixelY: 100f);
 
-        var detectionInside = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInside = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
         var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
 
@@ -391,33 +427,9 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
-        var detectionInside1 = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInside1 = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
-        var detectionInside2 = new TrainDetection(
-            trainId,
-            "Red",
-            60f,
-            60f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInside2 = Detection(trainId, pixelX: 60f, pixelY: 60f);
 
         var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5), (6, 6)]);
 
@@ -435,47 +447,11 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
 
-        var detectionInside1 = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInside1 = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
-        var detectionOutside = new TrainDetection(
-            trainId,
-            "Red",
-            100f,
-            100f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionOutside = Detection(trainId, pixelX: 100f, pixelY: 100f);
 
-        var detectionInside2 = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInside2 = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
         var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
 
@@ -494,33 +470,9 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
 
-        var detectionOutside = new TrainDetection(
-            trainId,
-            "Red",
-            100f,
-            100f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionOutside = Detection(trainId, pixelX: 100f, pixelY: 100f);
 
-        var detectionInside = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInside = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
         var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
 
@@ -546,33 +498,9 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
 
-        var detectionOutside = new TrainDetection(
-            trainId,
-            "Red",
-            100f,
-            100f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionOutside = Detection(trainId, pixelX: 100f, pixelY: 100f);
 
-        var detectionInside = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInside = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
         var excludeRegion = CreateRegion(RegionType.ExcludeRegion, cells: [(5, 5)]);
         var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
@@ -592,33 +520,9 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
 
-        var detectionOutside = new TrainDetection(
-            trainId,
-            "Red",
-            100f,
-            100f,
-            50f,
-            30f,
-            64,
-            48,
-            0.5f,
-            "moving",
-            640,
-            480);
+        var detectionOutside = Detection(trainId, pixelX: 100f, pixelY: 100f, confidence: 0.5f);
 
-        var detectionInside = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.5f,
-            "moving",
-            640,
-            480);
+        var detectionInside = Detection(trainId, pixelX: 50f, pixelY: 50f, confidence: 0.5f);
 
         var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, 0.2f, cells: [(5, 5)]);
         var enterRegion = CreateRegion(RegionType.EnterCrossroadRegion, cells: [(5, 5)]);
@@ -638,33 +542,9 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("10101010-1010-1010-1010-101010101010");
 
-        var detectionInsideExit = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInsideExit = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
-        var detectionOutside = new TrainDetection(
-            trainId,
-            "Red",
-            100f,
-            100f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionOutside = Detection(trainId, pixelX: 100f, pixelY: 100f);
 
         var exitRegion = CreateRegion(RegionType.ExitCrossroadRegion, cells: [(5, 5)]);
 
@@ -682,47 +562,11 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("20202020-2020-2020-2020-202020202020");
 
-        var detectionInsideExit = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInsideExit = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
-        var detectionOutside1 = new TrainDetection(
-            trainId,
-            "Red",
-            100f,
-            100f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionOutside1 = Detection(trainId, pixelX: 100f, pixelY: 100f);
 
-        var detectionOutside2 = new TrainDetection(
-            trainId,
-            "Red",
-            200f,
-            200f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionOutside2 = Detection(trainId, pixelX: 200f, pixelY: 200f);
 
         var exitRegion = CreateRegion(RegionType.ExitCrossroadRegion, cells: [(5, 5)]);
 
@@ -741,47 +585,11 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("30303030-3030-3030-3030-303030303030");
 
-        var detectionInsideExit1 = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInsideExit1 = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
-        var detectionOutside = new TrainDetection(
-            trainId,
-            "Red",
-            100f,
-            100f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionOutside = Detection(trainId, pixelX: 100f, pixelY: 100f);
 
-        var detectionInsideExit2 = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInsideExit2 = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
         var exitRegion = CreateRegion(RegionType.ExitCrossroadRegion, cells: [(5, 5)]);
 
@@ -801,33 +609,9 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("40404040-4040-4040-4040-404040404040");
 
-        var detectionInsideExit = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInsideExit = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
-        var detectionOutside = new TrainDetection(
-            trainId,
-            "Red",
-            100f,
-            100f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionOutside = Detection(trainId, pixelX: 100f, pixelY: 100f);
 
         var exitRegion = CreateRegion(RegionType.ExitCrossroadRegion, cells: [(5, 5)]);
 
@@ -861,33 +645,9 @@ public sealed class RegionEvaluatorTests
 
         var trainId = Guid.Parse("60606060-6060-6060-6060-606060606060");
 
-        var detectionOutside = new TrainDetection(
-            trainId,
-            "Red",
-            100f,
-            100f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionOutside = Detection(trainId, pixelX: 100f, pixelY: 100f);
 
-        var detectionInBoth = new TrainDetection(
-            trainId,
-            "Red",
-            50f,
-            50f,
-            50f,
-            30f,
-            64,
-            48,
-            0.9f,
-            "moving",
-            640,
-            480);
+        var detectionInBoth = Detection(trainId, pixelX: 50f, pixelY: 50f);
 
         var excludeRegion = CreateRegion(RegionType.ExcludeRegion, cells: [(5, 5)]);
         var exitRegion = CreateRegion(RegionType.ExitCrossroadRegion, cells: [(5, 5)]);

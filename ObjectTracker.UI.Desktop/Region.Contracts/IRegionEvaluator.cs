@@ -5,6 +5,7 @@ using RegionType = ObjectTracker.UI.Desktop.Region.Model.RegionType;
 namespace ObjectTracker.UI.Desktop.Region.Contracts;
 
 public readonly record struct TrainDetection(
+    Guid GlobalTrainId,
     Guid LocalTrainId,
     string TrainColor,
     float PixelX,
@@ -19,6 +20,7 @@ public readonly record struct TrainDetection(
     int ImageHeight);
 
 public readonly record struct EnrichedTrainState(
+    Guid GlobalTrainId,
     Guid LocalTrainId,
     string TrainColor,
     float PixelX,

@@ -753,7 +753,7 @@
                 Classes="surface"
                 IsVisible="False"
                 Padding="16">
-            <Grid RowDefinitions="Auto,12,Auto,12,Auto,12,Auto,12,*"
+            <Grid RowDefinitions="Auto,12,Auto,12,Auto,12,Auto,12,Auto,12,*"
                   ColumnDefinitions="360,16,*">
                 <StackPanel Grid.Row="0"
                             Grid.Column="0"
@@ -822,6 +822,32 @@
                         </StackPanel>
                         <TextBox x:Name="SettingsPlcPasswordTextBox"
                                  Watermark="Sander001!" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="6"
+                        Grid.Column="0"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Adaptive Background"
+                                   Classes="sectionTitle" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Rolling Samples"
+                                       Classes="eyebrow" />
+                            <TextBlock x:Name="SettingsAdaptiveBackgroundSampleCountPolicyText"
+                                       Classes="muted" />
+                        </StackPanel>
+                        <TextBox x:Name="SettingsAdaptiveBackgroundSampleCountTextBox"
+                                 Watermark="30" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Interval Frames"
+                                       Classes="eyebrow" />
+                            <TextBlock x:Name="SettingsAdaptiveBackgroundUpdateIntervalFramesPolicyText"
+                                       Classes="muted" />
+                        </StackPanel>
+                        <TextBox x:Name="SettingsAdaptiveBackgroundUpdateIntervalFramesTextBox"
+                                 Watermark="30" />
                     </StackPanel>
                 </Border>
 

@@ -143,6 +143,8 @@ public partial class MainWindow : AppWindow
     {
         GridColumns,
         GridRows,
+        AdaptiveBackgroundSampleCount,
+        AdaptiveBackgroundUpdateIntervalFrames,
         PlcBaseUrl,
         PlcUser,
         PlcPassword
@@ -434,6 +436,8 @@ public partial class MainWindow : AppWindow
         {
             SettingsField.GridColumns => "requires Vision Pipeline restart",
             SettingsField.GridRows => "requires Vision Pipeline restart",
+            SettingsField.AdaptiveBackgroundSampleCount => "requires Vision Pipeline restart",
+            SettingsField.AdaptiveBackgroundUpdateIntervalFrames => "requires Vision Pipeline restart",
             SettingsField.PlcBaseUrl => "applies immediately",
             SettingsField.PlcUser => "applies immediately",
             SettingsField.PlcPassword => "applies immediately",
@@ -444,7 +448,9 @@ public partial class MainWindow : AppWindow
     public static SettingsSaveImpact BuildSettingsSaveImpact(AppSettings savedSettings, AppSettings draftSettings, bool isVisionPipelineRunning)
     {
         var requiresRestart = savedSettings.GridColumns != draftSettings.GridColumns
-            || savedSettings.GridRows != draftSettings.GridRows;
+            || savedSettings.GridRows != draftSettings.GridRows
+            || savedSettings.AdaptiveBackgroundSampleCount != draftSettings.AdaptiveBackgroundSampleCount
+            || savedSettings.AdaptiveBackgroundUpdateIntervalFrames != draftSettings.AdaptiveBackgroundUpdateIntervalFrames;
         var pendingRestart = requiresRestart && isVisionPipelineRunning;
         return new SettingsSaveImpact(
             requiresRestart,
@@ -688,6 +694,8 @@ public partial class MainWindow : AppWindow
         DiscardSettingsButton.Click += DiscardSettingsButtonOnClick;
         SettingsGridColumnsTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
         SettingsGridRowsTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
+        SettingsAdaptiveBackgroundSampleCountTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
+        SettingsAdaptiveBackgroundUpdateIntervalFramesTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
         SettingsPlcBaseUrlTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
         SettingsPlcUserTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
         SettingsPlcPasswordTextBox.TextChanged += SettingsDraftTextBoxOnTextChanged;
@@ -857,22 +865,41 @@ public partial class MainWindow : AppWindow
     {
         var columns = ParseInt(SettingsGridColumnsTextBox.Text, appSettings.GridColumns, AppSettings.MinGridColumns, AppSettings.MaxGridColumns);
         var rows = ParseInt(SettingsGridRowsTextBox.Text, appSettings.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows);
+        var adaptiveBackgroundSampleCount = ParseInt(
+            SettingsAdaptiveBackgroundSampleCountTextBox.Text,
+            appSettings.AdaptiveBackgroundSampleCount,
+            AppSettings.MinAdaptiveBackgroundSampleCount,
+            int.MaxValue);
+        var adaptiveBackgroundUpdateIntervalFrames = ParseInt(
+            SettingsAdaptiveBackgroundUpdateIntervalFramesTextBox.Text,
+            appSettings.AdaptiveBackgroundUpdateIntervalFrames,
+            AppSettings.MinAdaptiveBackgroundUpdateIntervalFrames,
+            int.MaxValue);
         var plc = new PlcSettings(
             BaseUrl: SettingsPlcBaseUrlTextBox.Text ?? appSettings.Plc.BaseUrl,
             User: SettingsPlcUserTextBox.Text ?? appSettings.Plc.User,
             Password: SettingsPlcPasswordTextBox.Text ?? appSettings.Plc.Password);
-        draftAppSettings = new AppSettings(columns, rows, plc);
+        draftAppSettings = new AppSettings(
+            columns,
+            rows,
+            adaptiveBackgroundSampleCount,
+            adaptiveBackgroundUpdateIntervalFrames,
+            plc);
     }
 
     private void RefreshSettingsWorkspaceUi()
     {
         SettingsGridColumnsPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.GridColumns);
         SettingsGridRowsPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.GridRows);
+        SettingsAdaptiveBackgroundSampleCountPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.AdaptiveBackgroundSampleCount);
+        SettingsAdaptiveBackgroundUpdateIntervalFramesPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.AdaptiveBackgroundUpdateIntervalFrames);
         SettingsPlcBaseUrlPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.PlcBaseUrl);
         SettingsPlcUserPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.PlcUser);
         SettingsPlcPasswordPolicyText.Text = GetSettingsApplyPolicyLabel(SettingsField.PlcPassword);
         SettingsGridColumnsTextBox.Text = draftAppSettings.GridColumns.ToString();
         SettingsGridRowsTextBox.Text = draftAppSettings.GridRows.ToString();
+        SettingsAdaptiveBackgroundSampleCountTextBox.Text = draftAppSettings.AdaptiveBackgroundSampleCount.ToString();
+        SettingsAdaptiveBackgroundUpdateIntervalFramesTextBox.Text = draftAppSettings.AdaptiveBackgroundUpdateIntervalFrames.ToString();
         SettingsPlcBaseUrlTextBox.Text = draftAppSettings.Plc.BaseUrl;
         SettingsPlcUserTextBox.Text = draftAppSettings.Plc.User;
         SettingsPlcPasswordTextBox.Text = draftAppSettings.Plc.Password;
@@ -1837,6 +1864,8 @@ public partial class MainWindow : AppWindow
             settings.MotionArea,
             settings.ColorMinPixels,
             settings.MorphKernelSize,
+            appSettings.AdaptiveBackgroundSampleCount,
+            appSettings.AdaptiveBackgroundUpdateIntervalFrames,
             GetConfiguredTrainProfiles());
 
         string? bakedPath;
@@ -1925,6 +1954,7 @@ public partial class MainWindow : AppWindow
         engine.OnTrainDetected += detection =>
         {
             var trainDetection = new ObjectTracker.UI.Desktop.Region.Contracts.TrainDetection(
+                GlobalTrainId: detection.Train.Id,
                 LocalTrainId: new System.Guid(detection.LocalTrainId.ToString().PadLeft(32, '0')),
                 TrainColor: detection.Train.Name,
                 PixelX: detection.PositionX,
@@ -1978,6 +2008,8 @@ public partial class MainWindow : AppWindow
                 settings.MotionArea,
                 settings.ColorMinPixels,
                 settings.MorphKernelSize,
+                appSettings.AdaptiveBackgroundSampleCount,
+                appSettings.AdaptiveBackgroundUpdateIntervalFrames,
                 GetConfiguredTrainProfiles());
 
             if (videoIndex >= camera.VideoPaths.Count)
@@ -2027,6 +2059,8 @@ public partial class MainWindow : AppWindow
                 settings.MotionArea,
                 settings.ColorMinPixels,
                 settings.MorphKernelSize,
+                appSettings.AdaptiveBackgroundSampleCount,
+                appSettings.AdaptiveBackgroundUpdateIntervalFrames,
                 GetConfiguredTrainProfiles());
 
             await Dispatcher.UIThread.InvokeAsync(() => CurrentVideoText.Text = BuildCurrentSourceText(camera, camera.DisplayName));
@@ -2071,6 +2105,8 @@ public partial class MainWindow : AppWindow
                 settings.MotionArea,
                 settings.ColorMinPixels,
                 settings.MorphKernelSize,
+                appSettings.AdaptiveBackgroundSampleCount,
+                appSettings.AdaptiveBackgroundUpdateIntervalFrames,
                 GetConfiguredTrainProfiles());
 
             foreach (var videoPath in camera.VideoPaths)

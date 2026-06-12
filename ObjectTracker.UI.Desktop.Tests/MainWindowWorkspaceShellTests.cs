@@ -242,6 +242,8 @@ public sealed class MainWindowWorkspaceShellTests
     [Theory]
     [InlineData(MainWindow.SettingsField.GridColumns)]
     [InlineData(MainWindow.SettingsField.GridRows)]
+    [InlineData(MainWindow.SettingsField.AdaptiveBackgroundSampleCount)]
+    [InlineData(MainWindow.SettingsField.AdaptiveBackgroundUpdateIntervalFrames)]
     public void SettingsApplyPolicyLabel_ForGridSettings_RequiresVisionPipelineRestart(MainWindow.SettingsField field)
     {
         var label = MainWindow.GetSettingsApplyPolicyLabel(field);
@@ -254,6 +256,19 @@ public sealed class MainWindowWorkspaceShellTests
     {
         var saved = new AppSettings(GridColumns: 32, GridRows: 18);
         var draft = new AppSettings(GridColumns: 40, GridRows: 18);
+
+        var impact = MainWindow.BuildSettingsSaveImpact(saved, draft, isVisionPipelineRunning: true);
+
+        Assert.True(impact.RequiresVisionPipelineRestart);
+        Assert.True(impact.HasPendingVisionPipelineRestart);
+        Assert.Equal("Settings: saved, pending Vision Pipeline restart", impact.SettingsStatusText);
+    }
+
+    [Fact]
+    public void SettingsSaveImpact_WhenAdaptiveBackgroundSettingChangesWhileRunning_MarksPendingRestart()
+    {
+        var saved = AppSettings.Default;
+        var draft = saved with { AdaptiveBackgroundUpdateIntervalFrames = 60 };
 
         var impact = MainWindow.BuildSettingsSaveImpact(saved, draft, isVisionPipelineRunning: true);
 

@@ -44,6 +44,8 @@ public sealed class AppSettingsStore
         return new AppSettings(
             GridColumns: Math.Clamp(dto.GridColumns, AppSettings.MinGridColumns, AppSettings.MaxGridColumns),
             GridRows: Math.Clamp(dto.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows),
+            AdaptiveBackgroundSampleCount: ReadAdaptiveBackgroundSampleCount(dto),
+            AdaptiveBackgroundUpdateIntervalFrames: ReadAdaptiveBackgroundUpdateIntervalFrames(dto),
             Plc: ReadPlcSettings(dto.Plc));
     }
 
@@ -53,6 +55,12 @@ public sealed class AppSettingsStore
         {
             GridColumns = Math.Clamp(settings.GridColumns, AppSettings.MinGridColumns, AppSettings.MaxGridColumns),
             GridRows = Math.Clamp(settings.GridRows, AppSettings.MinGridRows, AppSettings.MaxGridRows),
+            AdaptiveBackgroundSampleCount = Math.Max(
+                AppSettings.MinAdaptiveBackgroundSampleCount,
+                settings.AdaptiveBackgroundSampleCount),
+            AdaptiveBackgroundUpdateIntervalFrames = Math.Max(
+                AppSettings.MinAdaptiveBackgroundUpdateIntervalFrames,
+                settings.AdaptiveBackgroundUpdateIntervalFrames),
             Plc = WritePlcSettings(settings.Plc)
         };
 
@@ -86,11 +94,23 @@ public sealed class AppSettingsStore
         };
     }
 
+    private static int ReadAdaptiveBackgroundSampleCount(AppSettingsDto dto)
+        => Math.Max(AppSettings.MinAdaptiveBackgroundSampleCount,
+            dto.AdaptiveBackgroundSampleCount ?? AppSettings.DefaultAdaptiveBackgroundSampleCount);
+
+    private static int ReadAdaptiveBackgroundUpdateIntervalFrames(AppSettingsDto dto)
+        => Math.Max(AppSettings.MinAdaptiveBackgroundUpdateIntervalFrames,
+            dto.AdaptiveBackgroundUpdateIntervalFrames ?? AppSettings.DefaultAdaptiveBackgroundUpdateIntervalFrames);
+
     private sealed class AppSettingsDto
     {
         public int GridColumns { get; set; } = AppSettings.DefaultColumns;
 
         public int GridRows { get; set; } = AppSettings.DefaultRows;
+
+        public int? AdaptiveBackgroundSampleCount { get; set; }
+
+        public int? AdaptiveBackgroundUpdateIntervalFrames { get; set; }
 
         public PlcSettingsDto? Plc { get; set; }
     }
@@ -105,19 +125,48 @@ public sealed class AppSettingsStore
     }
 }
 
-public readonly record struct AppSettings(int GridColumns, int GridRows, PlcSettings Plc)
+public readonly record struct AppSettings(
+    int GridColumns,
+    int GridRows,
+    int AdaptiveBackgroundSampleCount,
+    int AdaptiveBackgroundUpdateIntervalFrames,
+    PlcSettings Plc)
 {
     public const int DefaultColumns = 32;
     public const int DefaultRows = 18;
+    public const int DefaultAdaptiveBackgroundSampleCount = 30;
+    public const int DefaultAdaptiveBackgroundUpdateIntervalFrames = 30;
     public const int MinGridColumns = 2;
     public const int MaxGridColumns = 200;
     public const int MinGridRows = 2;
     public const int MaxGridRows = 200;
+    public const int MinAdaptiveBackgroundSampleCount = 1;
+    public const int MinAdaptiveBackgroundUpdateIntervalFrames = 1;
 
-    public static AppSettings Default => new(DefaultColumns, DefaultRows, PlcSettings.Default);
+    public static AppSettings Default => new(
+        DefaultColumns,
+        DefaultRows,
+        DefaultAdaptiveBackgroundSampleCount,
+        DefaultAdaptiveBackgroundUpdateIntervalFrames,
+        PlcSettings.Default);
 
     public AppSettings(int GridColumns, int GridRows)
-        : this(GridColumns, GridRows, PlcSettings.Default)
+        : this(
+            GridColumns,
+            GridRows,
+            DefaultAdaptiveBackgroundSampleCount,
+            DefaultAdaptiveBackgroundUpdateIntervalFrames,
+            PlcSettings.Default)
+    {
+    }
+
+    public AppSettings(int GridColumns, int GridRows, PlcSettings Plc)
+        : this(
+            GridColumns,
+            GridRows,
+            DefaultAdaptiveBackgroundSampleCount,
+            DefaultAdaptiveBackgroundUpdateIntervalFrames,
+            Plc)
     {
     }
 }

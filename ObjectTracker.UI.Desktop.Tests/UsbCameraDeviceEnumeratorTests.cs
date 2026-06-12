@@ -56,6 +56,19 @@ public sealed class UsbCameraDeviceEnumeratorTests
     }
 
     [Fact]
+    public void EnumerateWindowsDevices_UsesProbeToDiscoverAvailableCameras()
+    {
+        var devices = UsbCameraDeviceEnumerator.EnumerateWindowsDevices(
+            probeDevice: index => index is 0 or 2,
+            candidateIndices: new[] { 0, 1, 2 });
+
+        Assert.Collection(
+            devices,
+            first => Assert.Equal(0, first.DeviceIndex),
+            second => Assert.Equal(2, second.DeviceIndex));
+    }
+
+    [Fact]
     public void Enumerate_WhenRunningOnLinux_ReturnsNamedLinuxDevices()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ObjectTracker.UsbCameraDevices." + Guid.NewGuid());

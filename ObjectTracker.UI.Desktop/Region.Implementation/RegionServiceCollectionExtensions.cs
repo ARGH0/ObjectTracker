@@ -15,7 +15,6 @@ public static class RegionServiceCollectionExtensions
             "regions.json");
 
         services.AddSingleton<ICoordinateMapper, CoordinateMapper>();
-        services.AddSingleton<IRegionPriorityResolver, RegionPriorityResolver>();
         services.AddSingleton<IRegionPersistence>(sp => new RegionPersistence(filePath ?? defaultPath));
         services.AddSingleton<IRegionRegistry>(sp =>
         {

@@ -39,7 +39,7 @@ public static class TileOverlayRenderer
         Cv2.Resize(gray, resized, processSize, interpolation: InterpolationFlags.Area);
         Cv2.Resize(source, colorResized, processSize, interpolation: InterpolationFlags.Area);
 
-        using var tempMedian = new Mat();
+        using var tempMedian = new Mat(processSize, MatType.CV_8UC1);
         tempMedian.SetTo(Scalar.Black);
         Cv2.Absdiff(tempMedian, resized, diff);
         Cv2.Threshold(diff, mask, 100, 255, ThresholdTypes.Binary);
@@ -88,7 +88,7 @@ public static class TileOverlayRenderer
             var color = region.Type switch
             {
                 20 => new Scalar(0, 255, 0),
-                30 => new Scalar(0, 120, 255),
+                30 => new Scalar(0, 0, 255),
                 _ => new Scalar(200, 200, 200)
             };
 
@@ -129,7 +129,7 @@ public static class TileOverlayRenderer
             var color = region.Type switch
             {
                 20 => new Scalar(0, 255, 0),
-                30 => new Scalar(0, 120, 255),
+                30 => new Scalar(0, 0, 255),
                 _ => new Scalar(200, 200, 200)
             };
 
@@ -156,7 +156,7 @@ public static class TileOverlayRenderer
     private static Mat RefineMotionMask(Mat mask, int morphKernelSize)
     {
         using var eroded = new Mat();
-        using var dilated = new Mat();
+        var dilated = new Mat();
         var kernel = Cv2.GetStructuringElement(MorphShapes.Rect, new OpenCvSharp.Size(morphKernelSize, morphKernelSize));
         Cv2.MorphologyEx(mask, eroded, MorphTypes.Erode, kernel);
         Cv2.MorphologyEx(eroded, dilated, MorphTypes.Dilate, kernel);

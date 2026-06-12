@@ -12,13 +12,11 @@ namespace ObjectTracker.UI.Desktop.Region.Implementation;
 public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.IRegionEvaluator
 {
     private readonly ObjectTracker.UI.Desktop.Region.Contracts.ICoordinateMapper _mapper;
-    private readonly ObjectTracker.UI.Desktop.Region.Contracts.IRegionPriorityResolver _priorityResolver;
     private readonly Dictionary<Guid, GridCell> _previousCells = new();
 
-    public RegionEvaluator(ObjectTracker.UI.Desktop.Region.Contracts.ICoordinateMapper mapper, ObjectTracker.UI.Desktop.Region.Contracts.IRegionPriorityResolver priorityResolver)
+    public RegionEvaluator(ObjectTracker.UI.Desktop.Region.Contracts.ICoordinateMapper mapper)
     {
         _mapper = mapper;
-        _priorityResolver = priorityResolver;
     }
 
     public EnrichedTrainState Evaluate(TrainDetection detection, string zoneId, IEnumerable<RegionDefinition> regions)
@@ -27,7 +25,7 @@ public sealed class RegionEvaluator : ObjectTracker.UI.Desktop.Region.Contracts.
         var imageHeight = detection.ImageHeight > 0 ? detection.ImageHeight : 480;
         var cell = _mapper.MapPixelToCell(detection.PixelX, detection.PixelY, detection.GridCols, detection.GridRows, imageWidth, imageHeight);
         var matchingRegions = regions.Where(r => r.Cells.Any(c => c.Column == cell.Column && c.Row == cell.Row)).ToList();
-        var resolved = matchingRegions.Count != 0 ? _priorityResolver.ResolveAll(matchingRegions).ToList() : new List<(RegionDefinition, RegionType)>();
+        var resolved = matchingRegions.Count != 0 ? matchingRegions.Select(r => (r, r.Type)).ToList() : new List<(RegionDefinition, RegionType)>();
         var activeType = resolved.Count != 0 ? (RegionType?)resolved.First().Item2 : null;
 
         float confidence = detection.Confidence;

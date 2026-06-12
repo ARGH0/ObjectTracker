@@ -111,34 +111,6 @@ public sealed class RegionPersistenceTests : IDisposable
     }
 
     [Fact]
-    public async Task RoundTrip_CameraOverlapRegion_PreservesOverlappingZoneIds()
-    {
-        var overlappingIds = new List<string> { "zone-a", "zone-b" }.AsReadOnly();
-        var original = new ObjectTracker.UI.Desktop.Region.Model.RegionDefinition(
-            Id: Guid.Parse("33333333-3333-3333-3333-333333333333"),
-            Name: "Overlap Zone",
-            Type: ObjectTracker.UI.Desktop.Region.Model.RegionType.CameraOverlapRegion,
-            CameraZoneId: new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-a"),
-            Cells: new ObjectTracker.UI.Desktop.Region.Model.GridCell[] { new(5, 5) },
-            CreatedAt: DateTime.UtcNow,
-            UpdatedAt: DateTime.UtcNow,
-            OverlappingZoneIds: overlappingIds
-        );
-
-        var persistence = new RegionPersistence(_testFilePath);
-        await persistence.SaveAsync(new[] { original });
-
-        var loaded = (await persistence.LoadAsync()).ToList();
-
-        Assert.Single(loaded);
-        var region = loaded[0];
-        Assert.NotNull(region.OverlappingZoneIds);
-        Assert.Equal(2, region.OverlappingZoneIds.Count);
-        Assert.Contains("zone-a", region.OverlappingZoneIds);
-        Assert.Contains("zone-b", region.OverlappingZoneIds);
-    }
-
-    [Fact]
     public async Task LoadAsync_FileDoesNotExist_ReturnsEmpty()
     {
         var persistence = new RegionPersistence(_testFilePath);
@@ -206,7 +178,7 @@ public sealed class RegionPersistenceTests : IDisposable
     public async Task ExportAsync_OnlyExportsRegionsForSpecifiedZone()
     {
         var exportPath = Path.Combine(Path.GetTempPath(), $"objecttracker-export-{Guid.NewGuid()}.json");
-        
+
         try
         {
             var regions = new[]
@@ -256,7 +228,7 @@ public sealed class RegionPersistenceTests : IDisposable
     public async Task ImportAsync_MergesImportedRegionsWithExisting()
     {
         var importPath = Path.Combine(Path.GetTempPath(), $"objecttracker-import-{Guid.NewGuid()}.json");
-        
+
         try
         {
             // Create an export file with a region named "Zone A Region"
@@ -316,10 +288,10 @@ public sealed class RegionPersistenceTests : IDisposable
             var loaded = (await persistence.LoadAsync()).ToList();
 
             Assert.Equal(3, loaded.Count);
-            
+
             var zoneARegions = loaded.Where(r => r.CameraZoneId.Equals(zoneAId)).ToList();
             Assert.Equal(2, zoneARegions.Count);
-            
+
             var importedRegion = zoneARegions.FirstOrDefault(r => r.Name == "New Imported Region");
             Assert.NotEqual(default(ObjectTracker.UI.Desktop.Region.Model.RegionDefinition), importedRegion);
             Assert.Equal(ObjectTracker.UI.Desktop.Region.Model.RegionType.HighProbabilityRailRegion, importedRegion.Type);
@@ -337,13 +309,13 @@ public sealed class RegionPersistenceTests : IDisposable
     public async Task ImportAsync_FileDoesNotExist_DoesNotThrow()
     {
         var persistence = new RegionPersistence(_testFilePath);
-        
+
         await persistence.SaveAsync(Array.Empty<ObjectTracker.UI.Desktop.Region.Model.RegionDefinition>());
 
         var nonExistentPath = Path.Combine(Path.GetTempPath(), $"nonexistent-{Guid.NewGuid()}.json");
-        
+
         var zoneId = new ObjectTracker.UI.Desktop.Region.Model.CameraZoneId("zone-a");
-        
+
         await persistence.ImportAsync(nonExistentPath, zoneId);
 
         var loaded = (await persistence.LoadAsync()).ToList();

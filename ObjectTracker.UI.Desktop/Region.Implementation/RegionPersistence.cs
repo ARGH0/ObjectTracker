@@ -54,14 +54,14 @@ public sealed class RegionPersistence : ObjectTracker.UI.Desktop.Region.Contract
     {
         var allRegions = await LoadAsync();
         var zoneRegions = allRegions.Where(r => r.CameraZoneId.Equals(cameraZoneId)).ToList();
-        
+
         var exportWrapper = new ExportWrapper(zoneRegions);
         var options = new JsonSerializerOptions
         {
             WriteIndented = true
         };
         var json = JsonSerializer.Serialize(exportWrapper, options);
-        
+
         var directory = System.IO.Path.GetDirectoryName(filePath)!;
         if (!string.IsNullOrEmpty(directory) && !System.IO.Directory.Exists(directory))
         {
@@ -83,7 +83,7 @@ public sealed class RegionPersistence : ObjectTracker.UI.Desktop.Region.Contract
             PropertyNameCaseInsensitive = true,
             WriteIndented = false
         };
-        
+
         var exportWrapper = JsonSerializer.Deserialize<ExportWrapper>(json, options);
         if (exportWrapper == null)
         {
@@ -92,7 +92,7 @@ public sealed class RegionPersistence : ObjectTracker.UI.Desktop.Region.Contract
 
         var existingRegions = await LoadAsync();
         var updatedRegions = new List<RegionDefinition>();
-        
+
         foreach (var region in existingRegions)
         {
             if (region.CameraZoneId.Equals(targetCameraZoneId))
@@ -136,15 +136,15 @@ public sealed class RegionPersistence : ObjectTracker.UI.Desktop.Region.Contract
     }
 
     private sealed record RegionWrapper(IList<RegionDefinition> Regions);
-    
+
     private sealed class ExportWrapper
     {
         public List<ExportRegionData> Regions { get; set; } = new();
-        
+
         public ExportWrapper()
         {
         }
-        
+
         public ExportWrapper(IEnumerable<RegionDefinition> regions)
             : this()
         {
@@ -157,11 +157,11 @@ public sealed class RegionPersistence : ObjectTracker.UI.Desktop.Region.Contract
         public string Name { get; set; } = "";
         public ObjectTracker.UI.Desktop.Region.Model.RegionType Type { get; set; }
         public List<ObjectTracker.UI.Desktop.Region.Model.GridCell> Cells { get; set; } = new();
-        
+
         public ExportRegionData()
         {
         }
-        
+
         public ExportRegionData(string name, ObjectTracker.UI.Desktop.Region.Model.RegionType type, IReadOnlyCollection<ObjectTracker.UI.Desktop.Region.Model.GridCell> cells)
         {
             Name = name;

@@ -23,6 +23,7 @@ using ObjectTracker.Core.Domain;
 using ObjectTracker.UI.Desktop.Plc.Implementation;
 using ObjectTracker.UI.Desktop.Plc.Model;
 using ObjectTracker.UI.Desktop.Plc.Siemens;
+using ObjectTracker.UI.Desktop.Region.Model;
 using OpenCvSharp;
 
 namespace ObjectTracker.UI.Desktop;
@@ -1589,9 +1590,9 @@ public partial class MainWindow : AppWindow
                 return;
             }
 
-            var type = (ObjectTracker.UI.Desktop.Region.Model.RegionType)matchingRegion.Type;
-            if (type != ObjectTracker.UI.Desktop.Region.Model.RegionType.EnterCrossroadRegion &&
-                type != ObjectTracker.UI.Desktop.Region.Model.RegionType.ExitCrossroadRegion)
+            var type = matchingRegion.Type;
+            if (type != RegionType.EnterCrossroadRegion &&
+                type != RegionType.ExitCrossroadRegion)
             {
                 AppendPlcLog($"Not an enter/exit region: {matchingRegion.Name} (type={type})");
                 return;
@@ -1857,6 +1858,8 @@ public partial class MainWindow : AppWindow
         applyingShowRegionsUi = true;
         ShowRegionsCheckBox.IsChecked = selected.ShowRegionsEnabled;
         applyingShowRegionsUi = false;
+        ShowAnnotationsCheckBox.IsEnabled = true;
+        ShowRegionsCheckBox.IsEnabled = true;
     }
 
     private void RefreshCameraWorkspaceTiles(IReadOnlyList<CameraProfile> orderedCameras)
@@ -2192,24 +2195,6 @@ public partial class MainWindow : AppWindow
         }
 
         RefreshCameraUi();
-    }
-
-    private bool TryGetCameraById(string cameraId, out CameraProfile camera)
-    {
-        lock (cameraSync)
-        {
-            foreach (var candidate in cameras)
-            {
-                if (string.Equals(candidate.Id, cameraId, StringComparison.OrdinalIgnoreCase))
-                {
-                    camera = candidate;
-                    return true;
-                }
-            }
-        }
-
-        camera = default;
-        return false;
     }
 
     private void VisionPipelineInclusionCheckBoxOnChanged(object? sender, RoutedEventArgs e)
@@ -3077,8 +3062,7 @@ public partial class MainWindow : AppWindow
         ObjectTracker.UI.Desktop.Region.Model.CameraZoneId zoneId)
     {
         var evaluator = new ObjectTracker.UI.Desktop.Region.Implementation.RegionEvaluator(
-            new ObjectTracker.UI.Desktop.Region.Implementation.CoordinateMapper(),
-            new ObjectTracker.UI.Desktop.Region.Implementation.RegionPriorityResolver());
+            new ObjectTracker.UI.Desktop.Region.Implementation.CoordinateMapper());
 
         var handoffResolver = new ObjectTracker.UI.Desktop.Region.Implementation.HandoffResolver();
 

@@ -602,7 +602,6 @@
                                 <ComboBoxItem Content="High Probability Rail Region" Tag="10" />
                                 <ComboBoxItem Content="Enter Crossroad Region" Tag="20" />
                                 <ComboBoxItem Content="Exit Crossroad Region" Tag="30" />
-                                <ComboBoxItem Content="Camera Overlap Region" Tag="40" />
                             </ComboBox>
                             <Button Grid.Row="4"
                                     Grid.Column="0"

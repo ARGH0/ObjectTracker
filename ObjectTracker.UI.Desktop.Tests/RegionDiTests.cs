@@ -17,7 +17,6 @@ public sealed class RegionDiTests
         var provider = services.BuildServiceProvider();
 
         Assert.NotNull(provider.GetRequiredService<ICoordinateMapper>());
-        Assert.NotNull(provider.GetRequiredService<IRegionPriorityResolver>());
         Assert.NotNull(provider.GetRequiredService<IRegionPersistence>());
         Assert.NotNull(provider.GetRequiredService<IRegionRegistry>());
         Assert.NotNull(provider.GetRequiredService<IHandoffResolver>());
@@ -37,21 +36,6 @@ public sealed class RegionDiTests
 
         var first = provider.GetRequiredService<ICoordinateMapper>();
         var second = provider.GetRequiredService<ICoordinateMapper>();
-
-        Assert.Same(first, second);
-    }
-
-    [Fact]
-    public void RegionPriorityResolver_IsSingleton()
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton<IRegionPersistence>(StubPersistence());
-        services.AddRegionServices();
-
-        var provider = services.BuildServiceProvider();
-
-        var first = provider.GetRequiredService<IRegionPriorityResolver>();
-        var second = provider.GetRequiredService<IRegionPriorityResolver>();
 
         Assert.Same(first, second);
     }

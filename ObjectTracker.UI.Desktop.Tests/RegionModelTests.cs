@@ -10,7 +10,7 @@ namespace ObjectTracker.UI.Desktop.Tests;
 public sealed class RegionModelTests
 {
     [Fact]
-    public void RegionType_HasAllFiveValues()
+    public void RegionType_HasAllFourValues()
     {
         var values = Enum.GetValues<RegionType>();
 
@@ -19,7 +19,6 @@ public sealed class RegionModelTests
         Assert.Contains(RegionType.HighProbabilityRailRegion, values);
         Assert.Contains(RegionType.EnterCrossroadRegion, values);
         Assert.Contains(RegionType.ExitCrossroadRegion, values);
-        Assert.Contains(RegionType.CameraOverlapRegion, values);
     }
 
     [Fact]
@@ -28,8 +27,7 @@ public sealed class RegionModelTests
         Assert.Equal(0, (int)RegionType.ExcludeRegion);
         Assert.Equal(10, (int)RegionType.HighProbabilityRailRegion);
         Assert.Equal(20, (int)RegionType.EnterCrossroadRegion);
-        Assert.Equal(20, (int)RegionType.ExitCrossroadRegion);
-        Assert.Equal(30, (int)RegionType.CameraOverlapRegion);
+        Assert.Equal(30, (int)RegionType.ExitCrossroadRegion);
     }
 
     [Fact]

@@ -37,8 +37,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_NoRegions_ActiveRegionTypeIsNull()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -64,8 +63,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_InExcludeRegion_IsExcludedIsTrue()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -93,8 +91,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_InNonExcludeRegion_IsExcludedIsFalseWithCorrectType()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -122,8 +119,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_OverlappingRegions_ExcludeWinsPriority()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -152,8 +148,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_SequentialCalls_SameTrainTracksPreviousCell()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var detection1 = new TrainDetection(
@@ -197,8 +192,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_Integration_FullPipelineFromDetectionToEnrichedOutput()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("22222222-2222-2222-2222-222222222222");
         var detection = new TrainDetection(
@@ -217,9 +211,8 @@ public sealed class RegionEvaluatorTests
 
         var excludeRegion = CreateRegion(RegionType.ExcludeRegion, cells: [(32, 24)]);
         var railRegion = CreateRegion(RegionType.HighProbabilityRailRegion, cells: [(10, 20)]);
-        var overlapRegion = CreateRegion(RegionType.CameraOverlapRegion, cells: [(32, 24)]);
 
-        var result = evaluator.Evaluate(detection, "zone-main", new[] { excludeRegion, railRegion, overlapRegion });
+        var result = evaluator.Evaluate(detection, "zone-main", new[] { excludeRegion, railRegion });
 
         Assert.Equal(trainId, result.LocalTrainId);
         Assert.Equal("White", result.TrainColor);
@@ -234,8 +227,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_InHighProbabilityRailRegion_ConfidenceIsBoosted()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -264,8 +256,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_OutsideRailRegion_ConfidenceUnchanged()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -294,8 +285,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_ExcludeAndRailOnSameCell_ExcludeWinsAndNoBoost()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -325,8 +315,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_ReturnsBasicStateWithCorrectIdentity()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var detection = new TrainDetection(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -354,8 +343,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_MovingIntoEnterCrossroadRegion_EmitsTrainEnteredCrossroadEvent()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
@@ -399,8 +387,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_RemainingInEnterCrossroadRegion_DoesNotReTriggerEntryEvent()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
@@ -444,8 +431,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_LeavingAndReEnteringEnterCrossroadRegion_EmitsEntryEventAgain()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
 
@@ -504,8 +490,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_EnterCrossroadRegion_TransitionEventPayloadContainsRequiredFields()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
 
@@ -557,8 +542,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_EnterCrossroadWithHigherPriorityRegions_ExcludeWins()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
 
@@ -604,8 +588,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_EnterCrossroadWithHighProbabilityRegion_HighProbabilityWins()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
 
@@ -651,8 +634,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_MovingOutOfExitCrossroadRegion_EmitsTrainExitedCrossroadEvent()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("10101010-1010-1010-1010-101010101010");
 
@@ -696,8 +678,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_RemainingOutsideExitCrossroadRegion_DoesNotReTriggerExitEvent()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("20202020-2020-2020-2020-202020202020");
 
@@ -756,8 +737,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_LeavingAndReEnteringExitCrossroadRegion_EmitsExitEventAgain()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("30303030-3030-3030-3030-303030303030");
 
@@ -817,8 +797,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_ExitCrossroadRegion_TransitionEventPayloadContainsRequiredFields()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("40404040-4040-4040-4040-404040404040");
 
@@ -878,8 +857,7 @@ public sealed class RegionEvaluatorTests
     public void Evaluate_ExitCrossroadWithExcludeRegion_ExcludeWins()
     {
         var mapper = new CoordinateMapper();
-        var resolver = new RegionPriorityResolver();
-        var evaluator = new RegionEvaluator(mapper, resolver);
+        var evaluator = new RegionEvaluator(mapper);
 
         var trainId = Guid.Parse("60606060-6060-6060-6060-606060606060");
 

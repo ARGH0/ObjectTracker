@@ -12,6 +12,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
@@ -34,11 +35,12 @@ public partial class MainWindow : AppWindow
     {
         Camera,
         Regions,
+        Trains,
         Settings,
         Plc
     }
 
-    public readonly record struct WorkspaceVisibility(bool CameraVisible, bool RegionsVisible, bool SettingsVisible, bool PlcVisible);
+    public readonly record struct WorkspaceVisibility(bool CameraVisible, bool RegionsVisible, bool TrainsVisible, bool SettingsVisible, bool PlcVisible);
 
     public readonly record struct BottomStatusSnapshot(
         string VisionPipeline,
@@ -80,6 +82,21 @@ public partial class MainWindow : AppWindow
         bool RequiresVisionPipelineRestart,
         bool HasPendingVisionPipelineRestart,
         string SettingsStatusText);
+
+    public readonly record struct TrainEditorProjection(
+        Guid TrainId,
+        string Name,
+        string PlcId,
+        uint MinColor,
+        uint MaxColor,
+        string MaxWidth,
+        string MaxHeight,
+        string HueLower,
+        string HueUpper,
+        string SaturationLower,
+        string SaturationUpper,
+        string ValueLower,
+        string ValueUpper);
 
     public enum DebugViewFrameType
     {
@@ -174,11 +191,12 @@ public partial class MainWindow : AppWindow
     {
         return workspace switch
         {
-            Workspace.Camera => new WorkspaceVisibility(true, false, false, false),
-            Workspace.Regions => new WorkspaceVisibility(false, true, false, false),
-            Workspace.Settings => new WorkspaceVisibility(false, false, true, false),
-            Workspace.Plc => new WorkspaceVisibility(false, false, false, true),
-            _ => new WorkspaceVisibility(true, false, false, false)
+            Workspace.Camera => new WorkspaceVisibility(true, false, false, false, false),
+            Workspace.Regions => new WorkspaceVisibility(false, true, false, false, false),
+            Workspace.Trains => new WorkspaceVisibility(false, false, true, false, false),
+            Workspace.Settings => new WorkspaceVisibility(false, false, false, true, false),
+            Workspace.Plc => new WorkspaceVisibility(false, false, false, false, true),
+            _ => new WorkspaceVisibility(true, false, false, false, false)
         };
     }
 
@@ -192,6 +210,37 @@ public partial class MainWindow : AppWindow
         return isVisionPipelineRunning
             ? new VisionPipelineMenuState(StartEnabled: false, StopEnabled: true)
             : new VisionPipelineMenuState(StartEnabled: true, StopEnabled: false);
+    }
+
+    public static TrainEditorProjection BuildTrainEditorProjection(ConfiguredTrain train)
+    {
+        return new TrainEditorProjection(
+            train.Id,
+            train.Name,
+            train.PlcId,
+            train.MinColor,
+            train.MaxColor,
+            train.MaxWidth.ToString(CultureInfo.InvariantCulture),
+            train.MaxHeight.ToString(CultureInfo.InvariantCulture),
+            train.Calibration.HueLower.ToString(CultureInfo.InvariantCulture),
+            train.Calibration.HueUpper.ToString(CultureInfo.InvariantCulture),
+            train.Calibration.SaturationLower.ToString(CultureInfo.InvariantCulture),
+            train.Calibration.SaturationUpper.ToString(CultureInfo.InvariantCulture),
+            train.Calibration.ValueLower.ToString(CultureInfo.InvariantCulture),
+            train.Calibration.ValueUpper.ToString(CultureInfo.InvariantCulture));
+    }
+
+    public static TrainEditorProjection ApplyTrainCalibrationPreset(string preset)
+    {
+        var train = TrainStore.CreateDefaultTrains()
+            .FirstOrDefault(item => item.Name.StartsWith(preset, StringComparison.OrdinalIgnoreCase));
+
+        if (string.IsNullOrWhiteSpace(train.Name))
+        {
+            train = TrainStore.CreateDefaultTrains()[0];
+        }
+
+        return BuildTrainEditorProjection(train);
     }
 
     public static CameraPanelLayoutState BuildCameraPanelLayoutState(bool isOpen, bool isPinned)
@@ -440,12 +489,14 @@ public partial class MainWindow : AppWindow
     private readonly Lock cameraSync = new();
     private readonly Lock settingsSync = new();
     private readonly List<CameraProfile> cameras = new();
+    private readonly List<ConfiguredTrain> configuredTrains = new();
     private readonly Dictionary<string, RuntimeProcessingSettings> cameraSettings = new(StringComparer.OrdinalIgnoreCase);
     private readonly ObservableCollection<string> logEntries = new();
     private readonly ObservableCollection<string> plcLogEntries = new();
 
     private readonly BackgroundEstimationEngine engine = new();
     private readonly CameraSettingsStore cameraSettingsStore = new();
+    private readonly TrainStore trainStore = new();
     private readonly CameraZoneBindingStore cameraZoneBindingStore = new();
     private readonly AppSettingsStore appSettingsStore = new();
     private readonly SessionAuditLogger sessionAuditLogger = new();
@@ -468,13 +519,14 @@ public partial class MainWindow : AppWindow
     private readonly Dictionary<string, bool> cameraTileRegionsEnabledById = new(StringComparer.OrdinalIgnoreCase);
     private Task? runTask;
     private int selectedCameraIndex = -1;
+    private int selectedTrainIndex = -1;
     private int requestedCameraIndex = -1;
-    private string selectedCalibrationColor = "red";
     private bool applyingCameraVisibilityUi;
     private bool applyingCameraInclusionUi;
     private bool applyingCameraDebugViewUi;
     private bool applyingShowAnnotationsUi;
     private bool applyingShowRegionsUi;
+    private bool applyingTrainColorPickerUi;
     private bool hasPendingVisionPipelineRestart;
     private bool isCameraPanelOpen = true;
     private bool isCameraPanelPinned = true;
@@ -502,6 +554,8 @@ public partial class MainWindow : AppWindow
             cameraSettings[cameraId] = settings;
         }
 
+        configuredTrains.AddRange(trainStore.Load());
+
         var cameraZoneSnapshot = cameraZoneBindingStore.Load();
         cameraZoneIdentityService = new CameraZoneIdentityService(cameraZoneSnapshot.Zones, cameraZoneSnapshot.Bindings);
         InitializeRegionServices();
@@ -515,6 +569,7 @@ public partial class MainWindow : AppWindow
         HookEvents();
         SetActiveWorkspace(Workspace.Camera);
         InitializePlcWorkspaceUi();
+        RefreshTrainWorkspaceUi();
         SetRunState(isRunning: false);
         ApplyCameraPanelLayout();
         RefreshSettingsWorkspaceUi();
@@ -597,8 +652,19 @@ public partial class MainWindow : AppWindow
         ClearBakeImageButton.Click += ClearBakeImageButtonOnClick;
         OpenCameraWorkspaceMenuItem.Click += CameraWorkspaceButtonOnClick;
         RegionsWorkspaceMenuItem.Click += RegionsWorkspaceButtonOnClick;
+        TrainsWorkspaceMenuItem.Click += TrainsWorkspaceButtonOnClick;
         SettingsWorkspaceMenuItem.Click += SettingsWorkspaceButtonOnClick;
         PlcWorkspaceMenuItem.Click += PlcWorkspaceButtonOnClick;
+        TrainsListBox.SelectionChanged += TrainsListBoxOnSelectionChanged;
+        AddTrainButton.Click += AddTrainButtonOnClick;
+        DeleteTrainButton.Click += DeleteTrainButtonOnClick;
+        SaveTrainButton.Click += SaveTrainButtonOnClick;
+        TrainPresetRedButton.Click += (_, _) => ApplyTrainPresetToEditor("Red");
+        TrainPresetGreenButton.Click += (_, _) => ApplyTrainPresetToEditor("Green");
+        TrainPresetBlueButton.Click += (_, _) => ApplyTrainPresetToEditor("Blue");
+        TrainPresetWhiteButton.Click += (_, _) => ApplyTrainPresetToEditor("White");
+        TrainMinColorPicker.ColorChanged += TrainColorPickerOnColorChanged;
+        TrainMaxColorPicker.ColorChanged += TrainColorPickerOnColorChanged;
         CreateRegionButton.Click += CreateRegionButtonOnClick;
         EditRegionButton.Click += EditRegionButtonOnClick;
         DeleteRegionButton.Click += DeleteRegionButtonOnClick;
@@ -629,14 +695,6 @@ public partial class MainWindow : AppWindow
         MorphKernelSizeTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
         ProcessWidthTextBox.LostFocus += RuntimeSettingControlOnLostFocus;
 
-        CalibrationColorComboBox.SelectionChanged += CalibrationColorComboBoxOnSelectionChanged;
-        HueLowerTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
-        HueUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
-        SaturationLowerTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
-        SaturationUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
-        ValueLowerTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
-        ValueUpperTextBox.LostFocus += ColorCalibrationControlOnLostFocus;
-
     }
 
     private async void CameraWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
@@ -647,6 +705,11 @@ public partial class MainWindow : AppWindow
     private async void LayersWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
     {
         await TryNavigateWorkspaceAsync(Workspace.Regions);
+    }
+
+    private async void TrainsWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        await TryNavigateWorkspaceAsync(Workspace.Trains);
     }
 
     private async void SettingsWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)
@@ -716,6 +779,7 @@ public partial class MainWindow : AppWindow
         var visibility = BuildWorkspaceVisibility(workspace);
         CameraWorkspacePanel.IsVisible = visibility.CameraVisible;
         RegionsWorkspacePanel.IsVisible = visibility.RegionsVisible;
+        TrainsWorkspacePanel.IsVisible = visibility.TrainsVisible;
         SettingsWorkspacePanel.IsVisible = visibility.SettingsVisible;
         PlcWorkspacePanel.IsVisible = visibility.PlcVisible;
         RuntimeLogExpander.IsVisible = IsRuntimeLogVisibleForWorkspace(workspace);
@@ -815,6 +879,247 @@ public partial class MainWindow : AppWindow
             : "Pending restart: none";
         SaveSettingsButton.IsEnabled = state.HasUnsavedChanges;
         DiscardSettingsButton.IsEnabled = state.HasUnsavedChanges;
+    }
+
+    private void RefreshTrainWorkspaceUi()
+    {
+        List<ConfiguredTrain> snapshot;
+        lock (settingsSync)
+        {
+            snapshot = configuredTrains.ToList();
+        }
+
+        TrainsListBox.ItemsSource = snapshot.Select(train => train.Name).ToList();
+        if (snapshot.Count == 0)
+        {
+            selectedTrainIndex = -1;
+            TrainsListBox.SelectedIndex = -1;
+            SetTrainEditorEnabled(false);
+            TrainEditorStatusText.Text = "No configured Trains.";
+            return;
+        }
+
+        selectedTrainIndex = Math.Clamp(selectedTrainIndex, 0, snapshot.Count - 1);
+        TrainsListBox.SelectedIndex = selectedTrainIndex;
+        LoadTrainEditor(snapshot[selectedTrainIndex]);
+        SetTrainEditorEnabled(true);
+    }
+
+    private void TrainsListBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (TrainsListBox.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        selectedTrainIndex = TrainsListBox.SelectedIndex;
+        ConfiguredTrain train;
+        lock (settingsSync)
+        {
+            if (selectedTrainIndex >= configuredTrains.Count)
+            {
+                return;
+            }
+
+            train = configuredTrains[selectedTrainIndex];
+        }
+
+        LoadTrainEditor(train);
+    }
+
+    private void LoadTrainEditor(ConfiguredTrain train)
+    {
+        var projection = BuildTrainEditorProjection(train);
+        TrainNameTextBox.Text = projection.Name;
+        TrainPlcIdTextBox.Text = projection.PlcId;
+        SetTrainPickerColors(projection.MinColor, projection.MaxColor);
+        TrainMaxWidthTextBox.Text = projection.MaxWidth;
+        TrainMaxHeightTextBox.Text = projection.MaxHeight;
+        TrainHueLowerTextBox.Text = projection.HueLower;
+        TrainHueUpperTextBox.Text = projection.HueUpper;
+        TrainSaturationLowerTextBox.Text = projection.SaturationLower;
+        TrainSaturationUpperTextBox.Text = projection.SaturationUpper;
+        TrainValueLowerTextBox.Text = projection.ValueLower;
+        TrainValueUpperTextBox.Text = projection.ValueUpper;
+        TrainEditorStatusText.Text = "Train loaded.";
+    }
+
+    private void SetTrainEditorEnabled(bool isEnabled)
+    {
+        TrainNameTextBox.IsEnabled = isEnabled;
+        TrainPlcIdTextBox.IsEnabled = isEnabled;
+        TrainMinColorTextBox.IsEnabled = isEnabled;
+        TrainMaxColorTextBox.IsEnabled = isEnabled;
+        TrainMinColorPicker.IsEnabled = isEnabled;
+        TrainMaxColorPicker.IsEnabled = isEnabled;
+        TrainMaxWidthTextBox.IsEnabled = isEnabled;
+        TrainMaxHeightTextBox.IsEnabled = isEnabled;
+        TrainHueLowerTextBox.IsEnabled = isEnabled;
+        TrainHueUpperTextBox.IsEnabled = isEnabled;
+        TrainSaturationLowerTextBox.IsEnabled = isEnabled;
+        TrainSaturationUpperTextBox.IsEnabled = isEnabled;
+        TrainValueLowerTextBox.IsEnabled = isEnabled;
+        TrainValueUpperTextBox.IsEnabled = isEnabled;
+        SaveTrainButton.IsEnabled = isEnabled;
+        DeleteTrainButton.IsEnabled = isEnabled;
+    }
+
+    private void ApplyTrainPresetToEditor(string preset)
+    {
+        var projection = ApplyTrainCalibrationPreset(preset);
+        SetTrainPickerColors(projection.MinColor, projection.MaxColor);
+        TrainHueLowerTextBox.Text = projection.HueLower;
+        TrainHueUpperTextBox.Text = projection.HueUpper;
+        TrainSaturationLowerTextBox.Text = projection.SaturationLower;
+        TrainSaturationUpperTextBox.Text = projection.SaturationUpper;
+        TrainValueLowerTextBox.Text = projection.ValueLower;
+        TrainValueUpperTextBox.Text = projection.ValueUpper;
+        TrainEditorStatusText.Text = $"{preset} preset applied.";
+    }
+
+    private void SetTrainPickerColors(uint minColor, uint maxColor)
+    {
+        applyingTrainColorPickerUi = true;
+        TrainMinColorPicker.Color = ToAvaloniaColor(minColor);
+        TrainMaxColorPicker.Color = ToAvaloniaColor(maxColor);
+        applyingTrainColorPickerUi = false;
+        RefreshTrainColorReadouts();
+    }
+
+    private void TrainColorPickerOnColorChanged(object? sender, EventArgs e)
+    {
+        if (applyingTrainColorPickerUi)
+        {
+            return;
+        }
+
+        RefreshTrainColorReadouts();
+    }
+
+    private void RefreshTrainColorReadouts()
+    {
+        TrainMinColorTextBox.Text = ToArgb(TrainMinColorPicker.Color).ToString("X8", CultureInfo.InvariantCulture);
+        TrainMaxColorTextBox.Text = ToArgb(TrainMaxColorPicker.Color).ToString("X8", CultureInfo.InvariantCulture);
+    }
+
+    private void AddTrainButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        var train = new ConfiguredTrain(
+            Guid.NewGuid(),
+            "New Train",
+            string.Empty,
+            0xFFC8C8C8,
+            0xFFFFFFFF,
+            160,
+            80,
+            new ColorCalibrationProfile("New Train", 0, 180, 0, 50, 190, 255));
+
+        lock (settingsSync)
+        {
+            configuredTrains.Add(train);
+            selectedTrainIndex = configuredTrains.Count - 1;
+        }
+
+        PersistTrains();
+        MarkTrainConfigurationChanged("Status: train added.");
+        RefreshTrainWorkspaceUi();
+    }
+
+    private void DeleteTrainButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        lock (settingsSync)
+        {
+            if (selectedTrainIndex < 0 || selectedTrainIndex >= configuredTrains.Count)
+            {
+                return;
+            }
+
+            configuredTrains.RemoveAt(selectedTrainIndex);
+            selectedTrainIndex = Math.Min(selectedTrainIndex, configuredTrains.Count - 1);
+        }
+
+        PersistTrains();
+        MarkTrainConfigurationChanged("Status: train deleted.");
+        RefreshTrainWorkspaceUi();
+    }
+
+    private void SaveTrainButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        var name = (TrainNameTextBox.Text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            TrainEditorStatusText.Text = "Train name is required.";
+            return;
+        }
+
+        var train = new ConfiguredTrain(
+            GetSelectedTrainId(),
+            name,
+            (TrainPlcIdTextBox.Text ?? string.Empty).Trim(),
+            ToArgb(TrainMinColorPicker.Color),
+            ToArgb(TrainMaxColorPicker.Color),
+            ParseInt(TrainMaxWidthTextBox.Text, 160, 1, 100000),
+            ParseInt(TrainMaxHeightTextBox.Text, 80, 1, 100000),
+            NormalizeColorCalibration(new ColorCalibrationProfile(
+                name,
+                ParseInt(TrainHueLowerTextBox.Text, 0, 0, 180),
+                ParseInt(TrainHueUpperTextBox.Text, 180, 0, 180),
+                ParseInt(TrainSaturationLowerTextBox.Text, 0, 0, 255),
+                ParseInt(TrainSaturationUpperTextBox.Text, 255, 0, 255),
+                ParseInt(TrainValueLowerTextBox.Text, 0, 0, 255),
+                ParseInt(TrainValueUpperTextBox.Text, 255, 0, 255))));
+
+        lock (settingsSync)
+        {
+            if (selectedTrainIndex < 0 || selectedTrainIndex >= configuredTrains.Count)
+            {
+                configuredTrains.Add(train);
+                selectedTrainIndex = configuredTrains.Count - 1;
+            }
+            else
+            {
+                configuredTrains[selectedTrainIndex] = train;
+            }
+        }
+
+        PersistTrains();
+        MarkTrainConfigurationChanged("Status: train saved.");
+        RefreshTrainWorkspaceUi();
+    }
+
+    private Guid GetSelectedTrainId()
+    {
+        lock (settingsSync)
+        {
+            if (selectedTrainIndex >= 0 && selectedTrainIndex < configuredTrains.Count)
+            {
+                return configuredTrains[selectedTrainIndex].Id;
+            }
+        }
+
+        return Guid.NewGuid();
+    }
+
+    private void PersistTrains()
+    {
+        List<ConfiguredTrain> snapshot;
+        lock (settingsSync)
+        {
+            snapshot = configuredTrains.ToList();
+        }
+
+        trainStore.Save(snapshot);
+    }
+
+    private void MarkTrainConfigurationChanged(string status)
+    {
+        if (runTask is not null)
+        {
+            hasPendingVisionPipelineRestart = true;
+            UpdateBottomStatusBar();
+        }
+
+        SetStatus(status);
     }
 
     private async void PlcConnectButtonOnClick(object? sender, RoutedEventArgs e)
@@ -1468,7 +1773,7 @@ public partial class MainWindow : AppWindow
             settings.MotionArea,
             settings.ColorMinPixels,
             settings.MorphKernelSize,
-            settings.ColorCalibrations);
+            GetConfiguredTrainProfiles());
 
         string? bakedPath;
         try
@@ -1555,15 +1860,9 @@ public partial class MainWindow : AppWindow
 
         engine.OnTrainDetected += detection =>
         {
-            if (detection.TrainColor == "Unknown")
-            {
-                AppendPlcLog($"Detection skipped: train color unknown");
-                return;
-            }
-
             var trainDetection = new ObjectTracker.UI.Desktop.Region.Contracts.TrainDetection(
                 LocalTrainId: new System.Guid(detection.LocalTrainId.ToString().PadLeft(32, '0')),
-                TrainColor: detection.TrainColor,
+                TrainColor: detection.Train.Name,
                 PixelX: detection.PositionX,
                 PixelY: detection.PositionY,
                 ProcessWidth: detection.BoundingBoxWidth,
@@ -1578,7 +1877,7 @@ public partial class MainWindow : AppWindow
             var enriched = regionProcessor.ProcessDetection(trainDetection, zoneId.Value);
             if (!enriched.HasValue || !enriched.Value.TransitionEvents.Any() || string.IsNullOrEmpty(enriched.Value.ActiveRegionName))
             {
-                AppendPlcLog($"No transition for train {detection.TrainColor} in zone {zoneId.Value}");
+                AppendPlcLog($"No transition for train {detection.Train.Name} in zone {zoneId.Value}");
                 return;
             }
 
@@ -1598,7 +1897,7 @@ public partial class MainWindow : AppWindow
                 return;
             }
 
-            WritePlcTransition(matchingRegion.Name, detection.TrainColor);
+            WritePlcTransition(matchingRegion.Name, detection.Train.PlcId);
         };
 
         for (var videoIndex = 0; !cancellationToken.IsCancellationRequested; videoIndex++)
@@ -1609,7 +1908,7 @@ public partial class MainWindow : AppWindow
                 settings.MotionArea,
                 settings.ColorMinPixels,
                 settings.MorphKernelSize,
-                settings.ColorCalibrations);
+                GetConfiguredTrainProfiles());
 
             if (videoIndex >= camera.VideoPaths.Count)
             {
@@ -1664,7 +1963,7 @@ public partial class MainWindow : AppWindow
                 settings.MotionArea,
                 settings.ColorMinPixels,
                 settings.MorphKernelSize,
-                settings.ColorCalibrations);
+                GetConfiguredTrainProfiles());
 
             foreach (var videoPath in camera.VideoPaths)
             {
@@ -2016,7 +2315,7 @@ public partial class MainWindow : AppWindow
         {
             var annotated = TileOverlayRenderer.RenderAnnotations(
                 rawJpeg,
-                settings.ColorCalibrations,
+                GetConfiguredTrainProfiles().Select(train => train.Calibration).ToList(),
                 minMotionArea: settings.MotionArea,
                 minColorPixels: settings.ColorMinPixels,
                 morphKernelSize: settings.MorphKernelSize);
@@ -2495,29 +2794,6 @@ public partial class MainWindow : AppWindow
         UpdateSelectedCameraSettingsFromUi(logChange: true);
     }
 
-    private void CalibrationColorComboBoxOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        var selectedName = GetCalibrationSelectionName();
-        if (string.IsNullOrWhiteSpace(selectedName))
-        {
-            return;
-        }
-
-        selectedCalibrationColor = selectedName;
-
-        var camera = GetSelectedCamera();
-        var settings = camera is null
-            ? RuntimeProcessingSettings.Default
-            : GetSettingsForCamera(camera.Value.Id);
-
-        LoadCalibrationEditor(settings.ColorCalibrations, selectedName);
-    }
-
-    private void ColorCalibrationControlOnLostFocus(object? sender, RoutedEventArgs e)
-    {
-        UpdateSelectedColorCalibrationFromUi(logChange: true);
-    }
-
     private void UpdateSelectedCameraSettingsFromUi(bool logChange)
     {
         var camera = GetSelectedCamera();
@@ -2543,9 +2819,6 @@ public partial class MainWindow : AppWindow
         ProcessWidthTextBox.Text = processMaxWidth.ToString();
         BakeImagePathTextBox.Text = bakeImagePath;
 
-        var existing = GetSettingsForCamera(camera.Value.Id);
-        var colorCalibrations = BuildCalibrationsFromEditor(existing.ColorCalibrations);
-
         lock (settingsSync)
         {
             cameraSettings[camera.Value.Id] = new RuntimeProcessingSettings(
@@ -2556,8 +2829,7 @@ public partial class MainWindow : AppWindow
                 morphKernelSize,
                 processMaxWidth,
                 bakeSourceMode,
-                bakeImagePath,
-                colorCalibrations);
+                bakeImagePath);
         }
 
         PersistCameraSettings();
@@ -2587,9 +2859,6 @@ public partial class MainWindow : AppWindow
         BakeImagePathTextBox.Text = settings.BakeImagePath;
         ApplyBakeSourceUiState();
 
-        var selectedColor = GetCalibrationSelectionName() ?? selectedCalibrationColor;
-        selectedCalibrationColor = selectedColor;
-        LoadCalibrationEditor(settings.ColorCalibrations, selectedColor);
     }
 
     private RuntimeProcessingSettings GetSettingsForCamera(string cameraId)
@@ -2612,8 +2881,15 @@ public partial class MainWindow : AppWindow
             settings.Threshold,
             settings.MotionArea,
             settings.ColorMinPixels,
-            settings.MorphKernelSize,
-            settings.ColorCalibrations);
+            settings.MorphKernelSize);
+    }
+
+    private IReadOnlyList<TrainDetectionProfile> GetConfiguredTrainProfiles()
+    {
+        lock (settingsSync)
+        {
+            return TrainDetectionProfile.FromConfiguredTrains(configuredTrains.ToList());
+        }
     }
 
     private void PersistCameraSettings()
@@ -2804,124 +3080,6 @@ public partial class MainWindow : AppWindow
         }, DispatcherPriority.Background);
     }
 
-    private void UpdateSelectedColorCalibrationFromUi(bool logChange)
-    {
-        var camera = GetSelectedCamera();
-        if (camera is null)
-        {
-            return;
-        }
-
-        var settings = GetSettingsForCamera(camera.Value.Id);
-        var updatedCalibrations = BuildCalibrationsFromEditor(settings.ColorCalibrations);
-
-        lock (settingsSync)
-        {
-            cameraSettings[camera.Value.Id] = settings with { ColorCalibrations = updatedCalibrations };
-        }
-
-        PersistCameraSettings();
-
-        if (logChange)
-        {
-            SetStatus($"Status: {camera.Value.DisplayName} color calibration updated for {selectedCalibrationColor}.");
-        }
-
-        var selectedProfile = updatedCalibrations.FirstOrDefault(profile => profile.Name.Equals(selectedCalibrationColor, StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(selectedProfile.Name))
-        {
-            sessionAuditLogger.AppendEvent(
-                SessionAuditLogger.EventCalibrationChange,
-                "Color calibration updated.",
-                ("cameraId", camera.Value.Id),
-                ("cameraName", camera.Value.DisplayName),
-                ("color", selectedProfile.Name),
-                ("hMin", selectedProfile.HueLower.ToString()),
-                ("hMax", selectedProfile.HueUpper.ToString()),
-                ("sMin", selectedProfile.SaturationLower.ToString()),
-                ("sMax", selectedProfile.SaturationUpper.ToString()),
-                ("vMin", selectedProfile.ValueLower.ToString()),
-                ("vMax", selectedProfile.ValueUpper.ToString()));
-        }
-    }
-
-    private IReadOnlyList<ColorCalibrationProfile> BuildCalibrationsFromEditor(IReadOnlyList<ColorCalibrationProfile> source)
-    {
-        var selectedColor = GetCalibrationSelectionName() ?? selectedCalibrationColor;
-        selectedCalibrationColor = selectedColor;
-
-        var fallback = source.FirstOrDefault(profile => profile.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase));
-        if (string.IsNullOrWhiteSpace(fallback.Name))
-        {
-            fallback = CreateDefaultColorCalibrations().First(profile => profile.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase));
-        }
-
-        var updated = NormalizeColorCalibration(new ColorCalibrationProfile(
-            selectedColor,
-            ParseInt(HueLowerTextBox.Text, fallback.HueLower, 0, 180),
-            ParseInt(HueUpperTextBox.Text, fallback.HueUpper, 0, 180),
-            ParseInt(SaturationLowerTextBox.Text, fallback.SaturationLower, 0, 255),
-            ParseInt(SaturationUpperTextBox.Text, fallback.SaturationUpper, 0, 255),
-            ParseInt(ValueLowerTextBox.Text, fallback.ValueLower, 0, 255),
-            ParseInt(ValueUpperTextBox.Text, fallback.ValueUpper, 0, 255)));
-
-        HueLowerTextBox.Text = updated.HueLower.ToString();
-        HueUpperTextBox.Text = updated.HueUpper.ToString();
-        SaturationLowerTextBox.Text = updated.SaturationLower.ToString();
-        SaturationUpperTextBox.Text = updated.SaturationUpper.ToString();
-        ValueLowerTextBox.Text = updated.ValueLower.ToString();
-        ValueUpperTextBox.Text = updated.ValueUpper.ToString();
-
-        var result = source
-            .Where(profile => !string.IsNullOrWhiteSpace(profile.Name))
-            .Select(NormalizeColorCalibration)
-            .Where(profile => !profile.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase))
-            .ToDictionary(profile => profile.Name, profile => profile, StringComparer.OrdinalIgnoreCase);
-
-        result[selectedColor] = updated;
-
-        foreach (var defaults in CreateDefaultColorCalibrations())
-        {
-            if (!result.ContainsKey(defaults.Name))
-            {
-                result[defaults.Name] = defaults;
-            }
-        }
-
-        return result.Values
-            .OrderBy(profile => profile.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
-    private void LoadCalibrationEditor(IReadOnlyList<ColorCalibrationProfile> calibrations, string selectedColor)
-    {
-        selectedCalibrationColor = selectedColor;
-        var profile = calibrations.FirstOrDefault(item => item.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase));
-        if (string.IsNullOrWhiteSpace(profile.Name))
-        {
-            profile = CreateDefaultColorCalibrations().First(item => item.Name.Equals(selectedColor, StringComparison.OrdinalIgnoreCase));
-        }
-
-        HueLowerTextBox.Text = profile.HueLower.ToString();
-        HueUpperTextBox.Text = profile.HueUpper.ToString();
-        SaturationLowerTextBox.Text = profile.SaturationLower.ToString();
-        SaturationUpperTextBox.Text = profile.SaturationUpper.ToString();
-        ValueLowerTextBox.Text = profile.ValueLower.ToString();
-        ValueUpperTextBox.Text = profile.ValueUpper.ToString();
-    }
-
-    private string? GetCalibrationSelectionName()
-    {
-        if (CalibrationColorComboBox.SelectedItem is ComboBoxItem item
-            && item.Content is string selected
-            && !string.IsNullOrWhiteSpace(selected))
-        {
-            return selected.Trim().ToUpperInvariant();
-        }
-
-        return null;
-    }
-
     private static ColorCalibrationProfile NormalizeColorCalibration(ColorCalibrationProfile profile)
     {
         return new ColorCalibrationProfile(
@@ -2961,6 +3119,23 @@ public partial class MainWindow : AppWindow
     {
         var parsed = ParseInt(text, fallback, min, max);
         return parsed % 2 == 0 ? parsed + 1 : parsed;
+    }
+
+    private static Color ToAvaloniaColor(uint argb)
+    {
+        return Color.FromArgb(
+            (byte)((argb >> 24) & 0xFF),
+            (byte)((argb >> 16) & 0xFF),
+            (byte)((argb >> 8) & 0xFF),
+            (byte)(argb & 0xFF));
+    }
+
+    private static uint ToArgb(Color color)
+    {
+        return ((uint)color.A << 24)
+            | ((uint)color.R << 16)
+            | ((uint)color.G << 8)
+            | color.B;
     }
 
     private static string BuildCameraName(string path, int sequence)
@@ -3009,10 +3184,9 @@ public partial class MainWindow : AppWindow
         int MorphKernelSize,
         int ProcessMaxWidth,
         BakeSourceMode BakeSourceMode,
-        string BakeImagePath,
-        IReadOnlyList<ColorCalibrationProfile> ColorCalibrations)
+        string BakeImagePath)
     {
-        public static RuntimeProcessingSettings Default => new(20, 100, 220, 40, 3, 640, BakeSourceMode.Samples, string.Empty, CreateDefaultColorCalibrations());
+        public static RuntimeProcessingSettings Default => new(20, 100, 220, 40, 3, 640, BakeSourceMode.Samples, string.Empty);
     }
 
     private sealed class CameraTileFeedConsumer(CancellationTokenSource cts, Task task) : IAsyncDisposable

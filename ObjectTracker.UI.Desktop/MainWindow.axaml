@@ -38,6 +38,8 @@
                     <MenuItem Header="Import Regions"
                               x:Name="ImportRegionMenuButton" />
                 </MenuItem>
+                <MenuItem Header="Trains"
+                          x:Name="TrainsWorkspaceMenuItem" />
                 <MenuItem Header="Settings"
                           x:Name="SettingsWorkspaceMenuItem" />
                 <MenuItem Header="PLC"
@@ -394,78 +396,6 @@
                                                                      Watermark="640" />
                                                         </StackPanel>
 
-                                                        <Border Classes="surfaceAlt"
-                                                                Padding="8">
-                                                            <StackPanel Spacing="8">
-                                                                <TextBlock Text="Color Calibration"
-                                                                           Classes="sectionTitle" />
-
-                                                                <Grid ColumnDefinitions="*,8,*"
-                                                                      RowDefinitions="Auto,8,Auto,8,Auto,8,Auto">
-                                                                    <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Spacing="4">
-                                                                        <TextBlock Text="Color"
-                                                                                   Classes="eyebrow" />
-                                                                        <ComboBox x:Name="CalibrationColorComboBox"
-                                                                                  SelectedIndex="0">
-                                                                            <ComboBoxItem Content="red" />
-                                                                            <ComboBoxItem Content="green" />
-                                                                            <ComboBoxItem Content="blue" />
-                                                                            <ComboBoxItem Content="yellow" />
-                                                                            <ComboBoxItem Content="white" />
-                                                                            <ComboBoxItem Content="black" />
-                                                                        </ComboBox>
-                                                                    </StackPanel>
-
-                                                                    <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
-                                                                        <TextBlock Text="Hue Min"
-                                                                                   Classes="eyebrow" />
-                                                                        <TextBox x:Name="HueLowerTextBox"
-                                                                                 Text="0"
-                                                                                 Watermark="0" />
-                                                                    </StackPanel>
-
-                                                                    <StackPanel Grid.Row="2" Grid.Column="2" Spacing="4">
-                                                                        <TextBlock Text="Hue Max"
-                                                                                   Classes="eyebrow" />
-                                                                        <TextBox x:Name="HueUpperTextBox"
-                                                                                 Text="180"
-                                                                                 Watermark="180" />
-                                                                    </StackPanel>
-
-                                                                    <StackPanel Grid.Row="4" Grid.Column="0" Spacing="4">
-                                                                        <TextBlock Text="Sat Min"
-                                                                                   Classes="eyebrow" />
-                                                                        <TextBox x:Name="SaturationLowerTextBox"
-                                                                                 Text="0"
-                                                                                 Watermark="0" />
-                                                                    </StackPanel>
-
-                                                                    <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4">
-                                                                        <TextBlock Text="Sat Max"
-                                                                                   Classes="eyebrow" />
-                                                                        <TextBox x:Name="SaturationUpperTextBox"
-                                                                                 Text="255"
-                                                                                 Watermark="255" />
-                                                                    </StackPanel>
-
-                                                                    <StackPanel Grid.Row="6" Grid.Column="0" Spacing="4">
-                                                                        <TextBlock Text="Val Min"
-                                                                                   Classes="eyebrow" />
-                                                                        <TextBox x:Name="ValueLowerTextBox"
-                                                                                 Text="0"
-                                                                                 Watermark="0" />
-                                                                    </StackPanel>
-
-                                                                    <StackPanel Grid.Row="6" Grid.Column="2" Spacing="4">
-                                                                        <TextBlock Text="Val Max"
-                                                                                   Classes="eyebrow" />
-                                                                        <TextBox x:Name="ValueUpperTextBox"
-                                                                                 Text="255"
-                                                                                 Watermark="255" />
-                                                                    </StackPanel>
-                                                                </Grid>
-                                                            </StackPanel>
-                                                        </Border>
                                                     </StackPanel>
                                                 </ScrollViewer>
 
@@ -643,6 +573,178 @@
                         </Grid>
                     </Border>
                 </Grid>
+            </Grid>
+        </Border>
+
+        <Border x:Name="TrainsWorkspacePanel"
+                Grid.Row="1"
+                Classes="surface"
+                IsVisible="False"
+                Padding="16">
+            <Grid RowDefinitions="Auto,12,*"
+                  ColumnDefinitions="360,16,*">
+                <StackPanel Grid.Row="0"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="3"
+                            Spacing="4">
+                    <TextBlock Text="Trains Workspace"
+                               Classes="sectionTitle" />
+                    <TextBlock Text="Configure Train identity and color calibration here."
+                               Classes="muted"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <Border Grid.Row="2"
+                        Grid.Column="0"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <Grid RowDefinitions="Auto,8,* ,8,Auto">
+                        <TextBlock Grid.Row="0"
+                                   Text="Configured Trains"
+                                   Classes="sectionTitle" />
+                        <ListBox Grid.Row="2"
+                                 x:Name="TrainsListBox"
+                                 SelectionMode="Single" />
+                        <Grid Grid.Row="4"
+                              ColumnDefinitions="*,8,*">
+                            <Button x:Name="AddTrainButton"
+                                    Grid.Column="0"
+                                    Classes="primary"
+                                    Content="Add Train" />
+                            <Button x:Name="DeleteTrainButton"
+                                    Grid.Column="2"
+                                    Classes="destructive"
+                                    Content="Delete Train" />
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Row="2"
+                        Grid.Column="2"
+                        Classes="surfaceAlt"
+                        Padding="10">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Train Identity"
+                                       Classes="sectionTitle" />
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Name"
+                                           Classes="eyebrow" />
+                                <TextBox x:Name="TrainNameTextBox"
+                                         Watermark="Red Cargo Train" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="PLC ID"
+                                           Classes="eyebrow" />
+                                <TextBox x:Name="TrainPlcIdTextBox"
+                                         Watermark="PLC free-text ID" />
+                            </StackPanel>
+
+                            <TextBlock Text="Calibration Presets"
+                                       Classes="sectionTitle" />
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <Button x:Name="TrainPresetRedButton"
+                                        Content="Red" />
+                                <Button x:Name="TrainPresetGreenButton"
+                                        Content="Green" />
+                                <Button x:Name="TrainPresetBlueButton"
+                                        Content="Blue" />
+                                <Button x:Name="TrainPresetWhiteButton"
+                                        Content="White" />
+                            </StackPanel>
+
+                            <TextBlock Text="Min/Max Colors"
+                                       Classes="sectionTitle" />
+                            <Grid ColumnDefinitions="*,8,*">
+                                <StackPanel Grid.Column="0"
+                                            Spacing="4">
+                                    <TextBlock Text="Min Color"
+                                               Classes="eyebrow" />
+                                    <ColorPicker x:Name="TrainMinColorPicker" />
+                                    <TextBox x:Name="TrainMinColorTextBox"
+                                             IsReadOnly="True"
+                                             Watermark="FF8A0000" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2"
+                                            Spacing="4">
+                                    <TextBlock Text="Max Color"
+                                               Classes="eyebrow" />
+                                    <ColorPicker x:Name="TrainMaxColorPicker" />
+                                    <TextBox x:Name="TrainMaxColorTextBox"
+                                             IsReadOnly="True"
+                                             Watermark="FFFF6060" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="Max Detection Size"
+                                       Classes="sectionTitle" />
+                            <Grid ColumnDefinitions="*,8,*">
+                                <StackPanel Grid.Column="0"
+                                            Spacing="4">
+                                    <TextBlock Text="Max Width"
+                                               Classes="eyebrow" />
+                                    <TextBox x:Name="TrainMaxWidthTextBox"
+                                             Watermark="160" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2"
+                                            Spacing="4">
+                                    <TextBlock Text="Max Height"
+                                               Classes="eyebrow" />
+                                    <TextBox x:Name="TrainMaxHeightTextBox"
+                                             Watermark="80" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="Advanced Calibration"
+                                       Classes="sectionTitle" />
+                            <Grid ColumnDefinitions="*,8,*"
+                                  RowDefinitions="Auto,8,Auto,8,Auto">
+                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+                                    <TextBlock Text="Hue Min"
+                                               Classes="eyebrow" />
+                                    <TextBox x:Name="TrainHueLowerTextBox" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="0" Grid.Column="2" Spacing="4">
+                                    <TextBlock Text="Hue Max"
+                                               Classes="eyebrow" />
+                                    <TextBox x:Name="TrainHueUpperTextBox" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
+                                    <TextBlock Text="Sat Min"
+                                               Classes="eyebrow" />
+                                    <TextBox x:Name="TrainSaturationLowerTextBox" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="2" Grid.Column="2" Spacing="4">
+                                    <TextBlock Text="Sat Max"
+                                               Classes="eyebrow" />
+                                    <TextBox x:Name="TrainSaturationUpperTextBox" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="4" Grid.Column="0" Spacing="4">
+                                    <TextBlock Text="Val Min"
+                                               Classes="eyebrow" />
+                                    <TextBox x:Name="TrainValueLowerTextBox" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4">
+                                    <TextBlock Text="Val Max"
+                                               Classes="eyebrow" />
+                                    <TextBox x:Name="TrainValueUpperTextBox" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,8,*">
+                                <Button x:Name="SaveTrainButton"
+                                        Grid.Column="0"
+                                        Classes="primary"
+                                        Content="Save Train" />
+                                <TextBlock x:Name="TrainEditorStatusText"
+                                           Grid.Column="2"
+                                           Classes="muted"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
             </Grid>
         </Border>
 

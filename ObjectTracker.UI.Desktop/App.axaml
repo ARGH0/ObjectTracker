@@ -16,6 +16,7 @@
 
     <Application.Styles>
         <sty:FluentAvaloniaTheme PreferUserAccentColor="True" />
+        <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
 
 
         <Style Selector="Button">

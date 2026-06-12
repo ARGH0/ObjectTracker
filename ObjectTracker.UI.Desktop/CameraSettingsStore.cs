@@ -23,6 +23,11 @@ internal sealed class CameraSettingsStore
         filePath = Path.Combine(settingsFolder, "camera-settings.json");
     }
 
+    public CameraSettingsStore(string filePath)
+    {
+        this.filePath = filePath;
+    }
+
     public Dictionary<string, MainWindow.RuntimeProcessingSettings> Load()
     {
         if (!File.Exists(filePath))
@@ -53,8 +58,7 @@ internal sealed class CameraSettingsStore
                 MorphKernelSize: EnsureOdd(Math.Clamp(item.MorphKernelSize, 1, 31)),
                 ProcessMaxWidth: Math.Clamp(item.ProcessMaxWidth, 160, 1920),
                 BakeSourceMode: ParseBakeSourceMode(item.BakeSourceMode),
-                BakeImagePath: item.BakeImagePath ?? string.Empty,
-                ColorCalibrations: ReadColorCalibrations(item.ColorCalibrations));
+                BakeImagePath: item.BakeImagePath ?? string.Empty);
         }
 
         return result;
@@ -79,19 +83,7 @@ internal sealed class CameraSettingsStore
                 MorphKernelSize = settings.MorphKernelSize,
                 ProcessMaxWidth = settings.ProcessMaxWidth,
                 BakeSourceMode = settings.BakeSourceMode.ToString(),
-                BakeImagePath = settings.BakeImagePath,
-                ColorCalibrations = settings.ColorCalibrations
-                    .Select(calibration => new ColorCalibrationDto
-                    {
-                        Name = calibration.Name,
-                        HueLower = calibration.HueLower,
-                        HueUpper = calibration.HueUpper,
-                        SaturationLower = calibration.SaturationLower,
-                        SaturationUpper = calibration.SaturationUpper,
-                        ValueLower = calibration.ValueLower,
-                        ValueUpper = calibration.ValueUpper
-                    })
-                    .ToList()
+                BakeImagePath = settings.BakeImagePath
             });
         }
 
@@ -115,35 +107,6 @@ internal sealed class CameraSettingsStore
         return Enum.TryParse<MainWindow.BakeSourceMode>(value, ignoreCase: true, out var parsed)
             ? parsed
             : MainWindow.BakeSourceMode.Samples;
-    }
-
-    private static IReadOnlyList<ColorCalibrationProfile> ReadColorCalibrations(List<ColorCalibrationDto>? dtos)
-    {
-        var defaults = MainWindow.CreateDefaultColorCalibrations()
-            .ToDictionary(profile => profile.Name, profile => profile, StringComparer.OrdinalIgnoreCase);
-
-        if (dtos is not null)
-        {
-            foreach (var dto in dtos)
-            {
-                if (string.IsNullOrWhiteSpace(dto.Name))
-                {
-                    continue;
-                }
-
-                var normalizedName = dto.Name.Trim().ToUpperInvariant();
-                defaults[normalizedName] = new ColorCalibrationProfile(
-                    normalizedName,
-                    Math.Clamp(dto.HueLower, 0, 180),
-                    Math.Clamp(dto.HueUpper, 0, 180),
-                    Math.Clamp(dto.SaturationLower, 0, 255),
-                    Math.Clamp(dto.SaturationUpper, 0, 255),
-                    Math.Clamp(dto.ValueLower, 0, 255),
-                    Math.Clamp(dto.ValueUpper, 0, 255));
-            }
-        }
-
-        return defaults.Values.OrderBy(profile => profile.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     private sealed class CameraSettingsFileDto
@@ -171,23 +134,5 @@ internal sealed class CameraSettingsStore
 
         public string BakeImagePath { get; set; } = string.Empty;
 
-        public List<ColorCalibrationDto> ColorCalibrations { get; set; } = new();
-    }
-
-    private sealed class ColorCalibrationDto
-    {
-        public string Name { get; set; } = string.Empty;
-
-        public int HueLower { get; set; }
-
-        public int HueUpper { get; set; }
-
-        public int SaturationLower { get; set; }
-
-        public int SaturationUpper { get; set; }
-
-        public int ValueLower { get; set; }
-
-        public int ValueUpper { get; set; }
     }
 }

@@ -25,6 +25,7 @@ internal sealed class BackgroundEstimationEngine(
     internal readonly record struct TrainDetected(
         string CameraZoneId,
         int LocalTrainId,
+        ConfiguredTrain Train,
         float PositionX,
         float PositionY,
         float BoundingBoxWidth,
@@ -153,7 +154,7 @@ internal sealed class BackgroundEstimationEngine(
         using var movingColor = new Mat();
         using var colorDetections = new Mat();
         using var hsv = new Mat();
-        var activeColorCalibrations = options.ColorCalibrations;
+        var activeTrains = options.Trains;
 
         var previousTracks = new Dictionary<int, MotionTrackState>();
         var nextTrackId = 1;
@@ -188,7 +189,6 @@ internal sealed class BackgroundEstimationEngine(
                 activeThreshold = live.Threshold;
                 activeMinMotionArea = live.MinMotionArea;
                 activeMinColorPixels = live.MinColorPixels;
-                activeColorCalibrations = live.ColorCalibrations;
                 activeMorphKernelSize = live.MorphKernelSize;
             }
 
@@ -209,8 +209,8 @@ internal sealed class BackgroundEstimationEngine(
 
             // Detect train candidates and classify their operator-recognized Train Color.
             var movingRects = GetMovingObjectRectangles(refinedMask, activeMinMotionArea);
-            var frameColors = ClassifyColorsPerRect(
-                colorResized, refinedMask, hsv, movingRects, activeColorCalibrations, activeMinColorPixels);
+            var frameTrains = ClassifyTrainsPerRect(
+                colorResized, refinedMask, hsv, movingRects, activeTrains, activeMinColorPixels);
 
             // Build preview frames last by drawing overlays on top of the processed frames.
             RenderPreviewFrames(
@@ -218,7 +218,7 @@ internal sealed class BackgroundEstimationEngine(
                 refinedMask,
                 hsv,
                 movingRects,
-                activeColorCalibrations,
+                activeTrains,
                 activeMinColorPixels,
                 movingColor,
                 colorDetections);
@@ -228,17 +228,20 @@ internal sealed class BackgroundEstimationEngine(
 
             if (OnTrainDetected is not null && movingRects.Count > 0)
             {
-                foreach (var (rect, colorLabel) in movingRects.Zip(frameColors))
+                foreach (var candidate in BuildTrainDetectionCandidates(movingRects, frameTrains))
                 {
+                    var rect = candidate.Rect;
+                    var train = candidate.Train;
                     var center = new Point2f(rect.X + rect.Width / 2f, rect.Y + rect.Height / 2f);
                     OnTrainDetected(new TrainDetected(
                         CameraZoneId: source.SourceLabel,
                         LocalTrainId: GetNextTrackId(previousTracks, ref nextTrackId, center),
+                        Train: train.Train,
                         PositionX: center.X,
                         PositionY: center.Y,
                         BoundingBoxWidth: rect.Width,
                         BoundingBoxHeight: rect.Height,
-                        TrainColor: colorLabel,
+                        TrainColor: train.TrainName,
                         Confidence: 1.0f,
                         Timestamp: snapshot.Value.TimestampUtcMs,
                         FrameNumber: frameIndex));
@@ -364,7 +367,7 @@ internal sealed class BackgroundEstimationEngine(
         Mat refinedMask,
         Mat hsv,
         IReadOnlyList<Rect> movingRects,
-        IReadOnlyList<ColorCalibrationProfile> colorCalibrations,
+        IReadOnlyList<TrainDetectionProfile> trains,
         int minColorPixels,
         Mat movingColor,
         Mat colorDetections)
@@ -374,7 +377,7 @@ internal sealed class BackgroundEstimationEngine(
         DrawMovingObjectBoxes(movingColor, movingRects);
 
         colorResized.CopyTo(colorDetections);
-        RenderColorDetections(colorDetections, colorResized, refinedMask, hsv, movingRects, colorCalibrations, minColorPixels);
+        RenderColorDetections(colorDetections, colorResized, refinedMask, hsv, movingRects, trains, minColorPixels);
     }
 
     private static void DrawMovingObjectBoxes(Mat destination, IReadOnlyList<Rect> movingRects)
@@ -392,7 +395,7 @@ internal sealed class BackgroundEstimationEngine(
         Mat motionMask,
         Mat hsv,
         IReadOnlyList<Rect> movingRects,
-        IReadOnlyList<ColorCalibrationProfile> colorCalibrations,
+        IReadOnlyList<TrainDetectionProfile> trains,
         int minColorPixels)
     {
         foreach (var rect in movingRects)
@@ -401,46 +404,48 @@ internal sealed class BackgroundEstimationEngine(
             using var motionRoi = new Mat(motionMask, rect);
             Cv2.CvtColor(colorRoi, hsv, ColorConversionCodes.BGR2HSV);
 
-            var (label, color) = ClassifyDominantColor(hsv, motionRoi, colorCalibrations, minColorPixels);
+            var train = ClassifyDominantTrain(hsv, motionRoi, trains, minColorPixels);
+            var label = train?.TrainName ?? "Unknown";
+            var color = train?.OverlayColor ?? new Scalar(180, 180, 180);
 
             Cv2.Rectangle(destination, rect, color, 2);
             Cv2.PutText(destination, label, new Point(rect.X, Math.Max(16, rect.Y - 4)), HersheyFonts.HersheySimplex, 0.55, color, 2);
         }
     }
 
-    private static (string Label, Scalar Color) ClassifyDominantColor(
+    private static TrainDetectionProfile? ClassifyDominantTrain(
         Mat hsvRoi,
         Mat motionRoiMask,
-        IReadOnlyList<ColorCalibrationProfile> colorCalibrations,
+        IReadOnlyList<TrainDetectionProfile> trains,
         int minColorPixels)
     {
-        if (colorCalibrations.Count == 0)
+        if (trains.Count == 0)
         {
-            return ("Unknown", new Scalar(180, 180, 180));
+            return null;
         }
 
         var bestCount = 0;
-        ColorCalibrationProfile? bestProfile = null;
+        TrainDetectionProfile? bestTrain = null;
 
-        foreach (var profile in colorCalibrations)
+        foreach (var train in trains)
         {
-            using var mask = BuildMask(hsvRoi, profile);
+            using var mask = BuildMask(hsvRoi, train.Calibration);
             Cv2.BitwiseAnd(mask, motionRoiMask, mask);
 
             var count = Cv2.CountNonZero(mask);
             if (count > bestCount)
             {
                 bestCount = count;
-                bestProfile = profile;
+                bestTrain = train;
             }
         }
 
-        if (bestProfile is null || bestCount < minColorPixels)
+        if (bestTrain is null || bestCount < minColorPixels)
         {
-            return ("Unknown", new Scalar(180, 180, 180));
+            return null;
         }
 
-        return (bestProfile.Value.Name, GetOverlayColor(bestProfile.Value.Name));
+        return bestTrain;
     }
 
     private static Mat BuildMask(Mat hsv, ColorCalibrationProfile profile)
@@ -464,20 +469,6 @@ internal sealed class BackgroundEstimationEngine(
         secondary.Dispose();
         return combined;
     }
-
-    private static Scalar GetOverlayColor(string name)
-    {
-        return name.ToUpperInvariant() switch
-        {
-            "RED" => new Scalar(60, 60, 255),
-            "GREEN" => new Scalar(60, 220, 60),
-            "BLUE" => new Scalar(255, 120, 50),
-            "YELLOW" => new Scalar(40, 220, 240),
-            "WHITE" => new Scalar(255, 255, 255),
-            _ => new Scalar(180, 180, 180)
-        };
-    }
-
 
     private static int? FindBestTrackMatch(
         Point2f center,
@@ -585,17 +576,16 @@ internal sealed class BackgroundEstimationEngine(
         int MinMotionArea,
         int MinColorPixels,
         int MorphKernelSize,
-        IReadOnlyList<ColorCalibrationProfile> ColorCalibrations)
+        IReadOnlyList<TrainDetectionProfile> Trains)
     {
-        public static ProcessingOptions Default => new(640, 220, 40, 3, MainWindow.CreateDefaultColorCalibrations());
+        public static ProcessingOptions Default => new(640, 220, 40, 3, TrainDetectionProfile.FromConfiguredTrains(TrainStore.CreateDefaultTrains()));
     }
 
     internal readonly record struct LiveTuning(
         int Threshold,
         int MinMotionArea,
         int MinColorPixels,
-        int MorphKernelSize,
-        IReadOnlyList<ColorCalibrationProfile> ColorCalibrations);
+        int MorphKernelSize);
 
     [StructLayout(LayoutKind.Auto)]
     private readonly record struct MotionTrackState(Point2f Center, Rect Rect, double TimestampSec);
@@ -633,15 +623,15 @@ internal sealed class BackgroundEstimationEngine(
         return new MotionMaskRefiner.Options(closeKernelSize, openKernelSize);
     }
 
-    private static List<string> ClassifyColorsPerRect(
+    private static List<TrainDetectionProfile?> ClassifyTrainsPerRect(
         Mat colorResized,
         Mat motionMask,
         Mat hsv,
         IReadOnlyList<Rect> movingRects,
-        IReadOnlyList<ColorCalibrationProfile> colorCalibrations,
+        IReadOnlyList<TrainDetectionProfile> trains,
         int minColorPixels)
     {
-        var labels = new List<string>(movingRects.Count);
+        var matches = new List<TrainDetectionProfile?>(movingRects.Count);
 
         foreach (var rect in movingRects)
         {
@@ -649,11 +639,33 @@ internal sealed class BackgroundEstimationEngine(
             using var motionRoi = new Mat(motionMask, rect);
             Cv2.CvtColor(colorRoi, hsv, ColorConversionCodes.BGR2HSV);
 
-            var (label, _) = ClassifyDominantColor(hsv, motionRoi, colorCalibrations, minColorPixels);
-            labels.Add(label);
+            matches.Add(ClassifyDominantTrain(hsv, motionRoi, trains, minColorPixels));
         }
 
-        return labels;
+        return matches;
+    }
+
+    internal static IReadOnlyList<TrainDetectionCandidate> BuildTrainDetectionCandidates(
+        IReadOnlyList<Rect> movingRects,
+        IReadOnlyList<TrainDetectionProfile?> trainMatches)
+    {
+        var candidates = new List<TrainDetectionCandidate>();
+        var emittedTrainIds = new HashSet<Guid>();
+
+        foreach (var (rect, train) in movingRects.Zip(trainMatches))
+        {
+            if (train is null
+                || rect.Width > train.Value.Train.MaxWidth
+                || rect.Height > train.Value.Train.MaxHeight
+                || !emittedTrainIds.Add(train.Value.TrainId))
+            {
+                continue;
+            }
+
+            candidates.Add(new TrainDetectionCandidate(rect, train.Value));
+        }
+
+        return candidates;
     }
 
     private static int GetNextTrackId(
@@ -679,4 +691,6 @@ internal sealed class BackgroundEstimationEngine(
 
         return new PreviewFrameSet(movingColorJpeg, colorDetectionJpeg);
     }
+
+    internal readonly record struct TrainDetectionCandidate(Rect Rect, TrainDetectionProfile Train);
 }

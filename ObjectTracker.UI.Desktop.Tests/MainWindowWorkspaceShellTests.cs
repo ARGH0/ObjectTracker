@@ -26,6 +26,18 @@ public sealed class MainWindowWorkspaceShellTests
 
         Assert.False(visibility.CameraVisible);
         Assert.True(visibility.RegionsVisible);
+        Assert.False(visibility.TrainsVisible);
+        Assert.False(visibility.SettingsVisible);
+    }
+
+    [Fact]
+    public void BuildWorkspaceVisibility_Trains_ShowsOnlyTrainsWorkspace()
+    {
+        var visibility = MainWindow.BuildWorkspaceVisibility(MainWindow.Workspace.Trains);
+
+        Assert.False(visibility.CameraVisible);
+        Assert.False(visibility.RegionsVisible);
+        Assert.True(visibility.TrainsVisible);
         Assert.False(visibility.SettingsVisible);
     }
 

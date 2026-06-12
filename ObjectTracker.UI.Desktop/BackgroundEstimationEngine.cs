@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using ObjectTracker.Core.Domain;
+using ObjectTracker.UI.Desktop.Region.Model;
 using OpenCvSharp;
 
 namespace ObjectTracker.UI.Desktop;
@@ -65,12 +66,14 @@ internal sealed class BackgroundEstimationEngine(
             cancellationToken);
 
         using var railRoiMask = _railRoiMaskBuilder.BuildFromBackground(background.MedianBackground);
+        using var excludeRegionMask = BuildExcludeRegionMask(processSize, options.GridColumns, options.GridRows, options.ExcludeRegionCells);
 
         return await ProcessFramesFromSourceAsync(
             source,
             processSize,
             background.MedianBackground,
             railRoiMask,
+            excludeRegionMask,
             threshold,
             options,
             onFrame,
@@ -130,6 +133,7 @@ internal sealed class BackgroundEstimationEngine(
         Size processSize,
         Mat medianBackground,
         Mat railRoiMask,
+        Mat? excludeRegionMask,
         int threshold,
         ProcessingOptions options,
         Func<PreviewFrameSet, Task> onFrame,
@@ -201,6 +205,7 @@ internal sealed class BackgroundEstimationEngine(
                     processSize,
                     medianBackground,
                     railRoiMask,
+                    excludeRegionMask,
                     activeThreshold,
                     activeMorphKernelSize,
                     gray,
@@ -364,6 +369,7 @@ internal sealed class BackgroundEstimationEngine(
         Size processSize,
         Mat medianBackground,
         Mat railRoiMask,
+        Mat? excludeRegionMask,
         int threshold,
         int morphKernelSize,
         Mat gray,
@@ -379,9 +385,39 @@ internal sealed class BackgroundEstimationEngine(
         Cv2.Absdiff(medianBackground, resized, diff);
         Cv2.Threshold(diff, mask, threshold, 255, ThresholdTypes.Binary);
         Cv2.BitwiseAnd(mask, railRoiMask, mask);
+        if (excludeRegionMask is not null)
+        {
+            mask.SetTo(Scalar.Black, excludeRegionMask);
+        }
 
         using var refined = _motionMaskRefiner.Refine(mask, BuildRefinerOptions(morphKernelSize));
         refined.CopyTo(refinedMask);
+    }
+
+    private static Mat? BuildExcludeRegionMask(Size processSize, int gridColumns, int gridRows, IReadOnlyCollection<GridCell> excludeRegionCells)
+    {
+        if (gridColumns <= 0 || gridRows <= 0 || excludeRegionCells.Count == 0)
+        {
+            return null;
+        }
+
+        var mask = new Mat(processSize.Height, processSize.Width, MatType.CV_8UC1, Scalar.Black);
+        foreach (var cell in excludeRegionCells)
+        {
+            if (cell.Column < 0 || cell.Row < 0 || cell.Column >= gridColumns || cell.Row >= gridRows)
+            {
+                continue;
+            }
+
+            var left = (int)Math.Floor((double)cell.Column * processSize.Width / gridColumns);
+            var top = (int)Math.Floor((double)cell.Row * processSize.Height / gridRows);
+            var right = (int)Math.Ceiling((double)(cell.Column + 1) * processSize.Width / gridColumns);
+            var bottom = (int)Math.Ceiling((double)(cell.Row + 1) * processSize.Height / gridRows);
+            var rect = new Rect(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
+            Cv2.Rectangle(mask, rect, Scalar.White, -1);
+        }
+
+        return mask;
     }
 
     private static void RenderPreviewFrames(
@@ -629,8 +665,13 @@ internal sealed class BackgroundEstimationEngine(
         int MorphKernelSize,
         int AdaptiveBackgroundSampleCount,
         int AdaptiveBackgroundUpdateIntervalFrames,
-        IReadOnlyList<TrainDetectionProfile> Trains)
+        IReadOnlyList<TrainDetectionProfile> Trains,
+        int GridColumns = 0,
+        int GridRows = 0,
+        IReadOnlyCollection<GridCell>? ExcludeRegionCells = null)
     {
+        public IReadOnlyCollection<GridCell> ExcludeRegionCells { get; init; } = ExcludeRegionCells ?? Array.Empty<GridCell>();
+
         public static ProcessingOptions Default => new(640, 220, 40, 3, 30, 30, TrainDetectionProfile.FromConfiguredTrains(TrainStore.CreateDefaultTrains()));
     }
 

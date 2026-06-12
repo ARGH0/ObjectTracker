@@ -1,3 +1,5 @@
+using ObjectTracker.Core.Domain;
+using ObjectTracker.UI.Desktop.Region.Model;
 using OpenCvSharp;
 using Xunit;
 
@@ -124,6 +126,108 @@ public sealed class BackgroundEstimationEngineUnifiedSourceTests : IDisposable
         Assert.Equal(3, processedFrames);
     }
 
+    [Fact]
+    public async Task ProcessAsync_WhenTrainMovesInsideExcludeRegion_DoesNotReportDetectedTrain()
+    {
+        var videoPath = CreateTestVideoWithRedMotion(_tempDir, frameCount: 10, motionRect: new Rect(24, 16, 12, 12));
+        var detectedTrains = 0;
+
+        await using var source = new VideoFileSource(videoPath, "exclude-zone");
+        var engine = new BackgroundEstimationEngine
+        {
+            OnTrainDetected = _ => detectedTrains++
+        };
+        var processedFrames = 0;
+        var train = new ConfiguredTrain(
+            Guid.NewGuid(),
+            "Red Train",
+            "PLC-RED",
+            0xFF0000CC,
+            0xFFFF6060,
+            30,
+            30,
+            new ColorCalibrationProfile("Red Train", 0, 10, 120, 255, 70, 255));
+        var options = BackgroundEstimationEngine.ProcessingOptions.Default with
+        {
+            MinMotionArea = 20,
+            MinColorPixels = 10,
+            Trains = TrainDetectionProfile.FromConfiguredTrains(new[] { train }),
+            GridColumns = 4,
+            GridRows = 4,
+            ExcludeRegionCells = new[] { new GridCell(1, 1), new GridCell(2, 1), new GridCell(1, 2), new GridCell(2, 2) }
+        };
+
+        var result = await engine.ProcessAsync(
+            source,
+            sampleCount: 3,
+            threshold: 25,
+            options,
+            bakeImagePath: null,
+            onFrame: _ =>
+            {
+                processedFrames++;
+                return Task.CompletedTask;
+            },
+            onStatus: _ => Task.CompletedTask,
+            getLiveTuning: null,
+            shouldStopEarly: () => processedFrames >= 3,
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(0, detectedTrains);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenTrainMovesOutsideExcludeRegion_StillReportsDetectedTrain()
+    {
+        var videoPath = CreateTestVideoWithRedMotion(_tempDir, frameCount: 10, motionRect: new Rect(4, 4, 12, 12));
+        var detectedTrains = 0;
+
+        await using var source = new VideoFileSource(videoPath, "outside-exclude-zone");
+        var engine = new BackgroundEstimationEngine
+        {
+            OnTrainDetected = _ => detectedTrains++
+        };
+        var processedFrames = 0;
+        var train = new ConfiguredTrain(
+            Guid.NewGuid(),
+            "Red Train",
+            "PLC-RED",
+            0xFF0000CC,
+            0xFFFF6060,
+            30,
+            30,
+            new ColorCalibrationProfile("Red Train", 0, 10, 120, 255, 70, 255));
+        var options = BackgroundEstimationEngine.ProcessingOptions.Default with
+        {
+            MinMotionArea = 20,
+            MinColorPixels = 10,
+            Trains = TrainDetectionProfile.FromConfiguredTrains(new[] { train }),
+            GridColumns = 4,
+            GridRows = 4,
+            ExcludeRegionCells = new[] { new GridCell(1, 1), new GridCell(2, 1), new GridCell(1, 2), new GridCell(2, 2) }
+        };
+
+        var result = await engine.ProcessAsync(
+            source,
+            sampleCount: 3,
+            threshold: 25,
+            options,
+            bakeImagePath: null,
+            onFrame: _ =>
+            {
+                processedFrames++;
+                return Task.CompletedTask;
+            },
+            onStatus: _ => Task.CompletedTask,
+            getLiveTuning: null,
+            shouldStopEarly: () => processedFrames >= 3,
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.True(detectedTrains > 0);
+    }
+
     private static string CreateTestVideoWithMotion(string dir, int frameCount)
     {
         Directory.CreateDirectory(dir);
@@ -153,6 +257,27 @@ public sealed class BackgroundEstimationEngineUnifiedSourceTests : IDisposable
         for (int i = 0; i < frameCount; i++)
         {
             using var frame = new Mat(height, width, MatType.CV_8UC3, Scalar.All(128));
+            writer.Write(frame);
+        }
+
+        return path;
+    }
+
+    private static string CreateTestVideoWithRedMotion(string dir, int frameCount, Rect motionRect)
+    {
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "red_motion_video.avi");
+
+        using var writer = new VideoWriter(path, FourCC.MJPG, 5, new Size(64, 48));
+
+        for (int i = 0; i < frameCount; i++)
+        {
+            using var frame = new Mat(48, 64, MatType.CV_8UC3, Scalar.All(128));
+            if (i >= 3)
+            {
+                Cv2.Rectangle(frame, motionRect, new Scalar(0, 0, 255), -1);
+            }
+
             writer.Write(frame);
         }
 

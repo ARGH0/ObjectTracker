@@ -1980,21 +1980,14 @@ public partial class MainWindow : AppWindow
 
         if (camera.SourceKind == CameraSourceKind.UsbCamera)
         {
-            await ProcessUsbCameraAsync(camera, engine, cancellationToken);
+            await ProcessUsbCameraAsync(camera, engine, zoneId, cancellationToken);
             return;
         }
 
         for (var videoIndex = 0; !cancellationToken.IsCancellationRequested; videoIndex++)
         {
             var settings = GetSettingsForCamera(camera.Id);
-            var options = new BackgroundEstimationEngine.ProcessingOptions(
-                settings.ProcessMaxWidth,
-                settings.MotionArea,
-                settings.ColorMinPixels,
-                settings.MorphKernelSize,
-                appSettings.AdaptiveBackgroundSampleCount,
-                appSettings.AdaptiveBackgroundUpdateIntervalFrames,
-                GetConfiguredTrainProfiles());
+            var options = BuildProcessingOptions(settings, zoneId);
 
             if (videoIndex >= camera.VideoPaths.Count)
             {
@@ -2033,19 +2026,16 @@ public partial class MainWindow : AppWindow
         }
     }
 
-    private async Task ProcessUsbCameraAsync(CameraProfile camera, BackgroundEstimationEngine engine, CancellationToken cancellationToken)
+    private async Task ProcessUsbCameraAsync(
+        CameraProfile camera,
+        BackgroundEstimationEngine engine,
+        ObjectTracker.UI.Desktop.Region.Model.CameraZoneId zoneId,
+        CancellationToken cancellationToken)
     {
         for (; !cancellationToken.IsCancellationRequested;)
         {
             var settings = GetSettingsForCamera(camera.Id);
-            var options = new BackgroundEstimationEngine.ProcessingOptions(
-                settings.ProcessMaxWidth,
-                settings.MotionArea,
-                settings.ColorMinPixels,
-                settings.MorphKernelSize,
-                appSettings.AdaptiveBackgroundSampleCount,
-                appSettings.AdaptiveBackgroundUpdateIntervalFrames,
-                GetConfiguredTrainProfiles());
+            var options = BuildProcessingOptions(settings, zoneId);
 
             await Dispatcher.UIThread.InvokeAsync(() => CurrentVideoText.Text = BuildCurrentSourceText(camera, camera.DisplayName));
 
@@ -2928,6 +2918,33 @@ public partial class MainWindow : AppWindow
             settings.MotionArea,
             settings.ColorMinPixels,
             settings.MorphKernelSize);
+    }
+
+    private BackgroundEstimationEngine.ProcessingOptions BuildProcessingOptions(
+        RuntimeProcessingSettings settings,
+        ObjectTracker.UI.Desktop.Region.Model.CameraZoneId? zoneId = null)
+    {
+        var excludeCells = Array.Empty<ObjectTracker.UI.Desktop.Region.Model.GridCell>();
+        if (zoneId.HasValue)
+        {
+            excludeCells = regionRegistry.GetByZone(zoneId.Value)
+                .Where(region => region.Type == RegionType.ExcludeRegion)
+                .SelectMany(region => region.Cells)
+                .Distinct()
+                .ToArray();
+        }
+
+        return new BackgroundEstimationEngine.ProcessingOptions(
+            settings.ProcessMaxWidth,
+            settings.MotionArea,
+            settings.ColorMinPixels,
+            settings.MorphKernelSize,
+            appSettings.AdaptiveBackgroundSampleCount,
+            appSettings.AdaptiveBackgroundUpdateIntervalFrames,
+            GetConfiguredTrainProfiles(),
+            appSettings.GridColumns,
+            appSettings.GridRows,
+            excludeCells);
     }
 
     private IReadOnlyList<TrainDetectionProfile> GetConfiguredTrainProfiles()

@@ -16,16 +16,30 @@
     <Grid RowDefinitions="Auto,*,Auto" Margin="12">
 
         <!-- Header -->
-        <StackPanel Grid.Row="0" Spacing="4">
-            <TextBlock x:Name="TitleTextBlock"
-                        Text="Edit Region"
-                        FontSize="18"
-                        FontWeight="Bold"
-                        Foreground="{StaticResource TextBrush}" />
-            <TextBlock x:Name="CellCountTextBlock"
-                       Classes="muted"
-                       Text="0 cells selected" />
-        </StackPanel>
+        <Grid Grid.Row="0"
+              ColumnDefinitions="*,Auto"
+              ColumnSpacing="16">
+            <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock x:Name="TitleTextBlock"
+                            Text="Edit Region"
+                            FontSize="18"
+                            FontWeight="Bold"
+                            Foreground="{StaticResource TextBrush}" />
+                <TextBlock x:Name="CellCountTextBlock"
+                           Classes="muted"
+                           Text="0 cells selected" />
+            </StackPanel>
+            <StackPanel Grid.Column="1"
+                        Spacing="4"
+                        Width="140">
+                <TextBlock Text="Pencil Size"
+                           Classes="muted" />
+                <ComboBox x:Name="PencilSizeComboBox"
+                          ItemsSource="{Binding PencilSizes}"
+                          SelectedItem="{Binding PencilSize}"
+                          HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </Grid>
 
         <!-- Camera Frame + Grid Overlay -->
         <Border Grid.Row="1"

@@ -149,4 +149,90 @@ public sealed class GridEditorDialogViewModelTests
         Assert.Contains(new GridCell(0, 0), vm.OriginalCells);
         Assert.Contains(new GridCell(1, 0), vm.OriginalCells);
     }
+
+    [Fact]
+    public void ApplyPencil_WithSizeFour_AddsTwoByTwoCellsFromAnchor()
+    {
+        var vm = new GridEditorDialogViewModel(
+            gridColumns: 4,
+            gridRows: 3,
+            currentCells: Array.Empty<GridCell>(),
+            frameLoader: null!)
+        {
+            PencilSize = 4
+        };
+
+        vm.ApplyPencil(new GridCell(1, 1), addMode: true);
+
+        Assert.Equal(4, vm.SelectedCellCount);
+        Assert.Contains(new GridCell(1, 1), vm.SelectedCells);
+        Assert.Contains(new GridCell(2, 1), vm.SelectedCells);
+        Assert.Contains(new GridCell(1, 2), vm.SelectedCells);
+        Assert.Contains(new GridCell(2, 2), vm.SelectedCells);
+    }
+
+    [Fact]
+    public void ApplyPencil_WithSizeNine_AddsThreeByThreeCellsFromAnchor()
+    {
+        var vm = new GridEditorDialogViewModel(
+            gridColumns: 5,
+            gridRows: 5,
+            currentCells: Array.Empty<GridCell>(),
+            frameLoader: null!)
+        {
+            PencilSize = 9
+        };
+
+        vm.ApplyPencil(new GridCell(1, 1), addMode: true);
+
+        Assert.Equal(9, vm.SelectedCellCount);
+        Assert.Contains(new GridCell(1, 1), vm.SelectedCells);
+        Assert.Contains(new GridCell(3, 1), vm.SelectedCells);
+        Assert.Contains(new GridCell(1, 3), vm.SelectedCells);
+        Assert.Contains(new GridCell(3, 3), vm.SelectedCells);
+    }
+
+    [Fact]
+    public void ApplyPencil_ClipsBrushAtGridBounds()
+    {
+        var vm = new GridEditorDialogViewModel(
+            gridColumns: 4,
+            gridRows: 3,
+            currentCells: Array.Empty<GridCell>(),
+            frameLoader: null!)
+        {
+            PencilSize = 9
+        };
+
+        vm.ApplyPencil(new GridCell(3, 2), addMode: true);
+
+        var cell = Assert.Single(vm.SelectedCells);
+        Assert.Equal(new GridCell(3, 2), cell);
+    }
+
+    [Fact]
+    public void ApplyPencil_WithRemoveMode_RemovesBrushCells()
+    {
+        var cells = new[]
+        {
+            new GridCell(0, 0),
+            new GridCell(1, 0),
+            new GridCell(0, 1),
+            new GridCell(1, 1),
+            new GridCell(2, 2)
+        };
+        var vm = new GridEditorDialogViewModel(
+            gridColumns: 4,
+            gridRows: 3,
+            currentCells: cells,
+            frameLoader: null!)
+        {
+            PencilSize = 4
+        };
+
+        vm.ApplyPencil(new GridCell(0, 0), addMode: false);
+
+        var remaining = Assert.Single(vm.SelectedCells);
+        Assert.Equal(new GridCell(2, 2), remaining);
+    }
 }

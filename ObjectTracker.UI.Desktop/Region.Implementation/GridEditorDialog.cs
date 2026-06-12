@@ -54,6 +54,7 @@ public partial class GridEditorDialog : Window
 
         SaveButton.Click += OnSaveClick;
         CancelButton.Click += OnCancelClick;
+        PencilSizeComboBox.SelectionChanged += OnPencilSizeSelectionChanged;
     }
 
     protected override void OnOpened(EventArgs e)
@@ -143,7 +144,7 @@ public partial class GridEditorDialog : Window
         {
             var gridCell = new GridCell(cell.Value.Col, cell.Value.Row);
             _addMode = !vm.SelectedCells.Contains(gridCell);
-            vm.ToggleCell(gridCell);
+            vm.ApplyPencil(gridCell, _addMode);
             UpdateCellVisuals();
         }
     }
@@ -161,7 +162,7 @@ public partial class GridEditorDialog : Window
             bool isSelected = vm.SelectedCells.Contains(gridCell);
             if ((_addMode && !isSelected) || (!_addMode && isSelected))
             {
-                vm.ToggleCell(gridCell);
+                vm.ApplyPencil(gridCell, _addMode);
                 UpdateCellVisuals();
             }
         }
@@ -215,5 +216,13 @@ public partial class GridEditorDialog : Window
     private void OnCancelClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         Close(null);
+    }
+
+    private void OnPencilSizeSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (PencilSizeComboBox.SelectedItem is int pencilSize)
+        {
+            vm.PencilSize = pencilSize;
+        }
     }
 }

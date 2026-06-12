@@ -18,7 +18,6 @@ public sealed class CameraTileFeedRequestUsbTests
                 IsIncludedInVisionPipeline: camera.IsIncludedInVisionPipeline,
                 DebugViewEnabled: camera.DebugViewEnabled,
                 DebugViewFrameType: camera.DebugViewFrameType,
-                ShowAnnotationsEnabled: camera.ShowAnnotationsEnabled,
                 ShowRegionsEnabled: camera.ShowRegionsEnabled)
         });
 

@@ -151,12 +151,9 @@
                                                       <ComboBoxItem Content="Moving Color" />
                                                       <ComboBoxItem Content="Color Detections" />
                                                     </ComboBox>
-                                               <CheckBox x:Name="ShowAnnotationsCheckBox"
-                                                            Content="Show Annotations"
-                                                            IsChecked="False" />
                                                <CheckBox x:Name="ShowRegionsCheckBox"
-                                                            Content="Show Regions"
-                                                            IsChecked="False" />
+                                                             Content="Show Regions"
+                                                             IsChecked="False" />
                                           </StackPanel>
                                         </Border>
 

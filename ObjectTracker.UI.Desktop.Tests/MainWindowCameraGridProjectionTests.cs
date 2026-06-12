@@ -111,7 +111,7 @@ public sealed class MainWindowCameraGridProjectionTests
             new MainWindow.CameraWorkspaceCamera("cam-b", "Camera B", IsVisible: false, IsIncludedInVisionPipeline: true, DebugViewEnabled: false)
         });
 
-        var viewState = MainWindow.BuildCameraTileViewState(projection, Array.Empty<bool>(), Array.Empty<bool>());
+        var viewState = MainWindow.BuildCameraTileViewState(projection, Array.Empty<bool>());
 
         Assert.Equal(1, viewState.Rows);
         Assert.Equal(2, viewState.Columns);
@@ -133,7 +133,7 @@ public sealed class MainWindowCameraGridProjectionTests
             new MainWindow.CameraWorkspaceCamera("cam-5", "Camera 5", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false),
         });
 
-        var viewState = MainWindow.BuildCameraTileViewState(projection, Array.Empty<bool>(), Array.Empty<bool>());
+        var viewState = MainWindow.BuildCameraTileViewState(projection, Array.Empty<bool>());
 
         Assert.Equal(5, viewState.CameraIds.Count);
         Assert.Equal("5. Camera 5 [LiveAnnotated]", viewState.Titles[4]);
@@ -149,7 +149,7 @@ public sealed class MainWindowCameraGridProjectionTests
             new MainWindow.CameraWorkspaceCamera("cam-c", "Camera C", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false)
         });
 
-        var viewState = MainWindow.BuildCameraTileViewState(projection, Array.Empty<bool>(), Array.Empty<bool>());
+        var viewState = MainWindow.BuildCameraTileViewState(projection, Array.Empty<bool>());
 
         Assert.Equal(new[]
         {
@@ -181,47 +181,23 @@ public sealed class MainWindowCameraGridProjectionTests
     }
 
     [Fact]
-    public void CameraTileViewState_PreservesOverlayFlags()
+    public void CameraTileViewState_PreservesRegionOverlayFlags()
     {
         var projection = MainWindow.BuildCameraGridProjection(new[]
         {
-            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: true, ShowRegionsEnabled: false),
-            new MainWindow.CameraWorkspaceCamera("cam-b", "Camera B", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: false, ShowRegionsEnabled: true)
-        });
-
-        var annotationsList = MainWindow.BuildShowAnnotationsList(new[]
-        {
-            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: true, ShowRegionsEnabled: false),
-            new MainWindow.CameraWorkspaceCamera("cam-b", "Camera B", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: false, ShowRegionsEnabled: true)
+            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowRegionsEnabled: false),
+            new MainWindow.CameraWorkspaceCamera("cam-b", "Camera B", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowRegionsEnabled: true)
         });
 
         var regionsList = MainWindow.BuildShowRegionsList(new[]
         {
-            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: true, ShowRegionsEnabled: false),
-            new MainWindow.CameraWorkspaceCamera("cam-b", "Camera B", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: false, ShowRegionsEnabled: true)
+            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowRegionsEnabled: false),
+            new MainWindow.CameraWorkspaceCamera("cam-b", "Camera B", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowRegionsEnabled: true)
         });
 
-        var viewState = MainWindow.BuildCameraTileViewState(projection, annotationsList, regionsList);
+        var viewState = MainWindow.BuildCameraTileViewState(projection, regionsList);
 
-        Assert.Equal(new[] { true, false }, viewState.ShowAnnotationsEnabled.ToArray());
         Assert.Equal(new[] { false, true }, viewState.ShowRegionsEnabled.ToArray());
-    }
-
-    [Fact]
-    public void BuildShowAnnotationsList_ExcludesHiddenCameras()
-    {
-        var cameras = new[]
-        {
-            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: true),
-            new MainWindow.CameraWorkspaceCamera("cam-b", "Camera B", IsVisible: false, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: true),
-            new MainWindow.CameraWorkspaceCamera("cam-c", "Camera C", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: false)
-        };
-
-        var result = MainWindow.BuildShowAnnotationsList(cameras);
-
-        Assert.Equal(2, result.Count);
-        Assert.True(result[0]);
-        Assert.False(result[1]);
     }
 
     [Fact]
@@ -229,9 +205,9 @@ public sealed class MainWindowCameraGridProjectionTests
     {
         var cameras = new[]
         {
-            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: false, ShowRegionsEnabled: true),
-            new MainWindow.CameraWorkspaceCamera("cam-b", "Camera B", IsVisible: false, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: false, ShowRegionsEnabled: true),
-            new MainWindow.CameraWorkspaceCamera("cam-c", "Camera C", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowAnnotationsEnabled: false, ShowRegionsEnabled: false)
+            new MainWindow.CameraWorkspaceCamera("cam-a", "Camera A", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowRegionsEnabled: true),
+            new MainWindow.CameraWorkspaceCamera("cam-b", "Camera B", IsVisible: false, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowRegionsEnabled: true),
+            new MainWindow.CameraWorkspaceCamera("cam-c", "Camera C", IsVisible: true, IsIncludedInVisionPipeline: true, DebugViewEnabled: false, ShowRegionsEnabled: false)
         };
 
         var result = MainWindow.BuildShowRegionsList(cameras);

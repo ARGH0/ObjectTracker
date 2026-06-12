@@ -111,7 +111,6 @@ public partial class MainWindow : AppWindow
         bool IsIncludedInVisionPipeline,
         bool DebugViewEnabled,
         DebugViewFrameType DebugViewFrameType = DebugViewFrameType.MovingColor,
-        bool ShowAnnotationsEnabled = false,
         bool ShowRegionsEnabled = false);
 
     public readonly record struct CameraWorkspaceTile(string CameraId, string DisplayName, int Index, FeedKind FeedKind, DebugViewFrameType DebugViewFrameType);
@@ -163,7 +162,6 @@ public partial class MainWindow : AppWindow
         IReadOnlyList<string> CameraIds,
         IReadOnlyList<FeedKind> FeedKinds,
         IReadOnlyList<DebugViewFrameType> DebugViewFrameTypes,
-        IReadOnlyList<bool> ShowAnnotationsEnabled,
         IReadOnlyList<bool> ShowRegionsEnabled);
 
     public readonly record struct CameraPanelLayoutState(
@@ -289,14 +287,6 @@ public partial class MainWindow : AppWindow
         return new CameraGridProjection(visible.Count, rows, columns, tiles);
     }
 
-    public static IReadOnlyList<bool> BuildShowAnnotationsList(IReadOnlyList<CameraWorkspaceCamera> cameras)
-    {
-        return cameras
-            .Where(camera => camera.IsVisible)
-            .Select(camera => camera.ShowAnnotationsEnabled)
-            .ToList();
-    }
-
     public static IReadOnlyList<bool> BuildShowRegionsList(IReadOnlyList<CameraWorkspaceCamera> cameras)
     {
         return cameras
@@ -360,7 +350,7 @@ public partial class MainWindow : AppWindow
         };
     }
 
-    public static CameraTileViewState BuildCameraTileViewState(CameraGridProjection projection, IReadOnlyList<bool> showAnnotationsEnabled, IReadOnlyList<bool> showRegionsEnabled)
+    public static CameraTileViewState BuildCameraTileViewState(CameraGridProjection projection, IReadOnlyList<bool> showRegionsEnabled)
     {
         var titles = projection.Tiles
             .Select((tile, index) => $"{index + 1}. {tile.DisplayName} [{tile.FeedKind}]")
@@ -368,7 +358,7 @@ public partial class MainWindow : AppWindow
         var ids = projection.Tiles.Select(tile => tile.CameraId).ToList();
         var feedKinds = projection.Tiles.Select(tile => tile.FeedKind).ToList();
         var debugViewFrameTypes = projection.Tiles.Select(tile => tile.DebugViewFrameType).ToList();
-        return new CameraTileViewState(projection.Rows, projection.Columns, titles, ids, feedKinds, debugViewFrameTypes, showAnnotationsEnabled, showRegionsEnabled);
+        return new CameraTileViewState(projection.Rows, projection.Columns, titles, ids, feedKinds, debugViewFrameTypes, showRegionsEnabled);
     }
 
     public static SelectionMode GetCameraListSelectionMode()
@@ -530,7 +520,6 @@ public partial class MainWindow : AppWindow
     private readonly Dictionary<string, FeedKind> cameraTileFeedKindsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DebugTileImageSet> cameraTileDebugImagesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DebugViewFrameType> cameraTileDebugFrameTypesById = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, bool> cameraTileAnnotationsEnabledById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, bool> cameraTileRegionsEnabledById = new(StringComparer.OrdinalIgnoreCase);
     private Task? runTask;
     private int selectedCameraIndex = -1;
@@ -539,7 +528,6 @@ public partial class MainWindow : AppWindow
     private bool applyingCameraVisibilityUi;
     private bool applyingCameraInclusionUi;
     private bool applyingCameraDebugViewUi;
-    private bool applyingShowAnnotationsUi;
     private bool applyingShowRegionsUi;
     private bool applyingTrainColorPickerUi;
     private bool hasPendingVisionPipelineRestart;
@@ -660,7 +648,6 @@ public partial class MainWindow : AppWindow
         VisionPipelineInclusionCheckBox.IsCheckedChanged += VisionPipelineInclusionCheckBoxOnChanged;
         CameraDebugViewCheckBox.IsCheckedChanged += CameraDebugViewCheckBoxOnChanged;
         DebugViewFrameTypeComboBox.SelectionChanged += DebugViewFrameTypeComboBoxOnSelectionChanged;
-        ShowAnnotationsCheckBox.IsCheckedChanged += ShowAnnotationsCheckBoxOnChanged;
         ShowRegionsCheckBox.IsCheckedChanged += ShowRegionsCheckBoxOnChanged;
         BakeSourceComboBox.SelectionChanged += BakeSourceComboBoxOnSelectionChanged;
         SelectBakeImageButton.Click += SelectBakeImageButtonOnClick;
@@ -1684,9 +1671,6 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsChecked = NormalizeDebugViewEnabled(camera.Value.IsIncludedInVisionPipeline, camera.Value.DebugViewEnabled);
             applyingCameraDebugViewUi = false;
             CameraDebugViewCheckBox.IsEnabled = camera.Value.IsIncludedInVisionPipeline;
-            applyingShowAnnotationsUi = true;
-            ShowAnnotationsCheckBox.IsChecked = camera.Value.ShowAnnotationsEnabled;
-            applyingShowAnnotationsUi = false;
             applyingShowRegionsUi = true;
             ShowRegionsCheckBox.IsChecked = camera.Value.ShowRegionsEnabled;
             applyingShowRegionsUi = false;
@@ -2266,8 +2250,6 @@ public partial class MainWindow : AppWindow
             CameraDebugViewCheckBox.IsChecked = false;
             applyingCameraDebugViewUi = false;
             CameraDebugViewCheckBox.IsEnabled = false;
-            ShowAnnotationsCheckBox.IsChecked = false;
-            ShowAnnotationsCheckBox.IsEnabled = false;
             ShowRegionsCheckBox.IsChecked = false;
             ShowRegionsCheckBox.IsEnabled = false;
             RegionsListBox.ItemsSource = null;
@@ -2295,13 +2277,9 @@ public partial class MainWindow : AppWindow
         DebugViewFrameTypeComboBox.IsVisible = CameraDebugViewCheckBox.IsChecked == true;
         DebugViewFrameTypeComboBox.SelectedIndex = selected.DebugViewFrameType == DebugViewFrameType.ColorDetections ? 1 : 0;
         applyingCameraDebugViewUi = false;
-        applyingShowAnnotationsUi = true;
-        ShowAnnotationsCheckBox.IsChecked = selected.ShowAnnotationsEnabled;
-        applyingShowAnnotationsUi = false;
         applyingShowRegionsUi = true;
         ShowRegionsCheckBox.IsChecked = selected.ShowRegionsEnabled;
         applyingShowRegionsUi = false;
-        ShowAnnotationsCheckBox.IsEnabled = true;
         ShowRegionsCheckBox.IsEnabled = true;
     }
 
@@ -2315,19 +2293,6 @@ public partial class MainWindow : AppWindow
                 camera.IsIncludedInVisionPipeline,
                 NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled),
                 camera.DebugViewFrameType,
-                camera.ShowAnnotationsEnabled,
-                camera.ShowRegionsEnabled))
-            .ToList());
-
-        var annotationsList = BuildShowAnnotationsList(orderedCameras
-            .Select(camera => new CameraWorkspaceCamera(
-                camera.Id,
-                camera.DisplayName,
-                camera.IsVisible,
-                camera.IsIncludedInVisionPipeline,
-                NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled),
-                camera.DebugViewFrameType,
-                camera.ShowAnnotationsEnabled,
                 camera.ShowRegionsEnabled))
             .ToList());
 
@@ -2339,11 +2304,10 @@ public partial class MainWindow : AppWindow
                 camera.IsIncludedInVisionPipeline,
                 NormalizeDebugViewEnabled(camera.IsIncludedInVisionPipeline, camera.DebugViewEnabled),
                 camera.DebugViewFrameType,
-                camera.ShowAnnotationsEnabled,
                 camera.ShowRegionsEnabled))
             .ToList());
 
-        var viewState = BuildCameraTileViewState(projection, annotationsList, regionsList);
+        var viewState = BuildCameraTileViewState(projection, regionsList);
         ApplyCameraTileViewState(viewState);
         StartCameraTilePreview(orderedCameras, projection);
     }
@@ -2427,12 +2391,11 @@ public partial class MainWindow : AppWindow
 
         if (cameraTileFeedKindsById.TryGetValue(cameraId, out var feedKind) && feedKind != FeedKind.DebugView)
         {
-            var showAnnotations = cameraTileAnnotationsEnabledById.TryGetValue(cameraId, out var ann) && ann;
             var showRegions = cameraTileRegionsEnabledById.TryGetValue(cameraId, out var reg) && reg;
 
-            if (showAnnotations || showRegions)
+            if (showRegions)
             {
-                jpegBytes = ApplyTileOverlays(cameraId, jpegBytes, showAnnotations, showRegions);
+                jpegBytes = ApplyTileOverlays(cameraId, jpegBytes);
             }
         }
 
@@ -2443,50 +2406,18 @@ public partial class MainWindow : AppWindow
 
     private byte[] ApplyTileOverlays(
         string cameraId,
-        byte[] rawJpeg,
-        bool annotationsEnabled,
-        bool regionsEnabled)
+        byte[] rawJpeg)
     {
         var result = rawJpeg;
-        var settings = GetSettingsForCamera(cameraId);
 
-        if (annotationsEnabled)
+        var regions = GetRegionsForCamera(cameraId);
+        if (regions.Count > 0)
         {
-            var annotated = TileOverlayRenderer.RenderAnnotations(
+            result = TileOverlayRenderer.DrawRegions(
                 rawJpeg,
-                GetConfiguredTrainProfiles().Select(train => train.Calibration).ToList(),
-                minMotionArea: settings.MotionArea,
-                minColorPixels: settings.ColorMinPixels,
-                morphKernelSize: settings.MorphKernelSize);
-
-            if (annotated is not null)
-            {
-                result = annotated;
-            }
-        }
-
-        if (regionsEnabled)
-        {
-            var regions = GetRegionsForCamera(cameraId);
-            if (regions.Count > 0)
-            {
-                if (annotationsEnabled)
-                {
-                    result = TileOverlayRenderer.CompositeWithRegions(
-                        result,
-                        appSettings.GridColumns,
-                        appSettings.GridRows,
-                        regions);
-                }
-                else
-                {
-                    result = TileOverlayRenderer.DrawRegions(
-                        rawJpeg,
-                        appSettings.GridColumns,
-                        appSettings.GridRows,
-                        regions);
-                }
-            }
+                appSettings.GridColumns,
+                appSettings.GridRows,
+                regions);
         }
 
         return result;
@@ -2534,7 +2465,6 @@ public partial class MainWindow : AppWindow
         cameraTileImagesById.Clear();
         cameraTileFeedKindsById.Clear();
         cameraTileDebugImagesById.Clear();
-        cameraTileAnnotationsEnabledById.Clear();
         cameraTileRegionsEnabledById.Clear();
 
         for (var i = 0; i < viewState.CameraIds.Count; i++)
@@ -2545,7 +2475,6 @@ public partial class MainWindow : AppWindow
                 : new Image { Stretch = Avalonia.Media.Stretch.Uniform };
             cameraTileImagesById[cameraId] = image;
             cameraTileFeedKindsById[cameraId] = viewState.FeedKinds[i];
-            cameraTileAnnotationsEnabledById[cameraId] = viewState.ShowAnnotationsEnabled[i];
             cameraTileRegionsEnabledById[cameraId] = viewState.ShowRegionsEnabled[i];
 
             var panel = new Panel();
@@ -2721,28 +2650,6 @@ public partial class MainWindow : AppWindow
             {
                 DebugViewFrameType = frameType
             };
-        }
-
-        RefreshCameraUi();
-    }
-
-    private void ShowAnnotationsCheckBoxOnChanged(object? sender, RoutedEventArgs e)
-    {
-        if (applyingShowAnnotationsUi)
-        {
-            return;
-        }
-
-        lock (cameraSync)
-        {
-            if (selectedCameraIndex < 0 || selectedCameraIndex >= cameras.Count)
-            {
-                return;
-            }
-
-            var selected = cameras[selectedCameraIndex];
-            var showAnnotations = ShowAnnotationsCheckBox.IsChecked == true;
-            cameras[selectedCameraIndex] = selected with { ShowAnnotationsEnabled = showAnnotations };
         }
 
         RefreshCameraUi();
@@ -3310,7 +3217,6 @@ public partial class MainWindow : AppWindow
         CameraSourceKind SourceKind = CameraSourceKind.VideoFile,
         int? UsbDeviceIndex = null,
         DebugViewFrameType DebugViewFrameType = DebugViewFrameType.MovingColor,
-        bool ShowAnnotationsEnabled = false,
         bool ShowRegionsEnabled = false)
     {
         public string PrimaryVideoPath => VideoPaths.Count > 0 ? VideoPaths[0] : string.Empty;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -521,6 +522,7 @@ public partial class MainWindow : AppWindow
     private readonly Dictionary<string, DebugTileImageSet> cameraTileDebugImagesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DebugViewFrameType> cameraTileDebugFrameTypesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, bool> cameraTileRegionsEnabledById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, VideoFrameSnapshot> latestCameraFramesById = new(StringComparer.OrdinalIgnoreCase);
     private Task? runTask;
     private int selectedCameraIndex = -1;
     private int selectedTrainIndex = -1;
@@ -2057,6 +2059,7 @@ public partial class MainWindow : AppWindow
                 GetBakeImagePath(settings),
                 onFrame: frameSet =>
                 {
+                    CacheLatestFrame(camera.Id, frameSet.MovingColorJpeg);
                     QueuePreviewFrame(camera.Id, frameSet, cancellationToken);
                     return Task.CompletedTask;
                 },
@@ -2094,6 +2097,7 @@ public partial class MainWindow : AppWindow
                 GetBakeImagePath(settings),
                 onFrame: frameSet =>
                 {
+                    CacheLatestFrame(camera.Id, frameSet.MovingColorJpeg);
                     QueuePreviewFrame(camera.Id, frameSet, cancellationToken);
                     return Task.CompletedTask;
                 },
@@ -2401,6 +2405,7 @@ public partial class MainWindow : AppWindow
                 var snapshot = videoSource.ReadLatestFrame();
                 if (snapshot is not null)
                 {
+                    latestCameraFramesById[camera.Id] = snapshot.Value;
                     RenderSnapshotToTile(camera.Id, target, snapshot.Value);
                 }
 
@@ -3440,6 +3445,11 @@ public partial class MainWindow : AppWindow
     {
         try
         {
+            if (latestCameraFramesById.TryGetValue(camera.Id, out var latestFrame))
+            {
+                return latestFrame.EncodedJpeg;
+            }
+
             if (camera.SourceKind == CameraSourceKind.UsbCamera)
             {
                 var deviceIndex = camera.UsbDeviceIndex ?? 0;
@@ -3477,6 +3487,17 @@ public partial class MainWindow : AppWindow
         }
 
         return null;
+    }
+
+    private void CacheLatestFrame(string cameraId, byte[] encodedJpeg)
+    {
+        latestCameraFramesById[cameraId] = new VideoFrameSnapshot(
+            cameraId,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            0,
+            0,
+            encodedJpeg,
+            0);
     }
 
     private async void RegionsWorkspaceButtonOnClick(object? sender, RoutedEventArgs e)

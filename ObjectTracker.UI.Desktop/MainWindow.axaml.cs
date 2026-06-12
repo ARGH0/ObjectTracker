@@ -3341,31 +3341,22 @@ public partial class MainWindow : AppWindow
             regionRegistry);
     }
 
-    private void WritePlcTransition(string plcAddress, string trainColor)
+    private void WritePlcTransition(string regionName, string trainColor)
     {
-        if (plcClient is null || string.IsNullOrWhiteSpace(plcAddress))
+        if (plcClient is null || string.IsNullOrWhiteSpace(regionName))
             return;
 
         _ = Task.Run(async () =>
         {
             try
             {
-                var variable = new Plc.Model.PlcVariable(plcAddress, Plc.Model.PlcVariableType.Int32);
-                var value = PlcValue.Int32(int.Parse(trainColor.GetHashCode(System.StringComparison.Ordinal).ToString(CultureInfo.InvariantCulture)));
-
-                if (!_isPlcConnected)
-                {
-                    AppendPlcLog($"PLC write skipped ({plcAddress}): not connected (train color: {trainColor})");
-                    return;
-                }
-
-                AppendPlcLog($"PLC write: {plcAddress} = {trainColor} (transition)");
+                var writer = new PlcTransitionWriter(plcClient, AppendPlcLog);
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await plcClient.WriteAsync(new[] { (variable, value) }, cts.Token);
+                await writer.WriteTransitionAsync(regionName, trainColor, _isPlcConnected, cts.Token);
             }
             catch (Exception ex)
             {
-                AppendPlcLog($"PLC write error ({plcAddress}): {ex.Message}");
+                AppendPlcLog($"PLC write error ({regionName}): {ex.Message}");
             }
         });
     }
